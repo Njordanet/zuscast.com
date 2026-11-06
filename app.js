@@ -2977,8 +2977,74 @@ function setupControls() {
   });
 }
 
+/* Live Build Version Watcher — Force Refresh on Production/Staging Updates */
+function initVersionUpdateWatcher() {
+  const metaEl = document.querySelector('meta[name="zus-build-version"]');
+  const currentVersion = metaEl ? metaEl.getAttribute("content") : null;
+  if (!currentVersion || window.location.protocol === "file:") return;
+
+  let checking = false;
+  const checkForUpdate = async () => {
+    if (checking) return;
+    checking = true;
+    try {
+      const resp = await fetch(`./version.json?_t=${Date.now()}`, {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+        },
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const remoteVersion = data && data.version ? String(data.version) : null;
+      if (remoteVersion && remoteVersion !== currentVersion) {
+        const lastForced = sessionStorage.getItem("zus_forced_reload_version");
+        if (lastForced === remoteVersion) return;
+        sessionStorage.setItem("zus_forced_reload_version", remoteVersion);
+
+        // Revalidate the HTML document in browser HTTP cache before reloading
+        try {
+          await fetch(window.location.pathname || "/", {
+            cache: "reload",
+            headers: {
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              Pragma: "no-cache",
+            },
+          });
+          if ("caches" in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          }
+        } catch (_) {}
+
+        window.location.reload();
+      }
+    } catch (_) {
+      // Ignore transient offline errors
+    } finally {
+      checking = false;
+    }
+  };
+
+  // Check immediately on boot, when returning to the tab, and every 60s
+  checkForUpdate();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      checkForUpdate();
+    }
+  });
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) {
+      checkForUpdate();
+    }
+  });
+  setInterval(checkForUpdate, 60000);
+}
+
 /* Boot ZüsCast */
 document.addEventListener("DOMContentLoaded", () => {
+  initVersionUpdateWatcher();
   renderLocationsStrip();
   setupCitySearch();
   setupControls();

@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <meta name="zus-build-version" content="20261106-8b47f4699d" />
   <title>ZüsCast — Hyperlocal Weather &amp; Down-to-the-Minute Nowcast</title>
   <meta name="description" content="ZüsCast (zuscast.com) — Hyperlocal, down-to-the-minute weather intelligence with Liquid Glass aesthetics." />
   <meta name="theme-color" content="#0b0f1a" />
@@ -5613,8 +5617,74 @@ function setupControls() {
   });
 }
 
+/* Live Build Version Watcher — Force Refresh on Production/Staging Updates */
+function initVersionUpdateWatcher() {
+  const metaEl = document.querySelector('meta[name="zus-build-version"]');
+  const currentVersion = metaEl ? metaEl.getAttribute("content") : null;
+  if (!currentVersion || window.location.protocol === "file:") return;
+
+  let checking = false;
+  const checkForUpdate = async () => {
+    if (checking) return;
+    checking = true;
+    try {
+      const resp = await fetch(`./version.json?_t=${Date.now()}`, {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+        },
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const remoteVersion = data && data.version ? String(data.version) : null;
+      if (remoteVersion && remoteVersion !== currentVersion) {
+        const lastForced = sessionStorage.getItem("zus_forced_reload_version");
+        if (lastForced === remoteVersion) return;
+        sessionStorage.setItem("zus_forced_reload_version", remoteVersion);
+
+        // Revalidate the HTML document in browser HTTP cache before reloading
+        try {
+          await fetch(window.location.pathname || "/", {
+            cache: "reload",
+            headers: {
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              Pragma: "no-cache",
+            },
+          });
+          if ("caches" in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          }
+        } catch (_) {}
+
+        window.location.reload();
+      }
+    } catch (_) {
+      // Ignore transient offline errors
+    } finally {
+      checking = false;
+    }
+  };
+
+  // Check immediately on boot, when returning to the tab, and every 60s
+  checkForUpdate();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      checkForUpdate();
+    }
+  });
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) {
+      checkForUpdate();
+    }
+  });
+  setInterval(checkForUpdate, 60000);
+}
+
 /* Boot ZüsCast */
 document.addEventListener("DOMContentLoaded", () => {
+  initVersionUpdateWatcher();
   renderLocationsStrip();
   setupCitySearch();
   setupControls();
