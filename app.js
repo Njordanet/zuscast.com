@@ -312,8 +312,10 @@ async function loadWeatherForCurrentLocation() {
     const ensembleParams = new URLSearchParams({
       latitude: String(latitude),
       longitude: String(longitude),
-      current: "temperature_2m,precipitation",
+      hourly: "temperature_2m,precipitation",
       models: "best_match,ecmwf_ifs025,gfs_seamless,icon_seamless",
+      forecast_days: "1",
+      timezone: "auto",
     });
 
     const [fResp, aqiResp, ensResp] = await Promise.all([
@@ -413,32 +415,33 @@ function parseWeatherData(raw, rawAqi, rawEnsemble) {
     });
   }
 
-  // Parse Multi-Model Ensemble
-  const ec = rawEnsemble?.current || {};
+  // Parse Multi-Model Ensemble (from hourly model arrays at current hour)
+  const eh = rawEnsemble?.hourly || {};
+  const eIdx = Math.min(startHourIdx, 23);
   const ensembleModels = [
     {
       name: "HRRR / Best Match",
       tag: "High-Res",
-      temp: ec.temperature_2m_best_match ?? c.temperature_2m,
-      precip: ec.precipitation_best_match ?? c.precipitation ?? 0,
+      temp: eh.temperature_2m_best_match?.[eIdx] ?? c.temperature_2m,
+      precip: eh.precipitation_best_match?.[eIdx] ?? c.precipitation ?? 0,
     },
     {
       name: "ECMWF IFS 0.25°",
       tag: "European",
-      temp: ec.temperature_2m_ecmwf_ifs025 ?? c.temperature_2m,
-      precip: ec.precipitation_ecmwf_ifs025 ?? c.precipitation ?? 0,
+      temp: eh.temperature_2m_ecmwf_ifs025?.[eIdx] ?? c.temperature_2m,
+      precip: eh.precipitation_ecmwf_ifs025?.[eIdx] ?? c.precipitation ?? 0,
     },
     {
       name: "NOAA GFS",
       tag: "US Global",
-      temp: ec.temperature_2m_gfs_seamless ?? c.temperature_2m,
-      precip: ec.precipitation_gfs_seamless ?? c.precipitation ?? 0,
+      temp: eh.temperature_2m_gfs_seamless?.[eIdx] ?? c.temperature_2m,
+      precip: eh.precipitation_gfs_seamless?.[eIdx] ?? c.precipitation ?? 0,
     },
     {
       name: "DWD ICON",
       tag: "German Global",
-      temp: ec.temperature_2m_icon_seamless ?? c.temperature_2m,
-      precip: ec.precipitation_icon_seamless ?? c.precipitation ?? 0,
+      temp: eh.temperature_2m_icon_seamless?.[eIdx] ?? c.temperature_2m,
+      precip: eh.precipitation_icon_seamless?.[eIdx] ?? c.precipitation ?? 0,
     },
   ];
 
