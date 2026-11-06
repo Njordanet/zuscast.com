@@ -282,11 +282,25 @@ function uvAdvice(uv) {
   return "Extreme — Avoid direct midday sun";
 }
 
-/* Render Compact Recent Searches Strip */
+/* Render Compact Recent Searches Strip (Max 3 Cities, Excluding Currently Displayed City) */
 function renderLocationsStrip() {
   const strip = document.getElementById("locations-strip");
+  if (!strip) return;
   strip.innerHTML = "";
-  if (!state.recentSearches.length) {
+
+  const otherCities = state.recentSearches
+    .filter((loc) => {
+      const sameCoords =
+        Math.abs(loc.latitude - state.location.latitude) < 0.05 &&
+        Math.abs(loc.longitude - state.location.longitude) < 0.05;
+      const sameName =
+        (loc.name || "").trim().toLowerCase() ===
+        (state.location.name || "").trim().toLowerCase();
+      return !sameCoords && !sameName;
+    })
+    .slice(0, 3);
+
+  if (!otherCities.length) {
     strip.classList.add("empty");
     return;
   }
@@ -297,13 +311,10 @@ function renderLocationsStrip() {
   label.textContent = "Recent:";
   strip.appendChild(label);
 
-  state.recentSearches.forEach((loc) => {
+  otherCities.forEach((loc) => {
     const btn = document.createElement("button");
     btn.type = "button";
-    const isActive =
-      Math.abs(loc.latitude - state.location.latitude) < 0.05 &&
-      Math.abs(loc.longitude - state.location.longitude) < 0.05;
-    btn.className = `location-chip ${isActive ? "active" : ""}`;
+    btn.className = "location-chip";
     btn.innerHTML = `<span>${loc.name}</span><span class="chip-remove" title="Remove">&times;</span>`;
 
     btn.addEventListener("click", (e) => {
@@ -313,6 +324,7 @@ function renderLocationsStrip() {
         return;
       }
       state.location = { ...loc };
+      saveRecentSearch(state.location);
       renderLocationsStrip();
       loadWeatherForCurrentLocation();
     });
@@ -1124,6 +1136,7 @@ const dopplerRadarMap = {
 
 /* Load Hyperlocal Weather, Minutely-15 Nowcast, Air Quality & Multi-Model Ensemble */
 async function loadWeatherForCurrentLocation() {
+  renderLocationsStrip();
   const { latitude, longitude, name, region } = state.location;
   document.getElementById("hero-city").textContent = name;
   document.getElementById("location-kicker").innerHTML = `<span>📍 ${

@@ -27,8 +27,8 @@
   <canvas id="atmosphere-canvas" aria-hidden="true"></canvas>
 
   <div class="app-shell">
-    <!-- Top Liquid Glass Navigation -->
-    <header class="top-nav liquid-glass">
+    <!-- Top Header: Brand Top-Left, Unit Toggle + Search Top-Right (No Outer Glass Box) -->
+    <header class="top-nav">
       <a href="/" class="brand" aria-label="ZüsCast Home">
         <div class="brand-icon">
           <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -42,40 +42,44 @@
         </div>
       </a>
 
-      <!-- City Search & Instant GPS -->
-      <div class="search-wrapper">
-        <div class="search-input-group">
-          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input
-            type="text"
-            id="city-search-input"
-            placeholder="Search city, neighborhood, or coordinates..."
-            autocomplete="off"
-            aria-label="Search location"
-          />
-          <button type="button" id="locate-me-btn" class="locate-btn" title="Use current GPS location">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
-            </svg>
-            GPS
-          </button>
-        </div>
-        <div id="search-dropdown" class="search-dropdown" role="listbox"></div>
-      </div>
+      <!-- Top-Right Controls: Unit Toggle to the Left of Search Box + Recent Cities Underneath -->
+      <div class="top-nav-right">
+        <div class="top-nav-controls-row">
+          <div class="nav-controls">
+            <button type="button" id="unit-toggle-btn" class="liquid-glass-pill" title="Toggle Imperial / Metric units">
+              °F, mph
+            </button>
+          </div>
 
-      <!-- Unit Toggle -->
-      <div class="nav-controls">
-        <button type="button" id="unit-toggle-btn" class="liquid-glass-pill" title="Toggle Imperial / Metric units">
-          °F, mph
-        </button>
+          <!-- City Search & Instant GPS -->
+          <div class="search-wrapper">
+            <div class="search-input-group">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                type="text"
+                id="city-search-input"
+                placeholder="Search city, neighborhood, or coordinates..."
+                autocomplete="off"
+                aria-label="Search location"
+              />
+              <button type="button" id="locate-me-btn" class="locate-btn" title="Use current GPS location">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+                </svg>
+                GPS
+              </button>
+            </div>
+            <div id="search-dropdown" class="search-dropdown" role="listbox"></div>
+          </div>
+        </div>
+
+        <!-- Recent Cities (Right-Aligned Under Search, Max 3 Excluding Current City) -->
+        <nav class="locations-strip" aria-label="Saved Locations" id="locations-strip"></nav>
       </div>
     </header>
-
-    <!-- Quick Locations Bar -->
-    <nav class="locations-strip" aria-label="Saved Locations" id="locations-strip"></nav>
 
     <!-- Centerpiece: Current Conditions + Next-Hour Minute-by-Minute Nowcast -->
     <section class="hero-nowcast-grid">

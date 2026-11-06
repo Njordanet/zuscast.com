@@ -195,28 +195,47 @@ body.sky-storm {
   gap: clamp(14px, 1.6vw, 20px);
 }
 
-/* Top Navigation Bar */
+/* Top Navigation Bar (Open Header Without Outer Glass Box) */
 .top-nav {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 14px;
-  padding: 12px 18px;
+  gap: 16px;
+  padding: 4px 2px 0;
   flex-wrap: wrap;
   z-index: 30;
+}
+
+.top-nav-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  flex: 1 1 360px;
+  max-width: 560px;
+  margin-left: auto;
+}
+
+.top-nav-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 12px;
   text-decoration: none;
   color: var(--text-primary);
+  flex-shrink: 0;
 }
 
 .brand-icon {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.2), rgba(56, 189, 248, 0.12));
   border: 1px solid rgba(255, 255, 255, 0.28);
@@ -232,7 +251,7 @@ body.sky-storm {
 }
 
 .brand-name {
-  font-size: 1.22rem;
+  font-size: 1.32rem;
   font-weight: 700;
   letter-spacing: -0.025em;
 }
@@ -246,16 +265,18 @@ body.sky-storm {
 /* Search Bar */
 .search-wrapper {
   position: relative;
-  flex: 1 1 280px;
+  flex: 1 1 260px;
   max-width: 440px;
 }
 
 .search-input-group {
   display: flex;
   align-items: center;
-  background: var(--glass-fill-inset);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  background: var(--glass-fill);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-specular), 0 10px 28px -8px rgba(2, 6, 20, 0.55);
   border-radius: var(--radius-pill);
   padding: 5px 6px 5px 14px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -368,16 +389,16 @@ body.sky-storm {
   gap: 8px;
 }
 
-/* Compact Recent Searches Strip */
+/* Compact Recent Searches Strip (Right-Aligned Under Search Box) */
 .locations-strip {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
   overflow-x: auto;
-  margin-top: -8px;
-  margin-bottom: -4px;
-  padding: 0 4px;
-  min-height: 24px;
+  padding: 0 2px;
+  min-height: 22px;
+  max-width: 100%;
   scrollbar-width: none;
 }
 
@@ -2089,8 +2110,8 @@ body.sky-storm {
   <canvas id="atmosphere-canvas" aria-hidden="true"></canvas>
 
   <div class="app-shell">
-    <!-- Top Liquid Glass Navigation -->
-    <header class="top-nav liquid-glass">
+    <!-- Top Header: Brand Top-Left, Unit Toggle + Search Top-Right (No Outer Glass Box) -->
+    <header class="top-nav">
       <a href="/" class="brand" aria-label="ZüsCast Home">
         <div class="brand-icon">
           <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -2104,40 +2125,44 @@ body.sky-storm {
         </div>
       </a>
 
-      <!-- City Search & Instant GPS -->
-      <div class="search-wrapper">
-        <div class="search-input-group">
-          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input
-            type="text"
-            id="city-search-input"
-            placeholder="Search city, neighborhood, or coordinates..."
-            autocomplete="off"
-            aria-label="Search location"
-          />
-          <button type="button" id="locate-me-btn" class="locate-btn" title="Use current GPS location">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
-            </svg>
-            GPS
-          </button>
-        </div>
-        <div id="search-dropdown" class="search-dropdown" role="listbox"></div>
-      </div>
+      <!-- Top-Right Controls: Unit Toggle to the Left of Search Box + Recent Cities Underneath -->
+      <div class="top-nav-right">
+        <div class="top-nav-controls-row">
+          <div class="nav-controls">
+            <button type="button" id="unit-toggle-btn" class="liquid-glass-pill" title="Toggle Imperial / Metric units">
+              °F, mph
+            </button>
+          </div>
 
-      <!-- Unit Toggle -->
-      <div class="nav-controls">
-        <button type="button" id="unit-toggle-btn" class="liquid-glass-pill" title="Toggle Imperial / Metric units">
-          °F, mph
-        </button>
+          <!-- City Search & Instant GPS -->
+          <div class="search-wrapper">
+            <div class="search-input-group">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                type="text"
+                id="city-search-input"
+                placeholder="Search city, neighborhood, or coordinates..."
+                autocomplete="off"
+                aria-label="Search location"
+              />
+              <button type="button" id="locate-me-btn" class="locate-btn" title="Use current GPS location">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+                </svg>
+                GPS
+              </button>
+            </div>
+            <div id="search-dropdown" class="search-dropdown" role="listbox"></div>
+          </div>
+        </div>
+
+        <!-- Recent Cities (Right-Aligned Under Search, Max 3 Excluding Current City) -->
+        <nav class="locations-strip" aria-label="Saved Locations" id="locations-strip"></nav>
       </div>
     </header>
-
-    <!-- Quick Locations Bar -->
-    <nav class="locations-strip" aria-label="Saved Locations" id="locations-strip"></nav>
 
     <!-- Centerpiece: Current Conditions + Next-Hour Minute-by-Minute Nowcast -->
     <section class="hero-nowcast-grid">
@@ -2867,11 +2892,25 @@ function uvAdvice(uv) {
   return "Extreme — Avoid direct midday sun";
 }
 
-/* Render Compact Recent Searches Strip */
+/* Render Compact Recent Searches Strip (Max 3 Cities, Excluding Currently Displayed City) */
 function renderLocationsStrip() {
   const strip = document.getElementById("locations-strip");
+  if (!strip) return;
   strip.innerHTML = "";
-  if (!state.recentSearches.length) {
+
+  const otherCities = state.recentSearches
+    .filter((loc) => {
+      const sameCoords =
+        Math.abs(loc.latitude - state.location.latitude) < 0.05 &&
+        Math.abs(loc.longitude - state.location.longitude) < 0.05;
+      const sameName =
+        (loc.name || "").trim().toLowerCase() ===
+        (state.location.name || "").trim().toLowerCase();
+      return !sameCoords && !sameName;
+    })
+    .slice(0, 3);
+
+  if (!otherCities.length) {
     strip.classList.add("empty");
     return;
   }
@@ -2882,13 +2921,10 @@ function renderLocationsStrip() {
   label.textContent = "Recent:";
   strip.appendChild(label);
 
-  state.recentSearches.forEach((loc) => {
+  otherCities.forEach((loc) => {
     const btn = document.createElement("button");
     btn.type = "button";
-    const isActive =
-      Math.abs(loc.latitude - state.location.latitude) < 0.05 &&
-      Math.abs(loc.longitude - state.location.longitude) < 0.05;
-    btn.className = `location-chip ${isActive ? "active" : ""}`;
+    btn.className = "location-chip";
     btn.innerHTML = `<span>${loc.name}</span><span class="chip-remove" title="Remove">&times;</span>`;
 
     btn.addEventListener("click", (e) => {
@@ -2898,6 +2934,7 @@ function renderLocationsStrip() {
         return;
       }
       state.location = { ...loc };
+      saveRecentSearch(state.location);
       renderLocationsStrip();
       loadWeatherForCurrentLocation();
     });
@@ -3709,6 +3746,7 @@ const dopplerRadarMap = {
 
 /* Load Hyperlocal Weather, Minutely-15 Nowcast, Air Quality & Multi-Model Ensemble */
 async function loadWeatherForCurrentLocation() {
+  renderLocationsStrip();
   const { latitude, longitude, name, region } = state.location;
   document.getElementById("hero-city").textContent = name;
   document.getElementById("location-kicker").innerHTML = `<span>📍 ${
