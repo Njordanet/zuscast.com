@@ -109,27 +109,27 @@
 
         <!-- Dark Sky 4-Column Micro Telemetry Strip -->
         <div class="hero-micro-strip">
-          <div class="micro-item">
-            <span class="micro-label">Wind</span>
+          <div class="micro-item interactive-tile" data-tile="wind" role="button" tabindex="0" title="Tap for Wind &amp; Gusts breakdown">
+            <span class="micro-label">Wind ↗</span>
             <span class="micro-val" id="micro-wind">--</span>
           </div>
-          <div class="micro-item">
-            <span class="micro-label">Humidity</span>
+          <div class="micro-item interactive-tile" data-tile="humidity" role="button" tabindex="0" title="Tap for Humidity &amp; Dew Point breakdown">
+            <span class="micro-label">Humidity ↗</span>
             <span class="micro-val" id="micro-humidity">--%</span>
           </div>
-          <div class="micro-item">
-            <span class="micro-label">Dew Pt</span>
+          <div class="micro-item interactive-tile" data-tile="humidity" role="button" tabindex="0" title="Tap for Dew Point comfort scale">
+            <span class="micro-label">Dew Pt ↗</span>
             <span class="micro-val" id="micro-dew">--°</span>
           </div>
-          <div class="micro-item">
-            <span class="micro-label">Pressure</span>
+          <div class="micro-item interactive-tile" data-tile="pressure" role="button" tabindex="0" title="Tap for Barometric Pressure trend">
+            <span class="micro-label">Pressure ↗</span>
             <span class="micro-val" id="micro-pressure">--</span>
           </div>
         </div>
       </article>
 
       <!-- Dark Sky Signature: Next-Hour Minute-by-Minute Precipitation -->
-      <article class="nowcast-card liquid-glass">
+      <article class="nowcast-card liquid-glass interactive-tile" data-tile="precip" role="button" tabindex="0" title="Tap for Precipitation &amp; Nowcast analysis">
         <div class="section-header">
           <span class="section-kicker">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
@@ -165,31 +165,38 @@
       </article>
     </section>
 
-    <!-- Dark Sky 24-Hour Sky Condition Ribbon & Interactive Timeline -->
-    <section class="timeline-card liquid-glass" aria-label="24-Hour Timeline">
+    <!-- 24-Hour & 10-Day Interactive Connected Curve & Model Envelope Timeline -->
+    <section class="timeline-card liquid-glass" aria-label="24-Hour Timeline" id="timeline-card-section">
       <div class="section-header">
         <span class="section-kicker">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
             <polyline points="12 6 12 12 16 14"></polyline>
           </svg>
-          24-Hour Sky Condition Timeline
+          24-Hour &amp; 10-Day Forecast
         </span>
-        <div class="timeline-mode-tabs" role="tablist" aria-label="Hourly Metric Selector">
-          <button type="button" class="mode-tab active" data-mode="temp">Temp</button>
-          <button type="button" class="mode-tab" data-mode="feels">Feels Like</button>
-          <button type="button" class="mode-tab" data-mode="precip">Precip %</button>
-          <button type="button" class="mode-tab" data-mode="wind">Wind</button>
-        </div>
+        <span class="timeline-spread-badge" id="timeline-spread-readout">
+          Model Envelope: Syncing...
+        </span>
       </div>
 
-      <!-- Continuous Sky Condition Ribbon -->
-      <div class="condition-ribbon-wrap">
-        <div class="condition-ribbon" id="condition-ribbon"></div>
-      </div>
+      <!-- Interactive 24-Hour Connected Curve + Multi-Model Envelope Chart -->
+      <div class="hourly-chart-scroll" id="hourly-scroll"></div>
 
-      <!-- Hourly Cells -->
-      <div class="hourly-scroll" id="hourly-scroll"></div>
+      <!-- Bottom Scrollable Metric Pill Selector -->
+      <div class="timeline-pill-bar" role="tablist" aria-label="Hourly Metric Selector" id="timeline-pill-bar">
+        <button type="button" class="mode-tab active" data-mode="temp">Temp</button>
+        <button type="button" class="mode-tab" data-mode="feels">Feels Like</button>
+        <button type="button" class="mode-tab" data-mode="precip">Precip Chance</button>
+        <button type="button" class="mode-tab" data-mode="precipAmount">Precip Amount</button>
+        <button type="button" class="mode-tab" data-mode="wind">Wind Speed</button>
+        <button type="button" class="mode-tab" data-mode="gusts">Wind Gusts</button>
+        <button type="button" class="mode-tab" data-mode="uv">UV Index</button>
+        <button type="button" class="mode-tab" data-mode="dew">Dew Point</button>
+        <button type="button" class="mode-tab" data-mode="clouds">Cloud Cover</button>
+        <button type="button" class="mode-tab" data-mode="visibility">Visibility</button>
+        <button type="button" class="mode-tab" data-mode="pressure">Pressure</button>
+      </div>
     </section>
 
     <!-- Main Split Grid: Expandable 10-Day Forecast + Live Radar & Telemetry -->
@@ -336,56 +343,94 @@
             </div>
           </div>
         </article>
-
-        <!-- 6 Atmospheric Telemetry Cards -->
-        <div class="details-grid">
-          <article class="detail-card liquid-glass">
-            <div class="section-kicker">🌿 Air Quality (US AQI)</div>
-            <div>
-              <div class="detail-value" id="detail-aqi">--</div>
-              <div class="meter-bar">
-                <div class="meter-dot" id="aqi-dot" style="left: 12%"></div>
-              </div>
-            </div>
-            <div class="detail-sub" id="detail-aqi-desc">Syncing air quality...</div>
-          </article>
-
-          <article class="detail-card liquid-glass">
-            <div class="section-kicker">☀️ UV Index</div>
-            <div>
-              <div class="detail-value" id="detail-uv">--</div>
-              <div class="meter-bar">
-                <div class="meter-dot" id="uv-dot" style="left: 10%"></div>
-              </div>
-            </div>
-            <div class="detail-sub" id="detail-uv-advice">--</div>
-          </article>
-
-          <article class="detail-card liquid-glass">
-            <div class="section-kicker">💨 Wind &amp; Gusts</div>
-            <div class="detail-value" id="detail-wind">--</div>
-            <div class="detail-sub" id="detail-wind-dir">Gusts: --</div>
-          </article>
-
-          <article class="detail-card liquid-glass">
-            <div class="section-kicker">💧 Humidity &amp; Muggy Scale</div>
-            <div class="detail-value" id="detail-humidity">--%</div>
-            <div class="detail-sub" id="detail-dewpoint">Dew point: --</div>
-          </article>
-
-          <article class="detail-card liquid-glass">
-            <div class="section-kicker">👁️ Visibility &amp; Cloud Cover</div>
-            <div class="detail-value" id="detail-visibility">--</div>
-            <div class="detail-sub" id="detail-clouds">Cloud cover: --%</div>
-          </article>
-
-          <article class="detail-card liquid-glass">
-            <div class="section-kicker">🌅 Solar &amp; Convective CAPE</div>
-            <div class="detail-value" id="detail-sunrise">--:--</div>
-            <div class="detail-sub" id="detail-sunset">Sunset: --:--</div>
-          </article>
-        </div>
       </div>
+    </section>
+
+    <!-- Full-Width Dynamic 6-Tile Atmospheric Telemetry Bento Grid -->
+    <section class="details-grid" aria-label="Atmospheric Telemetry">
+      <article class="detail-card liquid-glass interactive-tile" data-tile="aqi" role="button" tabindex="0">
+        <div class="detail-card-top">
+          <div class="section-kicker">🌿 Air Quality (AQI)</div>
+          <span class="tile-action-pill">Details ↗</span>
+        </div>
+        <div class="detail-card-mid">
+          <div class="detail-value" id="detail-aqi">--</div>
+          <div class="meter-bar">
+            <div class="meter-dot" id="aqi-dot" style="left: 12%"></div>
+          </div>
+        </div>
+        <div class="detail-sub" id="detail-aqi-desc">Syncing air quality...</div>
+      </article>
+
+      <article class="detail-card liquid-glass interactive-tile" data-tile="uv" role="button" tabindex="0">
+        <div class="detail-card-top">
+          <div class="section-kicker">☀️ UV Index</div>
+          <span class="tile-action-pill">Curve ↗</span>
+        </div>
+        <div class="detail-card-mid">
+          <div class="detail-value" id="detail-uv">--</div>
+          <div class="meter-bar">
+            <div class="meter-dot" id="uv-dot" style="left: 10%"></div>
+          </div>
+        </div>
+        <div class="detail-sub" id="detail-uv-advice">--</div>
+      </article>
+
+      <article class="detail-card liquid-glass interactive-tile" data-tile="wind" role="button" tabindex="0">
+        <div class="detail-card-top">
+          <div class="section-kicker">💨 Wind &amp; Gusts</div>
+          <span class="tile-action-pill">Curve ↗</span>
+        </div>
+        <div class="detail-card-mid">
+          <div class="detail-value" id="detail-wind">--</div>
+          <div class="meter-bar meter-bar-cool">
+            <div class="meter-dot" id="wind-dot" style="left: 22%"></div>
+          </div>
+        </div>
+        <div class="detail-sub" id="detail-wind-dir">Gusts: --</div>
+      </article>
+
+      <article class="detail-card liquid-glass interactive-tile" data-tile="humidity" role="button" tabindex="0">
+        <div class="detail-card-top">
+          <div class="section-kicker">💧 Humidity &amp; Dew Pt</div>
+          <span class="tile-action-pill">Curve ↗</span>
+        </div>
+        <div class="detail-card-mid">
+          <div class="detail-value" id="detail-humidity">--%</div>
+          <div class="meter-bar meter-bar-moisture">
+            <div class="meter-dot" id="humidity-dot" style="left: 50%"></div>
+          </div>
+        </div>
+        <div class="detail-sub" id="detail-dewpoint">Dew point: --</div>
+      </article>
+
+      <article class="detail-card liquid-glass interactive-tile" data-tile="visibility" role="button" tabindex="0">
+        <div class="detail-card-top">
+          <div class="section-kicker">👁️ Visibility &amp; Ceiling</div>
+          <span class="tile-action-pill">Curve ↗</span>
+        </div>
+        <div class="detail-card-mid">
+          <div class="detail-value" id="detail-visibility">--</div>
+          <div class="meter-bar meter-bar-clarity">
+            <div class="meter-dot" id="vis-dot" style="left: 85%"></div>
+          </div>
+        </div>
+        <div class="detail-sub" id="detail-clouds">Cloud cover: --%</div>
+      </article>
+
+      <article class="detail-card liquid-glass interactive-tile" data-tile="solar" role="button" tabindex="0">
+        <div class="detail-card-top">
+          <div class="section-kicker">🌅 Solar &amp; CAPE</div>
+          <span class="tile-action-pill">Details ↗</span>
+        </div>
+        <div class="detail-card-mid">
+          <div class="detail-value" id="detail-sunrise">--:--</div>
+          <div class="meter-bar meter-bar-solar">
+            <div class="meter-dot" id="solar-dot" style="left: 48%"></div>
+          </div>
+        </div>
+        <div class="detail-sub" id="detail-sunset">Sunset: --:--</div>
+      </article>
     </section>
 
     <!-- Multi-Model Ensemble Agreement Strip -->
@@ -395,22 +440,22 @@
         <span class="section-kicker" id="ensemble-spread-label">Spread: --</span>
       </div>
       <div class="ensemble-models-grid" id="ensemble-models-grid">
-        <div class="ensemble-pill-box">
+        <div class="ensemble-pill-box interactive-tile" data-tile="ensemble" role="button" tabindex="0">
           <div class="ensemble-model-name"><span>HRRR 3km</span><span>High-Res</span></div>
           <div class="ensemble-model-temp">--°</div>
           <div class="ensemble-model-meta">Syncing...</div>
         </div>
-        <div class="ensemble-pill-box">
+        <div class="ensemble-pill-box interactive-tile" data-tile="ensemble" role="button" tabindex="0">
           <div class="ensemble-model-name"><span>ECMWF IFS</span><span>Global</span></div>
           <div class="ensemble-model-temp">--°</div>
           <div class="ensemble-model-meta">Syncing...</div>
         </div>
-        <div class="ensemble-pill-box">
+        <div class="ensemble-pill-box interactive-tile" data-tile="ensemble" role="button" tabindex="0">
           <div class="ensemble-model-name"><span>NOAA GFS</span><span>Global</span></div>
           <div class="ensemble-model-temp">--°</div>
           <div class="ensemble-model-meta">Syncing...</div>
         </div>
-        <div class="ensemble-pill-box">
+        <div class="ensemble-pill-box interactive-tile" data-tile="ensemble" role="button" tabindex="0">
           <div class="ensemble-model-name"><span>DWD ICON</span><span>Global</span></div>
           <div class="ensemble-model-temp">--°</div>
           <div class="ensemble-model-meta">Syncing...</div>
@@ -425,6 +470,48 @@
       </div>
       <div id="last-updated">Syncing...</div>
     </footer>
+
+    <!-- Interactive App Telemetry Detail Modal / Sheet -->
+    <div class="tile-modal-backdrop" id="tile-detail-modal" hidden aria-modal="true" role="dialog">
+      <div class="tile-modal-sheet liquid-glass" role="document">
+        <div class="tile-modal-header">
+          <div>
+            <div class="section-kicker" id="tile-modal-kicker">ATMOSPHERIC TELEMETRY</div>
+            <h2 class="tile-modal-title" id="tile-modal-title">Metric Details</h2>
+          </div>
+          <button type="button" class="tile-modal-close" id="tile-modal-close" aria-label="Close detail sheet">&times;</button>
+        </div>
+
+        <div class="tile-modal-hero">
+          <div class="tile-modal-primary" id="tile-modal-primary">--</div>
+          <div class="tile-modal-badge" id="tile-modal-badge">Live</div>
+        </div>
+
+        <p class="tile-modal-narrative" id="tile-modal-narrative">Loading detailed telemetry analysis...</p>
+
+        <!-- Embedded 24-Hour Curve + Model Envelope inside Sheet -->
+        <div class="tile-modal-chart-section" id="tile-modal-chart-section">
+          <div class="tile-modal-chart-header">
+            <span class="section-kicker" id="tile-modal-chart-label">24-Hour Model Envelope</span>
+            <span class="timeline-spread-badge" id="tile-modal-spread-badge">Model Spread</span>
+          </div>
+          <div class="hourly-chart-scroll tile-modal-chart-scroll" id="tile-modal-chart-scroll"></div>
+        </div>
+
+        <!-- Structured Sub-Metrics Breakdown Grid -->
+        <div class="tile-modal-stats-grid" id="tile-modal-stats-grid"></div>
+
+        <!-- Footer Actions (Quick-Jump to 10-Day Curve) -->
+        <div class="tile-modal-footer">
+          <button type="button" class="tile-modal-jump-btn" id="tile-modal-jump-btn">
+            View on 10-Day Forecast Curve ↗
+          </button>
+          <button type="button" class="tile-modal-secondary-btn" id="tile-modal-done-btn">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script

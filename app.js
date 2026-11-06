@@ -186,7 +186,8 @@ const state = {
     : { ...DEFAULT_FALLBACK_LOCATION },
   recentSearches: initialRecents,
   useImperial: localStorage.getItem("zus_unit_imp") !== "false",
-  hourlyMode: "temp", // 'temp' | 'feels' | 'precip' | 'wind'
+  hourlyMode: "temp",
+  dailyModes: {},
   weather: null,
 };
 
@@ -1150,7 +1151,7 @@ async function loadWeatherForCurrentLocation() {
         "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation",
       minutely_15: "precipitation,weather_code",
       hourly:
-        "temperature_2m,apparent_temperature,weather_code,precipitation_probability,precipitation,wind_speed_10m,visibility,cape,dew_point_2m",
+        "temperature_2m,apparent_temperature,weather_code,precipitation_probability,precipitation,wind_speed_10m,wind_gusts_10m,uv_index,dew_point_2m,cloud_cover,visibility,pressure_msl,cape",
       daily:
         "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,uv_index_max,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset",
       timezone: "auto",
@@ -1166,9 +1167,10 @@ async function loadWeatherForCurrentLocation() {
     const ensembleParams = new URLSearchParams({
       latitude: String(latitude),
       longitude: String(longitude),
-      hourly: "temperature_2m,precipitation",
+      hourly:
+        "temperature_2m,apparent_temperature,precipitation_probability,precipitation,wind_speed_10m,wind_gusts_10m,uv_index,dew_point_2m,cloud_cover,visibility,pressure_msl",
       models: "best_match,ecmwf_ifs025,gfs_seamless,icon_seamless",
-      forecast_days: "1",
+      forecast_days: "10",
       timezone: "auto",
     });
 
@@ -1268,30 +1270,227 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     minuteRates.push(Math.max(0, v0 * (1 - mu) + v1 * mu));
   }
 
-  // Next 24 hours (assimilate ZüsAPI MOS bias-corrected & ground-truth hourly stream when available)
+  // Next 24 hours (assimilate ZüsAPI MOS bias-corrected & ground-truth hourly stream + multi-model min/max envelope)
   const zHourly = Array.isArray(zusWeather?.hourly) ? zusWeather.hourly : [];
-  const hourly = [];
-  for (let i = 0; i < 24; i++) {
-    const idx = startHourIdx + i;
-    if (!h.time || idx >= h.time.length) break;
-    const zh = zHourly[i] || null;
-    hourly.push({
+  const eh = rawEnsemble?.hourly || {};
+  const modelKeys = ["best_match", "ecmwf_ifs025", "gfs_seamless", "icon_seamless"];
+
+  const extractModelVals = (fieldPrefix, hourIdx, scale = 1) => {
+    const vals = [];
+    for (const mk of modelKeys) {
+      const v = eh[`${fieldPrefix}_${mk}`]?.[hourIdx];
+      if (v !== null && v !== undefined && !Number.isNaN(Number(v))) {
+        vals.push(Number(v) * scale);
+      }
+    }
+    return vals;
+  };
+
+  const computeBounds = (primaryVal, modelVals, fallbackHalfSpread, clampMin = -Infinity, clampMax = Infinity) => {
+    const p = Number(primaryVal ?? 0);
+    if (modelVals.length >= 2) {
+      const rawMin = Math.min(...modelVals);
+      const rawMax = Math.max(...modelVals);
+      const spread = rawMax - rawMin;
+      if (spread > 1e-4) {
+        return {
+          min: Math.max(clampMin, Math.min(p, rawMin)),
+          max: Math.min(clampMax, Math.max(p, rawMax)),
+        };
+      }
+    }
+    return {
+      min: Math.max(clampMin, p - fallbackHalfSpread),
+      max: Math.min(clampMax, p + fallbackHalfSpread),
+    };
+  };
+
+  const buildHourPoint = (idx, zh = null) => {
+    const tStr = String(h.time[idx] || "");
+    const dateKey = tStr.slice(0, 10);
+    const hourNum = Number(tStr.slice(11, 13)) || 0;
+
+    const temperature = Number(zh?.temperature ?? h.temperature_2m?.[idx] ?? c.temperature_2m ?? 0);
+    const feelsLike = Number(zh?.feelsLike ?? h.apparent_temperature?.[idx] ?? temperature);
+    const wmoCode = Number(zh?.wmoCode ?? h.weather_code?.[idx] ?? 0);
+    const precipProb = Number(zh?.precipitationChance ?? h.precipitation_probability?.[idx] ?? 0);
+    const precipMm = Number(zh?.precipMm ?? h.precipitation?.[idx] ?? 0);
+    const windSpeed = Number(zh?.windSpeed ?? h.wind_speed_10m?.[idx] ?? 0);
+    const windGusts = Number(
+      zh?.windGusts ?? h.wind_gusts_10m?.[idx] ?? Math.max(windSpeed * 1.3, windSpeed + 4)
+    );
+    const uvIndex = Math.max(0, Number(zh?.uvIndex ?? h.uv_index?.[idx] ?? 0));
+    const dewPoint = Number(zh?.dewPoint ?? h.dew_point_2m?.[idx] ?? temperature - 4);
+    const cloudCover = Math.min(100, Math.max(0, Number(zh?.cloudCover ?? h.cloud_cover?.[idx] ?? 0)));
+    const visibilityKm = Math.max(
+      0.2,
+      Number(zh?.visibilityKm ?? (h.visibility?.[idx] ?? 16000) / 1000)
+    );
+    const pressure = Number(
+      zh?.pressure ?? h.pressure_msl?.[idx] ?? c.pressure_msl ?? 1013.25
+    );
+
+    const tempB = computeBounds(
+      temperature,
+      [...extractModelVals("temperature_2m", idx), zh?.tempMin, zh?.tempMax].filter(
+        (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
+      ),
+      1.1
+    );
+    const feelsB = computeBounds(
+      feelsLike,
+      [...extractModelVals("apparent_temperature", idx), zh?.feelsMin, zh?.feelsMax].filter(
+        (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
+      ),
+      1.3
+    );
+    const popB = computeBounds(
+      precipProb,
+      [
+        ...extractModelVals("precipitation_probability", idx),
+        zh?.precipProbMin,
+        zh?.precipProbMax,
+      ].filter((v) => v !== null && v !== undefined && !Number.isNaN(Number(v))),
+      12,
+      0,
+      100
+    );
+    const prMmB = computeBounds(
+      precipMm,
+      [...extractModelVals("precipitation", idx), zh?.precipMmMin, zh?.precipMmMax].filter(
+        (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
+      ),
+      precipMm > 0.05 ? Math.max(0.25, precipMm * 0.35) : 0.12,
+      0
+    );
+    const windB = computeBounds(
+      windSpeed,
+      [...extractModelVals("wind_speed_10m", idx), zh?.windMin, zh?.windMax].filter(
+        (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
+      ),
+      Math.max(2.5, windSpeed * 0.18),
+      0
+    );
+    const gustB = computeBounds(
+      windGusts,
+      [...extractModelVals("wind_gusts_10m", idx), zh?.gustMin, zh?.gustMax].filter(
+        (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
+      ),
+      Math.max(3.8, windGusts * 0.2),
+      0
+    );
+    const uvB = computeBounds(
+      uvIndex,
+      [...extractModelVals("uv_index", idx), zh?.uvMin, zh?.uvMax].filter(
+        (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
+      ),
+      uvIndex > 0.2 ? Math.max(0.4, uvIndex * 0.16) : 0.0,
+      0,
+      16
+    );
+    const dewB = computeBounds(
+      dewPoint,
+      [...extractModelVals("dew_point_2m", idx), zh?.dewMin, zh?.dewMax].filter(
+        (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
+      ),
+      1.0
+    );
+    const cloudB = computeBounds(
+      cloudCover,
+      [...extractModelVals("cloud_cover", idx), zh?.cloudMin, zh?.cloudMax].filter(
+        (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
+      ),
+      10,
+      0,
+      100
+    );
+    const visB = computeBounds(
+      visibilityKm,
+      [...extractModelVals("visibility", idx, 0.001), zh?.visMin, zh?.visMax].filter(
+        (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
+      ),
+      Math.max(1.2, visibilityKm * 0.14),
+      0.1,
+      40
+    );
+    const pressB = computeBounds(
+      pressure,
+      [...extractModelVals("pressure_msl", idx), zh?.pressMin, zh?.pressMax].filter(
+        (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
+      ),
+      1.2,
+      940,
+      1060
+    );
+
+    return {
       time: new Date(h.time[idx]),
-      temperature: zh?.temperature ?? h.temperature_2m[idx],
-      feelsLike: zh?.feelsLike ?? h.apparent_temperature?.[idx] ?? h.temperature_2m[idx],
-      wmoCode: zh?.wmoCode ?? h.weather_code[idx],
-      precipProb: zh?.precipitationChance ?? h.precipitation_probability?.[idx] ?? 0,
-      precipMm: zh?.precipMm ?? h.precipitation?.[idx] ?? 0,
-      windSpeed: zh?.windSpeed ?? h.wind_speed_10m?.[idx] ?? 0,
-    });
+      dateKey,
+      hourNum,
+      wmoCode,
+      temperature,
+      tempMin: tempB.min,
+      tempMax: tempB.max,
+      feelsLike,
+      feelsMin: feelsB.min,
+      feelsMax: feelsB.max,
+      precipProb,
+      precipProbMin: popB.min,
+      precipProbMax: popB.max,
+      precipMm,
+      precipMmMin: prMmB.min,
+      precipMmMax: prMmB.max,
+      windSpeed,
+      windMin: windB.min,
+      windMax: windB.max,
+      windGusts,
+      gustMin: gustB.min,
+      gustMax: gustB.max,
+      uvIndex,
+      uvMin: uvB.min,
+      uvMax: uvB.max,
+      dewPoint,
+      dewMin: dewB.min,
+      dewMax: dewB.max,
+      cloudCover,
+      cloudMin: cloudB.min,
+      cloudMax: cloudB.max,
+      visibilityKm,
+      visMin: visB.min,
+      visMax: visB.max,
+      pressure,
+      pressMin: pressB.min,
+      pressMax: pressB.max,
+    };
+  };
+
+  // Build full 10-day hourly dataset (all 240 hours) + forward 10-day stream starting at current hour
+  const allHourly = [];
+  const totalHourLen = Array.isArray(h.time) ? h.time.length : 0;
+  for (let idx = 0; idx < totalHourLen; idx++) {
+    const zOffset = idx - startHourIdx;
+    const zh = zOffset >= 0 && zOffset < zHourly.length ? zHourly[zOffset] : null;
+    allHourly.push(buildHourPoint(idx, zh));
   }
 
-  // 10-Day Forecast
+  const hourly = allHourly.slice(startHourIdx);
+
+  // 10-Day Forecast (each day includes its 24-hour slice for the expandable day chart)
   const daily = [];
   const dayLen = Math.min(d.time?.length || 0, 10);
   for (let i = 0; i < dayLen; i++) {
+    const dayKey = String(d.time[i]);
+    let dayHours =
+      i === 0
+        ? hourly.slice(0, 24)
+        : allHourly.filter((pt) => pt.dateKey === dayKey);
+    if (!dayHours.length) {
+      dayHours = allHourly.slice(i * 24, (i + 1) * 24);
+    }
+
     daily.push({
       date: new Date(`${d.time[i]}T12:00:00`),
+      dateKey: dayKey,
       wmoCode: d.weather_code[i],
       tempMin: d.temperature_2m_min[i],
       tempMax: d.temperature_2m_max[i],
@@ -1302,11 +1501,11 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       windDir: d.wind_direction_10m_dominant?.[i] ?? 180,
       sunrise: d.sunrise?.[i] ?? null,
       sunset: d.sunset?.[i] ?? null,
+      hours: dayHours,
     });
   }
 
   // Parse Multi-Model Ensemble (from hourly model arrays at current hour)
-  const eh = rawEnsemble?.hourly || {};
   const eIdx = Math.min(startHourIdx, 23);
   const ensembleModels = [
     {
@@ -1423,8 +1622,7 @@ function renderDashboard() {
   // Next-Hour Minute-by-Minute Nowcast
   renderNextHourNowcast(w.minuteRates, w.hourly[0]);
 
-  // 24-Hour Condition Ribbon & Hourly Timeline
-  renderConditionRibbon(w.hourly);
+  // 24-Hour & 10-Day Hourly Timeline
   renderHourlyTimeline(w.hourly);
 
   // Expandable 10-Day Forecast
@@ -1447,11 +1645,19 @@ function renderDashboard() {
   document.getElementById("detail-uv-advice").textContent = uvAdvice(uv);
 
   document.getElementById("detail-wind").textContent = formatWind(w.windSpeed);
+  const windDotEl = document.getElementById("wind-dot");
+  if (windDotEl) {
+    windDotEl.style.left = `${Math.min(100, Math.max(4, (w.windSpeed / 65) * 100))}%`;
+  }
   document.getElementById("detail-wind-dir").textContent = `Gusts to ${formatWind(
     w.windGusts
   )} from ${compassDirection(w.windDirection)} (${w.windDirection}°)`;
 
   document.getElementById("detail-humidity").textContent = `${Math.round(w.humidity)}%`;
+  const humDotEl = document.getElementById("humidity-dot");
+  if (humDotEl) {
+    humDotEl.style.left = `${Math.min(100, Math.max(4, w.humidity))}%`;
+  }
   document.getElementById("detail-dewpoint").textContent = `Dew point ${formatTemp(
     w.dewPoint
   )} — ${muggyDescription(w.dewPoint)}`;
@@ -1460,16 +1666,22 @@ function renderDashboard() {
     ? `${(w.visibilityKm * 0.621371).toFixed(1)} mi`
     : `${w.visibilityKm.toFixed(1)} km`;
   document.getElementById("detail-visibility").textContent = visVal;
+  const visDotEl = document.getElementById("vis-dot");
+  if (visDotEl) {
+    visDotEl.style.left = `${Math.min(100, Math.max(4, (w.visibilityKm / 16) * 100))}%`;
+  }
   document.getElementById("detail-clouds").textContent = `Cloud cover: ${Math.round(
     w.cloudCover
   )}% • Elev: ${Math.round(w.elevation)}m`;
 
   if (w.sunrise && w.sunset) {
-    const sr = new Date(w.sunrise).toLocaleTimeString([], {
+    const srDate = new Date(w.sunrise);
+    const ssDate = new Date(w.sunset);
+    const sr = srDate.toLocaleTimeString([], {
       hour: "numeric",
       minute: "2-digit",
     });
-    const ss = new Date(w.sunset).toLocaleTimeString([], {
+    const ss = ssDate.toLocaleTimeString([], {
       hour: "numeric",
       minute: "2-digit",
     });
@@ -1477,6 +1689,14 @@ function renderDashboard() {
     document.getElementById(
       "detail-sunset"
     ).textContent = `Sunset ${ss} • CAPE ${Math.round(w.cape)} J/kg`;
+
+    const solarDotEl = document.getElementById("solar-dot");
+    if (solarDotEl) {
+      const nowMs = Date.now();
+      const spanMs = Math.max(1, ssDate.getTime() - srDate.getTime());
+      const pct = ((nowMs - srDate.getTime()) / spanMs) * 100;
+      solarDotEl.style.left = `${Math.min(96, Math.max(4, Number.isFinite(pct) ? pct : 50))}%`;
+    }
   }
 
   // Multi-Model Ensemble Strip
@@ -1608,76 +1828,373 @@ function renderNextHourNowcast(minuteRates, currentHour) {
   ctx.stroke();
 }
 
-/* Dark Sky 24-Hour Condition Ribbon */
-function renderConditionRibbon(hourly) {
-  const ribbon = document.getElementById("condition-ribbon");
-  ribbon.innerHTML = "";
-  if (!hourly || !hourly.length) return;
+const HOURLY_METRIC_PILLS = [
+  { mode: "temp", label: "Temp" },
+  { mode: "feels", label: "Feels Like" },
+  { mode: "precip", label: "Precip Chance" },
+  { mode: "precipAmount", label: "Precip Amount" },
+  { mode: "wind", label: "Wind Speed" },
+  { mode: "gusts", label: "Wind Gusts" },
+  { mode: "uv", label: "UV Index" },
+  { mode: "dew", label: "Dew Point" },
+  { mode: "clouds", label: "Cloud Cover" },
+  { mode: "visibility", label: "Visibility" },
+  { mode: "pressure", label: "Pressure" },
+];
 
-  const segments = [];
-  hourly.forEach((item) => {
-    const cond = conditionFromWMO(item.wmoCode);
-    const last = segments[segments.length - 1];
-    if (last && last.shortLabel === cond.shortLabel) {
-      last.count += 1;
-    } else {
-      segments.push({
-        shortLabel: cond.shortLabel,
-        color: cond.ribbonColor,
-        count: 1,
-      });
-    }
-  });
-
-  const total = hourly.length;
-  segments.forEach((seg) => {
-    const div = document.createElement("div");
-    div.className = "ribbon-segment";
-    const pct = (seg.count / total) * 100;
-    div.style.width = `${pct}%`;
-    div.style.background = seg.color;
-    div.textContent = pct >= 11 ? seg.shortLabel : "";
-    div.title = `${seg.shortLabel} (${seg.count} hr)`;
-    ribbon.appendChild(div);
-  });
+/* 24-Hour Connected Curve + Multi-Model Envelope Chart (11 Selectable Metrics) */
+function getHourlyMetricDescriptor(mode) {
+  const imp = state.useImperial;
+  switch (mode) {
+    case "feels":
+      return {
+        label: "Feels Like",
+        lineColor: "#2dd4bf",
+        bandFill: "rgba(45, 212, 191, 0.22)",
+        bandStroke: "rgba(45, 212, 191, 0.45)",
+        extract: (h) => ({ val: h.feelsLike, min: h.feelsMin, max: h.feelsMax }),
+        formatNode: (v) => String(Math.round(imp ? (v * 9) / 5 + 32 : v)),
+        formatFull: (v) => formatTemp(v, true),
+        formatSpread: (s) => `±${((imp ? s * 1.8 : s) / 2).toFixed(1)}${imp ? "°F" : "°C"}`,
+      };
+    case "precip":
+      return {
+        label: "Precip Chance",
+        lineColor: "#38bdf8",
+        bandFill: "rgba(56, 189, 248, 0.24)",
+        bandStroke: "rgba(56, 189, 248, 0.48)",
+        extract: (h) => ({ val: h.precipProb, min: h.precipProbMin, max: h.precipProbMax }),
+        formatNode: (v) => `${Math.round(v)}%`,
+        formatFull: (v) => `${Math.round(v)}%`,
+        formatSpread: (s) => `±${Math.round(s / 2)}%`,
+      };
+    case "precipAmount":
+      return {
+        label: "Precip Amount",
+        lineColor: "#60a5fa",
+        bandFill: "rgba(96, 165, 250, 0.24)",
+        bandStroke: "rgba(96, 165, 250, 0.48)",
+        extract: (h) => ({ val: h.precipMm, min: h.precipMmMin, max: h.precipMmMax }),
+        formatNode: (v) =>
+          imp ? `${(v / 25.4).toFixed(2)}"` : `${v.toFixed(1)}mm`,
+        formatFull: (v) => formatPrecipAmount(v),
+        formatSpread: (s) =>
+          imp ? `±${(s / 25.4 / 2).toFixed(2)} in` : `±${(s / 2).toFixed(1)} mm`,
+      };
+    case "wind":
+      return {
+        label: "Wind Speed",
+        lineColor: "#34d399",
+        bandFill: "rgba(52, 211, 153, 0.22)",
+        bandStroke: "rgba(52, 211, 153, 0.45)",
+        extract: (h) => ({ val: h.windSpeed, min: h.windMin, max: h.windMax }),
+        formatNode: (v) => String(Math.round(imp ? v * 0.621371 : v)),
+        formatFull: (v) => formatWind(v),
+        formatSpread: (s) =>
+          `±${((imp ? s * 0.621371 : s) / 2).toFixed(1)} ${imp ? "mph" : "km/h"}`,
+      };
+    case "gusts":
+      return {
+        label: "Wind Gusts",
+        lineColor: "#f59e0b",
+        bandFill: "rgba(245, 158, 11, 0.22)",
+        bandStroke: "rgba(245, 158, 11, 0.45)",
+        extract: (h) => ({ val: h.windGusts, min: h.gustMin, max: h.gustMax }),
+        formatNode: (v) => String(Math.round(imp ? v * 0.621371 : v)),
+        formatFull: (v) => formatWind(v),
+        formatSpread: (s) =>
+          `±${((imp ? s * 0.621371 : s) / 2).toFixed(1)} ${imp ? "mph" : "km/h"}`,
+      };
+    case "uv":
+      return {
+        label: "UV Index",
+        lineColor: "#fbbf24",
+        bandFill: "rgba(251, 191, 36, 0.22)",
+        bandStroke: "rgba(251, 191, 36, 0.45)",
+        extract: (h) => ({ val: h.uvIndex, min: h.uvMin, max: h.uvMax }),
+        formatNode: (v) => (v < 1 ? v.toFixed(1) : String(Math.round(v))),
+        formatFull: (v) => `${v.toFixed(1)} UV`,
+        formatSpread: (s) => `±${(s / 2).toFixed(1)} UV`,
+      };
+    case "dew":
+      return {
+        label: "Dew Point",
+        lineColor: "#2dd4bf",
+        bandFill: "rgba(45, 212, 191, 0.22)",
+        bandStroke: "rgba(45, 212, 191, 0.45)",
+        extract: (h) => ({ val: h.dewPoint, min: h.dewMin, max: h.dewMax }),
+        formatNode: (v) => String(Math.round(imp ? (v * 9) / 5 + 32 : v)),
+        formatFull: (v) => formatTemp(v, true),
+        formatSpread: (s) => `±${((imp ? s * 1.8 : s) / 2).toFixed(1)}${imp ? "°F" : "°C"}`,
+      };
+    case "clouds":
+      return {
+        label: "Cloud Cover",
+        lineColor: "#94a3b8",
+        bandFill: "rgba(148, 163, 184, 0.24)",
+        bandStroke: "rgba(148, 163, 184, 0.48)",
+        extract: (h) => ({ val: h.cloudCover, min: h.cloudMin, max: h.cloudMax }),
+        formatNode: (v) => `${Math.round(v)}%`,
+        formatFull: (v) => `${Math.round(v)}%`,
+        formatSpread: (s) => `±${Math.round(s / 2)}%`,
+      };
+    case "visibility":
+      return {
+        label: "Visibility",
+        lineColor: "#a78bfa",
+        bandFill: "rgba(167, 139, 250, 0.22)",
+        bandStroke: "rgba(167, 139, 250, 0.45)",
+        extract: (h) => ({ val: h.visibilityKm, min: h.visMin, max: h.visMax }),
+        formatNode: (v) =>
+          imp ? `${(v * 0.621371).toFixed(1)}mi` : `${v.toFixed(1)}km`,
+        formatFull: (v) =>
+          imp ? `${(v * 0.621371).toFixed(1)} mi` : `${v.toFixed(1)} km`,
+        formatSpread: (s) =>
+          imp ? `±${((s * 0.621371) / 2).toFixed(1)} mi` : `±${(s / 2).toFixed(1)} km`,
+      };
+    case "pressure":
+      return {
+        label: "Pressure",
+        lineColor: "#818cf8",
+        bandFill: "rgba(129, 140, 248, 0.22)",
+        bandStroke: "rgba(129, 140, 248, 0.45)",
+        extract: (h) => ({ val: h.pressure, min: h.pressMin, max: h.pressMax }),
+        formatNode: (v) =>
+          imp ? (v * 0.02953).toFixed(2) : String(Math.round(v)),
+        formatFull: (v) => formatPressure(v),
+        formatSpread: (s) =>
+          imp ? `±${((s * 0.02953) / 2).toFixed(2)} inHg` : `±${(s / 2).toFixed(1)} hPa`,
+      };
+    case "temp":
+    default:
+      return {
+        label: "Temp",
+        lineColor: "#2dd4bf",
+        bandFill: "rgba(45, 212, 191, 0.22)",
+        bandStroke: "rgba(45, 212, 191, 0.45)",
+        extract: (h) => ({ val: h.temperature, min: h.tempMin, max: h.tempMax }),
+        formatNode: (v) => String(Math.round(imp ? (v * 9) / 5 + 32 : v)),
+        formatFull: (v) => formatTemp(v, true),
+        formatSpread: (s) => `±${((imp ? s * 1.8 : s) / 2).toFixed(1)}${imp ? "°F" : "°C"}`,
+      };
+  }
 }
 
-/* 24-Hour Timeline Cells (Supports Temp / Feels Like / Precip % / Wind) */
-function renderHourlyTimeline(hourly) {
-  const scroll = document.getElementById("hourly-scroll");
-  scroll.innerHTML = "";
-  if (!hourly) return;
+function buildSmoothCurvePath(pts) {
+  if (!pts.length) return "";
+  if (pts.length === 1) return `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i];
+    const p1 = pts[i + 1];
+    const midX = ((p0.x + p1.x) / 2).toFixed(1);
+    d += ` C ${midX} ${p0.y.toFixed(1)}, ${midX} ${p1.y.toFixed(1)}, ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+function buildEnvelopeBandPath(upperPts, lowerPts) {
+  if (!upperPts.length || upperPts.length !== lowerPts.length) return "";
+  let d = buildSmoothCurvePath(upperPts);
+  const revLower = [...lowerPts].reverse();
+  d += ` L ${revLower[0].x.toFixed(1)} ${revLower[0].y.toFixed(1)}`;
+  for (let i = 0; i < revLower.length - 1; i++) {
+    const p0 = revLower[i];
+    const p1 = revLower[i + 1];
+    const midX = ((p0.x + p1.x) / 2).toFixed(1);
+    d += ` C ${midX} ${p0.y.toFixed(1)}, ${midX} ${p1.y.toFixed(1)}, ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}`;
+  }
+  d += " Z";
+  return d;
+}
+
+function renderHourlyCurveIntoContainer(
+  scrollEl,
+  hourly,
+  mode,
+  spreadBadgeEl = null,
+  options = {}
+) {
+  if (!scrollEl) return;
+  scrollEl.innerHTML = "";
+  if (!hourly || !hourly.length) return;
+
+  const {
+    showNowOnFirst = true,
+    showDayDividers = false,
+    colW = 74,
+    H = 196,
+  } = options;
+
+  const desc = getHourlyMetricDescriptor(mode);
+  const series = hourly.map((item) => desc.extract(item));
+
+  const allMin = Math.min(...series.map((s) => s.min));
+  const allMax = Math.max(...series.map((s) => s.max));
+  const rawSpan = Math.max(0.0001, allMax - allMin);
+
+  const avgSpread =
+    series.reduce((acc, s) => acc + Math.max(0, s.max - s.min), 0) / series.length;
+  const defaultBadgeText = `${desc.label} • Primary API + Model Envelope (${desc.formatSpread(
+    avgSpread
+  )} avg spread)`;
+  if (spreadBadgeEl) {
+    spreadBadgeEl.textContent = defaultBadgeText;
+  }
+
+  const W = hourly.length * colW;
+  const yTop = Math.round(H * 0.45);
+  const yBottom = Math.round(H * 0.85);
+  const ySpan = yBottom - yTop;
+
+  const valueToY = (v) => {
+    if (allMax - allMin < 1e-3) return (yTop + yBottom) / 2;
+    const norm = (v - allMin) / rawSpan;
+    return yBottom - norm * ySpan;
+  };
+
+  const mainPts = [];
+  const upperPts = [];
+  const lowerPts = [];
+
+  series.forEach((s, i) => {
+    const x = i * colW + colW / 2;
+    const yMain = valueToY(s.val);
+    let yUp = valueToY(s.max);
+    let yLow = valueToY(s.min);
+    if (Math.abs(yLow - yUp) < 8) {
+      yUp = Math.max(yTop - 6, yMain - 4.5);
+      yLow = Math.min(yBottom + 6, yMain + 4.5);
+    }
+    mainPts.push({ x, y: yMain });
+    upperPts.push({ x, y: yUp });
+    lowerPts.push({ x, y: yLow });
+  });
+
+  const stage = document.createElement("div");
+  stage.className = "hourly-curve-stage";
+  stage.style.width = `${W}px`;
+  stage.style.minWidth = `${W}px`;
+  stage.style.height = `${H}px`;
+
+  const mainPathD = buildSmoothCurvePath(mainPts);
+  const upperPathD = buildSmoothCurvePath(upperPts);
+  const lowerPathD = buildSmoothCurvePath(lowerPts);
+  const bandPathD = buildEnvelopeBandPath(upperPts, lowerPts);
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("class", "hourly-curve-svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+
+  svg.innerHTML = `
+    <path d="${bandPathD}" fill="${desc.bandFill}" stroke="none" />
+    <path d="${upperPathD}" fill="none" stroke="${desc.bandStroke}" stroke-width="1.2" stroke-dasharray="3 3" />
+    <path d="${lowerPathD}" fill="none" stroke="${desc.bandStroke}" stroke-width="1.2" stroke-dasharray="3 3" />
+    <path d="${mainPathD}" fill="none" stroke="${desc.lineColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+  `;
+  stage.appendChild(svg);
+
+  const colsLayer = document.createElement("div");
+  colsLayer.className = "hourly-columns-layer";
 
   hourly.forEach((item, idx) => {
     const cond = conditionFromWMO(item.wmoCode);
-    const cell = document.createElement("div");
-    cell.className = `hour-cell ${idx === 0 ? "now" : ""}`;
-    const timeLabel =
-      idx === 0
-        ? "Now"
-        : item.time.toLocaleTimeString([], { hour: "numeric", hour12: true });
+    const s = series[idx];
+    const pt = mainPts[idx];
 
-    let primaryVal = formatTemp(item.temperature);
-    if (state.hourlyMode === "feels") {
-      primaryVal = formatTemp(item.feelsLike);
-    } else if (state.hourlyMode === "precip") {
-      primaryVal = `${item.precipProb}%`;
-    } else if (state.hourlyMode === "wind") {
-      primaryVal = formatWind(item.windSpeed);
+    const isMidnight = idx > 0 && item.time.getHours() === 0;
+    const isNow = showNowOnFirst && idx === 0;
+
+    const col = document.createElement("div");
+    col.className = `hourly-col ${isNow ? "now" : ""} ${
+      showDayDividers && isMidnight ? "day-start" : ""
+    }`;
+    col.style.flex = `0 0 ${colW}px`;
+    col.style.width = `${colW}px`;
+
+    let rawTime = "";
+    if (isNow) {
+      rawTime = "NOW";
+    } else if (showDayDividers && isMidnight) {
+      const dayShort = item.time
+        .toLocaleDateString([], { weekday: "short" })
+        .toUpperCase();
+      rawTime = `<span class="day-divider-pill">${dayShort}</span> 12AM`;
+    } else {
+      rawTime = item.time
+        .toLocaleTimeString([], { hour: "numeric", hour12: true })
+        .replace(/\s+/g, "")
+        .toUpperCase();
     }
 
-    cell.innerHTML = `
-      <div class="hour-time">${timeLabel}</div>
-      <div class="hour-icon">${getWeatherSVG(cond.icon)}</div>
-      <div class="hour-precip">${
-        state.hourlyMode !== "precip" && item.precipProb >= 15
-          ? `${item.precipProb}%`
-          : ""
-      }</div>
-      <div class="hour-primary-val">${primaryVal}</div>
+    const plainTime = isNow
+      ? "NOW"
+      : `${item.time.toLocaleDateString([], {
+          weekday: "short",
+        })} ${item.time
+          .toLocaleTimeString([], { hour: "numeric", hour12: true })
+          .replace(/\s+/g, "")
+          .toUpperCase()}`;
+
+    const showPopBadge =
+      mode !== "precip" && item.precipProb >= 20
+        ? `<div class="hourly-node-pop">${Math.round(item.precipProb)}%</div>`
+        : "";
+
+    const hoverSpread = Math.max(0, s.max - s.min);
+    const hoverText = `${plainTime} • ${desc.label}: ${desc.formatFull(
+      s.val
+    )} (Model Range: ${desc.formatFull(s.min)} – ${desc.formatFull(
+      s.max
+    )}, ${desc.formatSpread(hoverSpread)})`;
+    col.title = hoverText;
+
+    col.innerHTML = `
+      <div class="hourly-col-time">${rawTime}</div>
+      <div class="hourly-point-node" style="top: ${pt.y.toFixed(1)}px">
+        ${showPopBadge}
+        <div class="hourly-node-icon">${getWeatherSVG(cond.icon)}</div>
+        <div class="hourly-node-val">${desc.formatNode(s.val)}</div>
+      </div>
     `;
-    scroll.appendChild(cell);
+
+    col.addEventListener("mouseenter", () => {
+      if (spreadBadgeEl) spreadBadgeEl.textContent = hoverText;
+    });
+    col.addEventListener("mouseleave", () => {
+      if (spreadBadgeEl) spreadBadgeEl.textContent = defaultBadgeText;
+    });
+    col.addEventListener("click", () => {
+      colsLayer.querySelectorAll(".hourly-col").forEach((c) => c.classList.remove("active"));
+      col.classList.add("active");
+      if (spreadBadgeEl) spreadBadgeEl.textContent = hoverText;
+    });
+
+    colsLayer.appendChild(col);
   });
+
+  stage.appendChild(colsLayer);
+  scrollEl.appendChild(stage);
+}
+
+function renderHourlyTimeline(hourly) {
+  const scroll = document.getElementById("hourly-scroll");
+  const spreadBadge = document.getElementById("timeline-spread-readout");
+  if (!scroll || !hourly || !hourly.length) return;
+
+  const prevScrollLeft = scroll.scrollLeft;
+  const colW = 74;
+
+  renderHourlyCurveIntoContainer(scroll, hourly, state.hourlyMode, spreadBadge, {
+    showNowOnFirst: true,
+    showDayDividers: true,
+    colW,
+    H: 196,
+  });
+
+  scroll.scrollLeft = prevScrollLeft;
 }
 
 /* Dark Sky Expandable 10-Day Forecast */
@@ -1722,29 +2239,25 @@ function renderDailyForecast(daily) {
     const leftPct = ((dItem.tempMin - globalMin) / totalSpan) * 100;
     const widthPct = Math.max(7, ((dItem.tempMax - dItem.tempMin) / totalSpan) * 100);
 
+    // Start with all 10 days collapsed on load
     const wrapper = document.createElement("div");
-    wrapper.className = `day-accordion ${idx === 0 ? "open" : ""}`;
-
-    const sr = dItem.sunrise
-      ? new Date(dItem.sunrise).toLocaleTimeString([], {
-          hour: "numeric",
-          minute: "2-digit",
-        })
-      : "--:--";
-    const ss = dItem.sunset
-      ? new Date(dItem.sunset).toLocaleTimeString([], {
-          hour: "numeric",
-          minute: "2-digit",
-        })
-      : "--:--";
+    wrapper.className = "day-accordion";
 
     const dayNarrative = `${cond.label} throughout the day. High of ${formatTemp(
       dItem.tempMax,
       true
     )} and overnight low of ${formatTemp(dItem.tempMin, true)}.`;
 
+    const activeDayMode = state.dailyModes[idx] || "temp";
+    const pillsHtml = HOURLY_METRIC_PILLS.map(
+      (p) =>
+        `<button type="button" class="mode-tab day-mode-tab ${
+          p.mode === activeDayMode ? "active" : ""
+        }" data-mode="${p.mode}">${p.label}</button>`
+    ).join("");
+
     wrapper.innerHTML = `
-      <button type="button" class="daily-row-btn" aria-expanded="${idx === 0}">
+      <button type="button" class="daily-row-btn" aria-expanded="false">
         <div class="daily-day">${dayName}</div>
         <div class="daily-icon">${getWeatherSVG(cond.icon)}</div>
         <div class="daily-precip">${
@@ -1760,35 +2273,73 @@ function renderDailyForecast(daily) {
         <span class="day-chevron">▾</span>
       </button>
       <div class="day-drawer">
-        <div class="day-drawer-summary">${dayNarrative}</div>
-        <div class="day-drawer-metrics">
-          <div class="drawer-metric-box">
-            <div class="drawer-metric-label">Precip Accum</div>
-            <div class="drawer-metric-val">${formatPrecipAmount(
-              dItem.precipSumMm
-            )} (${dItem.precipProb}%)</div>
-          </div>
-          <div class="drawer-metric-box">
-            <div class="drawer-metric-label">Peak Wind</div>
-            <div class="drawer-metric-val">${formatWind(
-              dItem.windMax
-            )} ${compassDirection(dItem.windDir)}</div>
-          </div>
-          <div class="drawer-metric-box">
-            <div class="drawer-metric-label">Max UV Index</div>
-            <div class="drawer-metric-val">${Math.round(dItem.uvMax)}</div>
-          </div>
-          <div class="drawer-metric-box">
-            <div class="drawer-metric-label">Sunrise / Sunset</div>
-            <div class="drawer-metric-val">${sr} / ${ss}</div>
-          </div>
+        <div class="day-drawer-top">
+          <div class="day-drawer-summary">${dayNarrative}</div>
+          <span class="timeline-spread-badge day-spread-badge">Model Envelope</span>
+        </div>
+        <div class="hourly-chart-scroll day-hourly-scroll"></div>
+        <div class="timeline-pill-bar day-pill-bar" role="tablist" aria-label="${dayName} Hourly Metric Selector">
+          ${pillsHtml}
         </div>
       </div>
     `;
 
+    const dayScrollEl = wrapper.querySelector(".day-hourly-scroll");
+    const daySpreadEl = wrapper.querySelector(".day-spread-badge");
+    const dayHours = Array.isArray(dItem.hours) ? dItem.hours : [];
+
+    // Compact 24-hour chart inside each day drawer (constrained to card width with internal scroll)
+    const dayChartOpts = {
+      showNowOnFirst: idx === 0,
+      showDayDividers: idx === 0,
+      colW: 54,
+      H: 154,
+    };
+
+    renderHourlyCurveIntoContainer(
+      dayScrollEl,
+      dayHours,
+      activeDayMode,
+      daySpreadEl,
+      dayChartOpts
+    );
+
+    wrapper.querySelectorAll(".day-mode-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        wrapper
+          .querySelectorAll(".day-mode-tab")
+          .forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        const mode = tab.dataset.mode || "temp";
+        state.dailyModes[idx] = mode;
+        const prevLeft = dayScrollEl.scrollLeft;
+        renderHourlyCurveIntoContainer(
+          dayScrollEl,
+          dayHours,
+          mode,
+          daySpreadEl,
+          dayChartOpts
+        );
+        dayScrollEl.scrollLeft = prevLeft;
+      });
+    });
+
     const rowBtn = wrapper.querySelector(".daily-row-btn");
     rowBtn.addEventListener("click", () => {
-      wrapper.classList.toggle("open");
+      const willOpen = !wrapper.classList.contains("open");
+      // Single-accordion behavior: close any other open day first
+      list.querySelectorAll(".day-accordion.open").forEach((other) => {
+        if (other !== wrapper) {
+          other.classList.remove("open");
+          const otherBtn = other.querySelector(".daily-row-btn");
+          if (otherBtn) otherBtn.setAttribute("aria-expanded", "false");
+        }
+      });
+      wrapper.classList.toggle("open", willOpen);
+      rowBtn.setAttribute("aria-expanded", String(willOpen));
+      setTimeout(() => {
+        if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize();
+      }, 60);
     });
 
     list.appendChild(wrapper);
@@ -1808,19 +2359,366 @@ function renderEnsembleComparison(models, spreadC) {
   grid.innerHTML = "";
   models.forEach((m) => {
     const box = document.createElement("div");
-    box.className = "ensemble-pill-box";
+    box.className = "ensemble-pill-box interactive-tile";
+    box.setAttribute("role", "button");
+    box.setAttribute("tabindex", "0");
     box.innerHTML = `
       <div class="ensemble-model-name">
         <span>${m.name}</span>
-        <span>${m.tag}</span>
+        <span>${m.tag} ↗</span>
       </div>
       <div class="ensemble-model-temp">${formatTemp(m.temp, true)}</div>
       <div class="ensemble-model-meta">Precip rate: ${formatPrecipAmount(
         m.precip
       )}/hr</div>
     `;
+    box.addEventListener("click", () => openTileDetailModal("ensemble"));
+    box.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openTileDetailModal("ensemble");
+      }
+    });
     grid.appendChild(box);
   });
+}
+
+/* App-Like Interactive Telemetry Detail Sheet & Quick-Jump to Timeline */
+function jumpToTimelineMetric(mode) {
+  const validModes = new Set(HOURLY_METRIC_PILLS.map((p) => p.mode));
+  const targetMode = validModes.has(mode) ? mode : "temp";
+  state.hourlyMode = targetMode;
+
+  const pillBar = document.getElementById("timeline-pill-bar");
+  if (pillBar) {
+    pillBar.querySelectorAll(".mode-tab").forEach((t) => {
+      const isMatch = t.dataset.mode === targetMode;
+      t.classList.toggle("active", isMatch);
+      if (isMatch && typeof t.scrollIntoView === "function") {
+        t.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+      }
+    });
+  }
+
+  if (state.weather?.hourly) {
+    renderHourlyTimeline(state.weather.hourly);
+  }
+
+  const timelineSection = document.getElementById("timeline-card-section");
+  if (timelineSection) {
+    timelineSection.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+
+function closeTileDetailModal() {
+  const modal = document.getElementById("tile-detail-modal");
+  if (modal) modal.setAttribute("hidden", "");
+}
+
+function openTileDetailModal(tileType) {
+  const w = state.weather;
+  const modal = document.getElementById("tile-detail-modal");
+  if (!w || !modal) return;
+
+  const kickerEl = document.getElementById("tile-modal-kicker");
+  const titleEl = document.getElementById("tile-modal-title");
+  const primaryEl = document.getElementById("tile-modal-primary");
+  const badgeEl = document.getElementById("tile-modal-badge");
+  const narrativeEl = document.getElementById("tile-modal-narrative");
+  const chartSecEl = document.getElementById("tile-modal-chart-section");
+  const chartScrollEl = document.getElementById("tile-modal-chart-scroll");
+  const chartLabelEl = document.getElementById("tile-modal-chart-label");
+  const spreadBadgeEl = document.getElementById("tile-modal-spread-badge");
+  const statsGridEl = document.getElementById("tile-modal-stats-grid");
+  const jumpBtnEl = document.getElementById("tile-modal-jump-btn");
+
+  const next24 = (w.hourly || []).slice(0, 24);
+  let chartMode = "temp";
+  let jumpLabel = "View on 10-Day Forecast Curve ↗";
+  let stats = [];
+
+  switch (tileType) {
+    case "aqi": {
+      const aqi = Math.round(w.usAqi ?? 28);
+      const pm25 = Number(w.pm25 || 0).toFixed(1);
+      const cat = aqiCategoryLabel(aqi);
+      kickerEl.textContent = "🌿 ATMOSPHERIC AIR QUALITY";
+      titleEl.textContent = "US EPA Air Quality Index";
+      primaryEl.textContent = `${aqi} AQI`;
+      badgeEl.textContent = cat;
+      narrativeEl.textContent =
+        aqi <= 50
+          ? "Air quality is satisfactory and air pollution poses little or no risk. Ideal conditions for outdoor activities and exercise."
+          : aqi <= 100
+          ? "Air quality is acceptable; however, unusually sensitive individuals should consider limiting prolonged outdoor exertion."
+          : "Members of sensitive groups may experience health effects. Consider reducing prolonged or heavy exertion outdoors.";
+      chartMode = "visibility";
+      jumpLabel = "View Visibility Curve on 10-Day Timeline ↗";
+      stats = [
+        { label: "Fine Particulates (PM2.5)", val: `${pm25} µg/m³`, sub: "Primary pollutant" },
+        { label: "EPA Category", val: cat, sub: "0–50 Good • 51–100 Moderate" },
+        {
+          label: "Surface Visibility",
+          val: state.useImperial
+            ? `${(w.visibilityKm * 0.621371).toFixed(1)} mi`
+            : `${w.visibilityKm.toFixed(1)} km`,
+          sub: "Optical clarity",
+        },
+        {
+          label: "Boundary Layer Wind",
+          val: `${formatWind(w.windSpeed)} ${compassDirection(w.windDirection)}`,
+          sub: "Ventilation rate",
+        },
+      ];
+      break;
+    }
+
+    case "uv": {
+      const uv = Math.round(w.uvIndex * 10) / 10;
+      const maxUv24 = next24.length ? Math.max(...next24.map((h) => h.uvIndex)) : uv;
+      kickerEl.textContent = "☀️ SOLAR ULTRAVIOLET RADIATION";
+      titleEl.textContent = "UV Index & Sun Protection";
+      primaryEl.textContent = `${uv} UV`;
+      badgeEl.textContent = uv < 3 ? "Low" : uv < 6 ? "Moderate" : uv < 8 ? "High" : "Very High";
+      narrativeEl.textContent = `${uvAdvice(
+        uv
+      )} 24-hour peak ultraviolet index reaches ${maxUv24.toFixed(
+        1
+      )} during solar noon.`;
+      chartMode = "uv";
+      jumpLabel = "View UV Index on 10-Day Timeline ↗";
+      stats = [
+        { label: "Current UV Index", val: String(uv), sub: uvAdvice(uv) },
+        { label: "24-Hour Peak UV", val: maxUv24.toFixed(1), sub: "Peak solar intensity" },
+        { label: "Cloud Attenuation", val: `${Math.round(w.cloudCover)}%`, sub: "Current sky cover" },
+        {
+          label: "Sunset Today",
+          val: w.sunset
+            ? new Date(w.sunset).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+            : "--:--",
+          sub: "End of solar exposure",
+        },
+      ];
+      break;
+    }
+
+    case "wind": {
+      const maxGust24 = next24.length
+        ? Math.max(...next24.map((h) => h.windGusts))
+        : w.windGusts;
+      kickerEl.textContent = "💨 ANEMOMETER & GUST TELEMETRY";
+      titleEl.textContent = "Surface Wind & Peak Gusts";
+      primaryEl.textContent = formatWind(w.windSpeed);
+      badgeEl.textContent = `From ${compassDirection(w.windDirection)} (${w.windDirection}°)`;
+      narrativeEl.textContent = `Sustained 10m surface wind at ${formatWind(
+        w.windSpeed
+      )} with gusts reaching ${formatWind(
+        w.windGusts
+      )}. Over the next 24 hours, peak gusts are projected up to ${formatWind(maxGust24)}.`;
+      chartMode = "wind";
+      jumpLabel = "View Wind Speed on 10-Day Timeline ↗";
+      stats = [
+        { label: "Sustained Wind (10m)", val: formatWind(w.windSpeed), sub: "10-minute average" },
+        { label: "Current Wind Gusts", val: formatWind(w.windGusts), sub: "Instantaneous peak" },
+        { label: "24-Hour Peak Gust", val: formatWind(maxGust24), sub: "Model envelope high" },
+        {
+          label: "Vector Heading",
+          val: `${compassDirection(w.windDirection)} (${w.windDirection}°)`,
+          sub: "Meteorological origin",
+        },
+      ];
+      break;
+    }
+
+    case "humidity": {
+      kickerEl.textContent = "💧 HYGROMETER & COMFORT SCALE";
+      titleEl.textContent = "Humidity & Dew Point";
+      primaryEl.textContent = `${Math.round(w.humidity)}%`;
+      badgeEl.textContent = muggyDescription(w.dewPoint);
+      narrativeEl.textContent = `Dew point is a more direct measure of atmospheric moisture and human comfort than relative humidity. At ${formatTemp(
+        w.dewPoint,
+        true
+      )}, conditions feel ${muggyDescription(w.dewPoint).toLowerCase()}.`;
+      chartMode = "dew";
+      jumpLabel = "View Dew Point on 10-Day Timeline ↗";
+      stats = [
+        { label: "Dew Point (2m)", val: formatTemp(w.dewPoint, true), sub: muggyDescription(w.dewPoint) },
+        { label: "Relative Humidity", val: `${Math.round(w.humidity)}%`, sub: "Saturation ratio" },
+        { label: "Apparent Temp", val: formatTemp(w.feelsLike, true), sub: "Heat index / wind chill" },
+        { label: "Air Temperature", val: formatTemp(w.temperature, true), sub: "Dry-bulb reading" },
+      ];
+      break;
+    }
+
+    case "visibility": {
+      const visStr = state.useImperial
+        ? `${(w.visibilityKm * 0.621371).toFixed(1)} mi`
+        : `${w.visibilityKm.toFixed(1)} km`;
+      kickerEl.textContent = "👁️ OPTICAL RANGE & CEILING";
+      titleEl.textContent = "Visibility & Cloud Cover";
+      primaryEl.textContent = visStr;
+      badgeEl.textContent = `${Math.round(w.cloudCover)}% Cloud Cover`;
+      narrativeEl.textContent =
+        w.visibilityKm >= 10
+          ? "Unrestricted horizontal surface visibility across the local sector with clear optical transmission."
+          : "Reduced horizontal visibility due to atmospheric moisture, mist, or low ceiling particulates.";
+      chartMode = "visibility";
+      jumpLabel = "View Visibility on 10-Day Timeline ↗";
+      stats = [
+        { label: "Surface Visibility", val: visStr, sub: "Horizontal optical range" },
+        { label: "Total Cloud Cover", val: `${Math.round(w.cloudCover)}%`, sub: "Integrated sky fraction" },
+        { label: "Terrain Elevation", val: `${Math.round(w.elevation)} m`, sub: "DEM grid altitude" },
+        { label: "Barometric Pressure", val: formatPressure(w.pressure), sub: "Mean sea-level pressure" },
+      ];
+      break;
+    }
+
+    case "solar": {
+      const sr = w.sunrise
+        ? new Date(w.sunrise).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+        : "--:--";
+      const ss = w.sunset
+        ? new Date(w.sunset).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+        : "--:--";
+      let dayLenStr = "--";
+      if (w.sunrise && w.sunset) {
+        const diffMin = Math.round((new Date(w.sunset) - new Date(w.sunrise)) / 60000);
+        if (diffMin > 0) {
+          dayLenStr = `${Math.floor(diffMin / 60)}h ${diffMin % 60}m`;
+        }
+      }
+      const cape = Math.round(w.cape || 0);
+      kickerEl.textContent = "🌅 ASTRONOMICAL & CONVECTIVE";
+      titleEl.textContent = "Solar Ephemeris & CAPE";
+      primaryEl.textContent = sr;
+      badgeEl.textContent = `Sunset ${ss}`;
+      narrativeEl.textContent = `Total daylight duration today is ${dayLenStr}. Convective Available Potential Energy (CAPE) is ${cape} J/kg (${
+        cape < 300
+          ? "stable air mass, minimal thunderstorm energy"
+          : cape < 1000
+          ? "marginal convective instability"
+          : "strong thunderstorm updraft potential"
+      }).`;
+      chartMode = "clouds";
+      jumpLabel = "View Cloud Cover on 10-Day Timeline ↗";
+      stats = [
+        { label: "Sunrise", val: sr, sub: "Local horizon" },
+        { label: "Sunset", val: ss, sub: "Local horizon" },
+        { label: "Daylight Length", val: dayLenStr, sub: "Solar photoperiod" },
+        { label: "Convective CAPE", val: `${cape} J/kg`, sub: "Updraft potential energy" },
+      ];
+      break;
+    }
+
+    case "pressure": {
+      kickerEl.textContent = "🧭 BAROMETRIC TELEMETRY";
+      titleEl.textContent = "Mean Sea-Level Pressure";
+      primaryEl.textContent = formatPressure(w.pressure);
+      badgeEl.textContent = w.pressure >= 1018 ? "High Pressure" : w.pressure <= 1008 ? "Low Pressure" : "Normal Range";
+      narrativeEl.textContent = `Barometric pressure is currently ${formatPressure(
+        w.pressure
+      )}. Tracking the 24-hour and 10-day pressure curve reveals approaching frontal troughs and ridge building.`;
+      chartMode = "pressure";
+      jumpLabel = "View Pressure on 10-Day Timeline ↗";
+      stats = [
+        { label: "MSL Pressure", val: formatPressure(w.pressure), sub: "Sea-level adjusted" },
+        { label: "Raw hPa", val: `${Math.round(w.pressure)} hPa`, sub: "Standard metric" },
+        { label: "Inches of Mercury", val: `${(w.pressure * 0.02953).toFixed(2)} inHg`, sub: "US aviation altimeter" },
+        { label: "Station Elevation", val: `${Math.round(w.elevation)} m`, sub: "Local MSL offset" },
+      ];
+      break;
+    }
+
+    case "precip": {
+      const pop = Math.round(w.hourly?.[0]?.precipProb ?? 0);
+      const maxRate = Math.max(...(w.minuteRates || [0]));
+      kickerEl.textContent = "🌧️ HYPERLOCAL NOWCAST & NWP";
+      titleEl.textContent = "Precipitation Probability & Rate";
+      primaryEl.textContent = `${pop}% PoP`;
+      badgeEl.textContent = maxRate >= 0.08 ? `${maxRate.toFixed(1)} mm/hr Peak` : "Dry Next 60m";
+      narrativeEl.textContent =
+        "Assimilating 1km NEXRAD Doppler reflectivity with HRRR, ECMWF, GFS, and ICON precipitation ensembles across the next 24 hours.";
+      chartMode = "precip";
+      jumpLabel = "View Precip Chance on 10-Day Timeline ↗";
+      stats = [
+        { label: "Current Hour PoP", val: `${pop}%`, sub: "Probability of precipitation" },
+        { label: "60m Peak Rate", val: `${maxRate.toFixed(1)} mm/hr`, sub: "Minutely radar nowcast" },
+        {
+          label: "Today's Total",
+          val: formatPrecipAmount(w.daily?.[0]?.precipSumMm ?? 0),
+          sub: "24-hour accumulation",
+        },
+        {
+          label: "Dew Point Spread",
+          val: formatTemp(Math.max(0, w.temperature - w.dewPoint)),
+          sub: "Lower spread = higher saturation",
+        },
+      ];
+      break;
+    }
+
+    case "ensemble":
+    default: {
+      const spreadVal = state.useImperial ? w.spreadC * 1.8 : w.spreadC;
+      const unit = state.useImperial ? "°F" : "°C";
+      kickerEl.textContent = "🔬 MULTI-MODEL NWP ENSEMBLE";
+      titleEl.textContent = "HRRR • ECMWF • GFS • ICON";
+      primaryEl.textContent = `${w.confidencePct}% Agreement`;
+      badgeEl.textContent = `Spread ±${(spreadVal / 2).toFixed(1)}${unit}`;
+      narrativeEl.textContent =
+        "ZüsCast continuously computes the min–max envelope across NOAA HRRR 3km, ECMWF IFS 0.25°, NOAA GFS, and DWD ICON so you can see both the primary forecast and model uncertainty.";
+      chartMode = "temp";
+      jumpLabel = "View Full 10-Day Model Envelope ↗";
+      stats = (w.ensembleModels || []).map((m) => ({
+        label: `${m.name} (${m.tag})`,
+        val: formatTemp(m.temp, true),
+        sub: `Precip: ${formatPrecipAmount(m.precip)}/hr`,
+      }));
+      break;
+    }
+  }
+
+  // Render 24-hour mini curve + model envelope inside the modal
+  if (chartSecEl && chartScrollEl && next24.length) {
+    chartSecEl.removeAttribute("hidden");
+    const desc = getHourlyMetricDescriptor(chartMode);
+    if (chartLabelEl) {
+      chartLabelEl.textContent = `24-Hour ${desc.label} Curve + Model Envelope`;
+    }
+    renderHourlyCurveIntoContainer(chartScrollEl, next24, chartMode, spreadBadgeEl, {
+      showNowOnFirst: true,
+      showDayDividers: true,
+      colW: 54,
+      H: 152,
+    });
+  } else if (chartSecEl) {
+    chartSecEl.setAttribute("hidden", "");
+  }
+
+  // Render structured sub-metrics breakdown cards
+  if (statsGridEl) {
+    statsGridEl.innerHTML = stats
+      .map(
+        (s) => `
+      <div class="tile-stat-box">
+        <span class="tile-stat-label">${s.label}</span>
+        <span class="tile-stat-val">${s.val}</span>
+        <span class="tile-stat-sub">${s.sub}</span>
+      </div>
+    `
+      )
+      .join("");
+  }
+
+  if (jumpBtnEl) {
+    jumpBtnEl.textContent = jumpLabel;
+    jumpBtnEl.onclick = () => {
+      closeTileDetailModal();
+      jumpToTimelineMetric(chartMode);
+    };
+  }
+
+  modal.removeAttribute("hidden");
 }
 
 /* Subtle Ambient Liquid Atmosphere Canvas */
@@ -2013,16 +2911,45 @@ function setupControls() {
     dopplerRadarMap.updateInteropLinks(state.location.latitude, state.location.longitude);
   });
 
-  // 24-Hour Timeline Mode Tabs
-  document.querySelectorAll(".mode-tab").forEach((tab) => {
+  // 24-Hour Timeline Mode Tabs (Top Chart)
+  document.querySelectorAll("#timeline-pill-bar .mode-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
-      document.querySelectorAll(".mode-tab").forEach((t) => t.classList.remove("active"));
+      document
+        .querySelectorAll("#timeline-pill-bar .mode-tab")
+        .forEach((t) => t.classList.remove("active"));
       tab.classList.add("active");
       state.hourlyMode = tab.dataset.mode || "temp";
       if (state.weather) {
         renderHourlyTimeline(state.weather.hourly);
       }
     });
+  });
+
+  // App-Like Interactive Tiles -> Open Detail Modal Sheet
+  document.querySelectorAll(".interactive-tile[data-tile]").forEach((tile) => {
+    const tileType = tile.dataset.tile;
+    tile.addEventListener("click", () => openTileDetailModal(tileType));
+    tile.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openTileDetailModal(tileType);
+      }
+    });
+  });
+
+  // Modal Close Controls
+  const modalCloseBtn = document.getElementById("tile-modal-close");
+  const modalDoneBtn = document.getElementById("tile-modal-done-btn");
+  const modalBackdrop = document.getElementById("tile-detail-modal");
+  if (modalCloseBtn) modalCloseBtn.addEventListener("click", closeTileDetailModal);
+  if (modalDoneBtn) modalDoneBtn.addEventListener("click", closeTileDetailModal);
+  if (modalBackdrop) {
+    modalBackdrop.addEventListener("click", (e) => {
+      if (e.target === modalBackdrop) closeTileDetailModal();
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeTileDetailModal();
   });
 }
 
