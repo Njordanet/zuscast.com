@@ -1161,7 +1161,7 @@ async function loadWeatherForCurrentLocation() {
       latitude: String(latitude),
       longitude: String(longitude),
       current:
-        "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation",
+        "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation,uv_index,dew_point_2m,visibility,cape",
       minutely_15: "precipitation,weather_code",
       hourly:
         "temperature_2m,apparent_temperature,weather_code,precipitation_probability,precipitation,wind_speed_10m,wind_gusts_10m,uv_index,dew_point_2m,cloud_cover,visibility,pressure_msl,cape",
@@ -1567,28 +1567,49 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     hourly[0].precipProb = Math.max(hourly[0].precipProb, 80);
   }
 
+  const currentHourPt = hourly[0] || null;
+  const currentUv =
+    c.uv_index ??
+    currentHourPt?.uvIndex ??
+    h.uv_index?.[startHourIdx] ??
+    0;
+  const currentVisKm =
+    zCur?.visibility ??
+    (c.visibility !== undefined && c.visibility !== null
+      ? c.visibility / 1000
+      : null) ??
+    currentHourPt?.visibilityKm ??
+    (h.visibility?.[startHourIdx] ?? 10000) / 1000;
+
   return {
     elevation: zCur?.elevationMeters ?? raw.elevation ?? 0,
-    temperature: zCur?.temperature ?? c.temperature_2m,
-    feelsLike: zCur?.feelsLike ?? c.apparent_temperature,
-    humidity: zCur?.humidity ?? c.relative_humidity_2m,
+    temperature: zCur?.temperature ?? c.temperature_2m ?? currentHourPt?.temperature ?? 0,
+    feelsLike: zCur?.feelsLike ?? c.apparent_temperature ?? currentHourPt?.feelsLike ?? 0,
+    humidity: zCur?.humidity ?? c.relative_humidity_2m ?? 50,
     dewPoint:
       zCur?.dewPoint ??
+      c.dew_point_2m ??
+      currentHourPt?.dewPoint ??
       h.dew_point_2m?.[startHourIdx] ??
       c.temperature_2m - (100 - c.relative_humidity_2m) / 5,
-    pressure: zCur?.airPressure ?? c.pressure_msl ?? c.surface_pressure,
-    windSpeed: zCur?.windSpeed ?? c.wind_speed_10m,
-    windDirection: zCur?.windDirection ?? c.wind_direction_10m,
-    windGusts: zCur?.windGust ?? c.wind_gusts_10m ?? c.wind_speed_10m * 1.25,
-    cloudCover: zCur?.cloudCover ?? c.cloud_cover ?? 0,
+    pressure: zCur?.airPressure ?? c.pressure_msl ?? c.surface_pressure ?? currentHourPt?.pressure ?? 1013,
+    windSpeed: zCur?.windSpeed ?? c.wind_speed_10m ?? currentHourPt?.windSpeed ?? 0,
+    windDirection: zCur?.windDirection ?? c.wind_direction_10m ?? 0,
+    windGusts:
+      zCur?.windGust ??
+      c.wind_gusts_10m ??
+      currentHourPt?.windGusts ??
+      (c.wind_speed_10m ?? 0) * 1.25,
+    cloudCover: zCur?.cloudCover ?? c.cloud_cover ?? currentHourPt?.cloudCover ?? 0,
     wmoCode: effectiveWmo,
     tempMax: zCur?.tempMax ?? daily[0]?.tempMax ?? c.temperature_2m,
     tempMin: zCur?.tempMin ?? daily[0]?.tempMin ?? c.temperature_2m,
-    uvIndex: zCur?.uvIndex ?? daily[0]?.uvMax ?? 5,
+    uvIndex: currentUv,
+    uvMaxToday: daily[0]?.uvMax ?? currentUv,
     sunrise: daily[0]?.sunrise ?? null,
     sunset: daily[0]?.sunset ?? null,
-    visibilityKm: zCur?.visibility ?? (h.visibility?.[startHourIdx] ?? 10000) / 1000,
-    cape: h.cape?.[startHourIdx] ?? 0,
+    visibilityKm: currentVisKm,
+    cape: c.cape ?? h.cape?.[startHourIdx] ?? 0,
     usAqi: zCur?.usAqi ?? rawAqi?.current?.us_aqi ?? 28,
     pm25: rawAqi?.current?.pm2_5 ?? 6.2,
     localStationName: zCur?.localStationName ?? null,
@@ -1630,7 +1651,13 @@ function renderDashboard() {
   )} ${compassDirection(w.windDirection)}`;
   document.getElementById("micro-humidity").textContent = `${Math.round(w.humidity)}%`;
   document.getElementById("micro-dew").textContent = formatTemp(w.dewPoint);
-  document.getElementById("micro-pressure").textContent = formatPressure(w.pressure);
+  const uvVal = Math.round((w.uvIndex ?? 0) * 10) / 10;
+  const uvCat =
+    uvVal < 3 ? "Low" : uvVal < 6 ? "Mod" : uvVal < 8 ? "High" : uvVal < 11 ? "V.High" : "Ext";
+  const microUvEl = document.getElementById("micro-uv");
+  if (microUvEl) {
+    microUvEl.textContent = `${uvVal} (${uvCat})`;
+  }
 
   // Next-Hour Minute-by-Minute Nowcast
   renderNextHourNowcast(w.minuteRates, w.hourly[0]);
