@@ -4,14 +4,23 @@
  * 24-hour sky condition ribbon, expandable 10-day forecast, and multi-model ensemble.
  */
 
-const SAVED_LOCATIONS = [
-  { name: "New York", region: "NY", latitude: 40.7128, longitude: -74.006 },
-  { name: "San Francisco", region: "CA", latitude: 37.7749, longitude: -122.4194 },
-  { name: "Chicago", region: "IL", latitude: 41.8781, longitude: -87.6298 },
-  { name: "Miami", region: "FL", latitude: 25.7617, longitude: -80.1918 },
-  { name: "London", region: "UK", latitude: 51.5074, longitude: -0.1278 },
-  { name: "Tokyo", region: "JP", latitude: 35.6762, longitude: 139.6503 },
-];
+const DEFAULT_FALLBACK_LOCATION = {
+  name: "New York",
+  region: "NY",
+  latitude: 40.7128,
+  longitude: -74.006,
+};
+
+function loadRecentSearches() {
+  try {
+    const raw = localStorage.getItem("zus_recent_searches");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(0, 6) : [];
+  } catch (_) {
+    return [];
+  }
+}
 
 const SKY_CONDITIONS = {
   clear: {
@@ -170,12 +179,45 @@ function getWeatherSVG(type) {
 }
 
 /* State */
+const initialRecents = loadRecentSearches();
 const state = {
-  location: { ...SAVED_LOCATIONS[0] },
+  location: initialRecents[0]
+    ? { ...initialRecents[0] }
+    : { ...DEFAULT_FALLBACK_LOCATION },
+  recentSearches: initialRecents,
   useImperial: localStorage.getItem("zus_unit_imp") !== "false",
   hourlyMode: "temp", // 'temp' | 'feels' | 'precip' | 'wind'
   weather: null,
 };
+
+function saveRecentSearch(loc) {
+  if (!loc || !loc.name) return;
+  state.recentSearches = [
+    {
+      name: loc.name,
+      region: loc.region || "",
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+    },
+    ...state.recentSearches.filter(
+      (item) =>
+        Math.abs(item.latitude - loc.latitude) >= 0.05 ||
+        Math.abs(item.longitude - loc.longitude) >= 0.05
+    ),
+  ].slice(0, 6);
+  localStorage.setItem("zus_recent_searches", JSON.stringify(state.recentSearches));
+  renderLocationsStrip();
+}
+
+function removeRecentSearch(lat, lon) {
+  state.recentSearches = state.recentSearches.filter(
+    (item) =>
+      Math.abs(item.latitude - lat) >= 0.05 ||
+      Math.abs(item.longitude - lon) >= 0.05
+  );
+  localStorage.setItem("zus_recent_searches", JSON.stringify(state.recentSearches));
+  renderLocationsStrip();
+}
 
 /* Formatters */
 function formatTemp(celsius, showUnit = false) {
@@ -239,19 +281,36 @@ function uvAdvice(uv) {
   return "Extreme — Avoid direct midday sun";
 }
 
-/* Render Saved Locations Strip */
+/* Render Compact Recent Searches Strip */
 function renderLocationsStrip() {
   const strip = document.getElementById("locations-strip");
   strip.innerHTML = "";
-  SAVED_LOCATIONS.forEach((loc) => {
+  if (!state.recentSearches.length) {
+    strip.classList.add("empty");
+    return;
+  }
+  strip.classList.remove("empty");
+
+  const label = document.createElement("span");
+  label.className = "recent-label";
+  label.textContent = "Recent:";
+  strip.appendChild(label);
+
+  state.recentSearches.forEach((loc) => {
     const btn = document.createElement("button");
     btn.type = "button";
     const isActive =
       Math.abs(loc.latitude - state.location.latitude) < 0.05 &&
       Math.abs(loc.longitude - state.location.longitude) < 0.05;
     btn.className = `location-chip ${isActive ? "active" : ""}`;
-    btn.textContent = loc.name;
-    btn.addEventListener("click", () => {
+    btn.innerHTML = `<span>${loc.name}</span><span class="chip-remove" title="Remove">&times;</span>`;
+
+    btn.addEventListener("click", (e) => {
+      if (e.target.classList.contains("chip-remove")) {
+        e.stopPropagation();
+        removeRecentSearch(loc.latitude, loc.longitude);
+        return;
+      }
       state.location = { ...loc };
       renderLocationsStrip();
       loadWeatherForCurrentLocation();
@@ -259,6 +318,496 @@ function renderLocationsStrip() {
     strip.appendChild(btn);
   });
 }
+
+const ZUS_API_HOST = "http://192.168.1.65:8000";
+const ZUS_API_BASE = `${ZUS_API_HOST}/api/v1`;
+
+/* Interactive Züs 1km Doppler Radar & Nowcast Map Controller */
+const dopplerRadarMap = {
+  map: null,
+  marker: null,
+  scanCircle: null,
+  probeMarker: null,
+  tileLayers: {},
+  activeFrameId: null,
+  frames: [],
+  currentIndex: 0,
+  isPlaying: false,
+  playTimer: null,
+  telemetry: null,
+  cacheStats: null,
+
+  init() {
+    const mapEl = document.getElementById("zus-doppler-map");
+    if (!mapEl || typeof L === "undefined") return;
+
+    this.map = L.map(mapEl, {
+      center: [state.location.latitude, state.location.longitude],
+      zoom: 6,
+      minZoom: 3,
+      maxZoom: 10,
+      zoomControl: false,
+      attributionControl: false,
+    });
+
+    // Keyless Esri World Dark Gray Base (works on localhost, file://, and production without API keys)
+    L.tileLayer(
+      "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+      {
+        maxZoom: 16,
+        zIndex: 1,
+      }
+    ).addTo(this.map);
+
+    // Transparent Esri World Dark Gray Reference labels layered above the Doppler radar tiles
+    L.tileLayer(
+      "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+      {
+        maxZoom: 16,
+        zIndex: 350,
+        opacity: 0.92,
+      }
+    ).addTo(this.map);
+
+    // 35km hyperlocal Doppler scan ring
+    this.scanCircle = L.circle([state.location.latitude, state.location.longitude], {
+      radius: 35000,
+      color: "rgba(56, 189, 248, 0.42)",
+      weight: 1.2,
+      dashArray: "4 5",
+      fillColor: "rgba(56, 189, 248, 0.04)",
+      fillOpacity: 1,
+      interactive: false,
+    }).addTo(this.map);
+
+    // Active location marker
+    this.marker = L.circleMarker([state.location.latitude, state.location.longitude], {
+      radius: 6,
+      color: "#fbbf24",
+      weight: 2,
+      fillColor: "#38bdf8",
+      fillOpacity: 0.95,
+    }).addTo(this.map);
+
+    // Click-anywhere 1km Doppler point probe
+    this.map.on("click", (e) => {
+      this.probePoint(e.latlng.lat, e.latlng.lng);
+    });
+
+    const playBtn = document.getElementById("radar-play-btn");
+    const slider = document.getElementById("radar-frame-slider");
+    const zoomInBtn = document.getElementById("radar-zoom-in");
+    const zoomOutBtn = document.getElementById("radar-zoom-out");
+    const recenterBtn = document.getElementById("radar-recenter-btn");
+    const expandBtn = document.getElementById("radar-expand-btn");
+    const interopBtn = document.getElementById("radar-interop-btn");
+    const backfillBtn = document.getElementById("radar-backfill-btn");
+    const probeCloseBtn = document.getElementById("radar-probe-close");
+
+    if (playBtn) {
+      playBtn.addEventListener("click", () => this.togglePlay());
+    }
+    if (slider) {
+      slider.addEventListener("input", (e) => {
+        this.stopPlay();
+        this.setFrameIndex(Number(e.target.value));
+      });
+    }
+    if (zoomInBtn) {
+      zoomInBtn.addEventListener("click", () => this.map && this.map.zoomIn());
+    }
+    if (zoomOutBtn) {
+      zoomOutBtn.addEventListener("click", () => this.map && this.map.zoomOut());
+    }
+    if (recenterBtn) {
+      recenterBtn.addEventListener("click", () => {
+        this.clearProbe();
+        if (this.map) {
+          this.map.setView([state.location.latitude, state.location.longitude], 6, {
+            animate: true,
+          });
+        }
+      });
+    }
+    if (expandBtn) {
+      expandBtn.addEventListener("click", () => {
+        const frameEl = document.getElementById("radar-map-frame");
+        if (!frameEl) return;
+        const isExp = frameEl.classList.toggle("expanded");
+        expandBtn.classList.toggle("active", isExp);
+        expandBtn.textContent = isExp ? "⤡ Compact" : "⤢ Expand";
+        setTimeout(() => this.map && this.map.invalidateSize(), 260);
+      });
+    }
+    if (interopBtn) {
+      interopBtn.addEventListener("click", () => {
+        const drawer = document.getElementById("radar-interop-drawer");
+        if (!drawer) return;
+        const willOpen = drawer.hasAttribute("hidden");
+        if (willOpen) drawer.removeAttribute("hidden");
+        else drawer.setAttribute("hidden", "");
+        interopBtn.classList.toggle("active", willOpen);
+      });
+    }
+    if (backfillBtn) {
+      backfillBtn.addEventListener("click", () => this.triggerBackfillCheck());
+    }
+    if (probeCloseBtn) {
+      probeCloseBtn.addEventListener("click", () => this.clearProbe());
+    }
+  },
+
+  updateInteropLinks(lat, lon) {
+    const coords = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+    const units = state.useImperial ? "us" : "si";
+    const dsEl = document.getElementById("interop-darksky-url");
+    const rvEl = document.getElementById("interop-rainviewer-url");
+    const tjEl = document.getElementById("interop-tilejson-url");
+    const xyzEl = document.getElementById("interop-xyz-url");
+    if (dsEl) dsEl.textContent = `${ZUS_API_HOST}/forecast/zus_key/${coords}?units=${units}`;
+    if (rvEl) rvEl.textContent = `${ZUS_API_HOST}/public/weather-maps.json`;
+    if (tjEl) tjEl.textContent = `${ZUS_API_BASE}/radar/tilejson.json`;
+    if (xyzEl) xyzEl.textContent = `${ZUS_API_BASE}/radar/tiles/latest/{z}/{x}/{y}.png`;
+  },
+
+  async probePoint(lat, lon) {
+    if (!this.map) return;
+    if (!this.probeMarker) {
+      this.probeMarker = L.circleMarker([lat, lon], {
+        radius: 6,
+        color: "#ffffff",
+        weight: 2,
+        fillColor: "#facc15",
+        fillOpacity: 0.95,
+      }).addTo(this.map);
+    } else {
+      this.probeMarker.setLatLng([lat, lon]);
+    }
+
+    const toastEl = document.getElementById("radar-probe-toast");
+    const textEl = document.getElementById("radar-probe-text");
+    const dbzLabelEl = document.getElementById("radar-stat-dbz-label");
+    if (toastEl) toastEl.removeAttribute("hidden");
+    if (textEl) {
+      textEl.textContent = `Probing 1km grid at ${lat.toFixed(3)}°, ${lon.toFixed(3)}°...`;
+    }
+
+    try {
+      const resp = await fetch(
+        `${ZUS_API_BASE}/radar/point?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`
+      );
+      if (!resp.ok) throw new Error("Probe failed");
+      const tel = await resp.json();
+      if (dbzLabelEl) dbzLabelEl.textContent = "Probed Point";
+      this.renderTelemetryStrip(tel);
+
+      const rateStr = state.useImperial
+        ? `${(tel.precipRateMmHr / 25.4).toFixed(2)} in/hr`
+        : `${tel.precipRateMmHr.toFixed(1)} mm/hr`;
+      if (textEl) {
+        textEl.textContent = `📍 Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): ${tel.currentDbz.toFixed(
+          1
+        )} dBZ (${tel.intensityCategory}) • ${rateStr} • 35km Peak ${tel.maxDbzNearby.toFixed(
+          0
+        )} dBZ`;
+      }
+    } catch (_) {
+      if (textEl) {
+        textEl.textContent = `📍 Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): Outside 1km CONUS grid`;
+      }
+    }
+  },
+
+  clearProbe() {
+    if (this.probeMarker && this.map) {
+      this.map.removeLayer(this.probeMarker);
+      this.probeMarker = null;
+    }
+    const toastEl = document.getElementById("radar-probe-toast");
+    const dbzLabelEl = document.getElementById("radar-stat-dbz-label");
+    if (toastEl) toastEl.setAttribute("hidden", "");
+    if (dbzLabelEl) dbzLabelEl.textContent = "Overhead";
+    this.renderTelemetryStrip(this.telemetry);
+  },
+
+  async triggerBackfillCheck() {
+    const btn = document.getElementById("radar-backfill-btn");
+    const metaEl = document.getElementById("radar-dataset-meta");
+    if (btn) {
+      btn.textContent = "↻ Scanning 24h...";
+      btn.disabled = true;
+    }
+    try {
+      const resp = await fetch(`${ZUS_API_BASE}/radar/backfill?lookback_hours=24`, {
+        method: "POST",
+      });
+      if (resp.ok) {
+        const res = await resp.json();
+        if (metaEl) {
+          metaEl.textContent = `24h Archive Verified • ${res.backfilledNow} recovered (${res.remainingGaps} gaps) • ${
+            this.cacheStats?.framesInRam ?? 8
+          } Frames in RAM`;
+        }
+        if (btn) btn.textContent = "✓ 24h Synced";
+      }
+    } catch (_) {
+      if (btn) btn.textContent = "↻ Retry Sync";
+    } finally {
+      setTimeout(() => {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "↻ Sync 24h Archive";
+        }
+      }, 3000);
+    }
+  },
+
+  async syncForLocation(lat, lon) {
+    if (!this.map && typeof L !== "undefined") {
+      this.init();
+    }
+    this.clearProbe();
+    this.updateInteropLinks(lat, lon);
+
+    if (this.map) {
+      this.map.setView([lat, lon], 6, { animate: true });
+      if (this.marker) this.marker.setLatLng([lat, lon]);
+      if (this.scanCircle) this.scanCircle.setLatLng([lat, lon]);
+    }
+
+    const badgeEl = document.getElementById("radar-engine-badge");
+    const metaEl = document.getElementById("radar-dataset-meta");
+
+    // 1. Try ZüsAPI 1km CONUS Master Grid & 8-Bit Storm Engine on panda first
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6500);
+      const resp = await fetch(
+        `${ZUS_API_BASE}/radar/manifest?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data.frames) && data.frames.length > 0) {
+          this.frames = data.frames;
+          this.telemetry = data.localTelemetry || null;
+          this.cacheStats = data.cacheStats || null;
+          if (badgeEl) {
+            badgeEl.textContent = data.localTelemetry?.inConusGrid
+              ? "ZüsAPI 1km CONUS Core"
+              : "ZüsAPI Global Core";
+          }
+          if (metaEl && data.cacheStats) {
+            const cs = data.cacheStats;
+            metaEl.textContent = `1km Grid (${cs.framesInRam} Frames • ${cs.masterGridRamMb} MB RAM • ${cs.cachedTilesCount} Cached Tiles) • 24h Auto-Backfill`;
+          }
+          this.rebuildLayers();
+          this.renderTelemetryStrip(data.localTelemetry);
+          return data.localTelemetry;
+        }
+      }
+    } catch (_) {
+      // Fallback to RainViewer public manifest when outside LAN
+    }
+
+    // 2. Fallback: RainViewer public radar frames
+    try {
+      const rvResp = await fetch("https://api.rainviewer.com/public/weather-maps.json");
+      if (rvResp.ok) {
+        const rvData = await rvResp.json();
+        const host = rvData.host || "https://tilecache.rainviewer.com";
+        const past = (rvData.radar?.past || []).slice(-6);
+        const nowcast = (rvData.radar?.nowcast || []).slice(0, 2);
+        const combined = [...past, ...nowcast];
+        const liveTs = past.length ? past[past.length - 1].time : Math.floor(Date.now() / 1000);
+
+        this.frames = combined.map((f) => {
+          const diffMin = Math.round((f.time - liveTs) / 60);
+          return {
+            frameId: `rv_${f.time}`,
+            timestamp: f.time,
+            label: diffMin === 0 ? "LIVE" : diffMin > 0 ? `+${diffMin}m` : `${diffMin}m`,
+            offsetMinutes: diffMin,
+            isFuture: diffMin > 0,
+            tileUrlTemplate: `${host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`,
+          };
+        });
+        if (badgeEl) badgeEl.textContent = "Global Radar Mesh";
+        if (metaEl) metaEl.textContent = "Global RainViewer Fallback Mesh Active";
+        this.rebuildLayers();
+        this.renderTelemetryStrip(null);
+      }
+    } catch (_) {}
+    return null;
+  },
+
+  rebuildLayers() {
+    if (!this.map) return;
+    Object.values(this.tileLayers).forEach((layer) => {
+      if (this.map.hasLayer(layer)) this.map.removeLayer(layer);
+    });
+    this.tileLayers = {};
+
+    const slider = document.getElementById("radar-frame-slider");
+    if (slider) {
+      slider.max = String(Math.max(0, this.frames.length - 1));
+    }
+
+    // Build quick-select frame step pills
+    const pillsWrap = document.getElementById("radar-frame-pills");
+    if (pillsWrap) {
+      pillsWrap.innerHTML = "";
+      this.frames.forEach((f, idx) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `frame-step-btn ${f.isFuture ? "future" : ""}`;
+        btn.textContent = f.label;
+        btn.addEventListener("click", () => {
+          this.stopPlay();
+          this.setFrameIndex(idx);
+        });
+        pillsWrap.appendChild(btn);
+      });
+    }
+
+    // Default to LIVE frame (offsetMinutes === 0)
+    let liveIdx = this.frames.findIndex((f) => f.offsetMinutes === 0);
+    if (liveIdx < 0) liveIdx = Math.max(0, this.frames.length - 1);
+    this.setFrameIndex(liveIdx);
+  },
+
+  setFrameIndex(idx) {
+    if (!this.map || !this.frames.length) return;
+    const bounded = Math.max(0, Math.min(this.frames.length - 1, idx));
+    this.currentIndex = bounded;
+    const frame = this.frames[bounded];
+
+    const slider = document.getElementById("radar-frame-slider");
+    if (slider && Number(slider.value) !== bounded) {
+      slider.value = String(bounded);
+    }
+
+    if (!this.tileLayers[frame.frameId]) {
+      this.tileLayers[frame.frameId] = L.tileLayer(frame.tileUrlTemplate, {
+        opacity: 0,
+        zIndex: 200,
+        maxNativeZoom: 8,
+        maxZoom: 10,
+      }).addTo(this.map);
+    }
+
+    Object.entries(this.tileLayers).forEach(([id, layer]) => {
+      layer.setOpacity(id === frame.frameId ? 0.86 : 0.0);
+    });
+    this.activeFrameId = frame.frameId;
+
+    // Highlight active frame pill
+    const pillsWrap = document.getElementById("radar-frame-pills");
+    if (pillsWrap) {
+      Array.from(pillsWrap.children).forEach((btn, i) => {
+        btn.classList.toggle("active", i === bounded);
+      });
+    }
+
+    const frameClock = frame.timestamp
+      ? new Date(frame.timestamp * 1000).toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : "";
+
+    const pillEl = document.getElementById("radar-frame-label");
+    const timeEl = document.getElementById("radar-time-readout");
+    if (pillEl) {
+      pillEl.textContent = frame.isFuture
+        ? `${frame.label} NOWCAST (${frameClock})`
+        : frame.offsetMinutes === 0
+        ? `LIVE (${frameClock})`
+        : `${frame.label} (${frameClock})`;
+      pillEl.classList.toggle("future", Boolean(frame.isFuture));
+    }
+    if (timeEl) {
+      timeEl.textContent = frameClock ? `${frameClock} (${frame.label})` : frame.label;
+    }
+  },
+
+  togglePlay() {
+    if (this.isPlaying) {
+      this.stopPlay();
+    } else {
+      this.startPlay();
+    }
+  },
+
+  startPlay() {
+    if (!this.frames.length) return;
+    // Pre-warm all frame layers so loop animation has zero lag
+    this.frames.forEach((f) => {
+      if (this.map && !this.tileLayers[f.frameId]) {
+        this.tileLayers[f.frameId] = L.tileLayer(f.tileUrlTemplate, {
+          opacity: 0,
+          zIndex: 200,
+          maxNativeZoom: 8,
+          maxZoom: 10,
+        }).addTo(this.map);
+      }
+    });
+    this.isPlaying = true;
+    const btn = document.getElementById("radar-play-btn");
+    if (btn) btn.textContent = "❚❚";
+    this.playTimer = setInterval(() => {
+      const next = (this.currentIndex + 1) % this.frames.length;
+      this.setFrameIndex(next);
+    }, 650);
+  },
+
+  stopPlay() {
+    this.isPlaying = false;
+    const btn = document.getElementById("radar-play-btn");
+    if (btn) btn.textContent = "▶";
+    if (this.playTimer) {
+      clearInterval(this.playTimer);
+      this.playTimer = null;
+    }
+  },
+
+  renderTelemetryStrip(tel) {
+    const dbzEl = document.getElementById("radar-stat-dbz");
+    const peakEl = document.getElementById("radar-stat-peak");
+    const echoEl = document.getElementById("radar-stat-echo");
+    const vecEl = document.getElementById("radar-stat-vector");
+    if (!dbzEl || !peakEl || !echoEl || !vecEl) return;
+
+    if (!tel || !tel.inConusGrid) {
+      const precip = state.weather?.minuteRates?.[0] ?? 0;
+      dbzEl.textContent = precip > 0.1 ? "Active Echo" : "0 dBZ (Clear)";
+      peakEl.textContent = `${Math.round(state.weather?.hourly?.[0]?.precipProb ?? 0)}% PoP`;
+      echoEl.textContent = precip > 0.1 ? "Overhead" : "Clear (35km)";
+      vecEl.textContent = `${formatWind(state.weather?.windSpeed ?? 15)} ${compassDirection(
+        state.weather?.windDirection ?? 240
+      )}`;
+      return;
+    }
+
+    dbzEl.textContent =
+      tel.currentDbz > 0
+        ? `${tel.currentDbz.toFixed(0)} dBZ (${tel.intensityCategory})`
+        : "0 dBZ (Clear)";
+    peakEl.textContent = `${tel.maxDbzNearby.toFixed(0)} dBZ (${tel.echoCoveragePercent.toFixed(0)}%)`;
+    if (tel.nearestEchoKm !== null && tel.nearestEchoKm !== undefined) {
+      const distStr = state.useImperial
+        ? `${(tel.nearestEchoKm * 0.621371).toFixed(1)} mi`
+        : `${tel.nearestEchoKm.toFixed(1)} km`;
+      echoEl.textContent =
+        tel.nearestEchoKm < 2.0 ? "Overhead Now" : `${distStr} ${tel.nearestEchoCompass || ""}`;
+    } else {
+      echoEl.textContent = "Clear (35km)";
+    }
+    vecEl.textContent = `${formatWind(tel.stormMotionKmh)} ${tel.stormMotionCompass}`;
+  },
+};
 
 /* Load Hyperlocal Weather, Minutely-15 Nowcast, Air Quality & Multi-Model Ensemble */
 async function loadWeatherForCurrentLocation() {
@@ -274,26 +823,19 @@ async function loadWeatherForCurrentLocation() {
   )}° ${latDir}, ${Math.abs(longitude).toFixed(4)}° ${lonDir}`;
   document.getElementById("last-updated").textContent = "Updating forecast...";
 
-  // Update interactive radar iframe coordinates
-  const radarIframe = document.getElementById("radar-iframe");
-  if (radarIframe) {
-    const targetSrc = `https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=default&metricTemp=default&metricWind=default&zoom=7&overlay=radar&product=radar&level=surface&lat=${latitude.toFixed(
-      3
-    )}&lon=${longitude.toFixed(3)}`;
-    if (radarIframe.src !== targetSrc) {
-      radarIframe.src = targetSrc;
-    }
-  }
   document.getElementById("radar-coords-label").textContent = `${latitude.toFixed(
     2
-  )}°, ${longitude.toFixed(2)}°`;
+  )}°, ${longitude.toFixed(2)}° • Tap map to probe`;
+
+  // Sync Züs 1km Doppler Radar Map & Point Telemetry in parallel
+  const dopplerPromise = dopplerRadarMap.syncForLocation(latitude, longitude);
 
   try {
     const forecastParams = new URLSearchParams({
       latitude: String(latitude),
       longitude: String(longitude),
       current:
-        "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation",
+        "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation",
       minutely_15: "precipitation,weather_code",
       hourly:
         "temperature_2m,apparent_temperature,weather_code,precipitation_probability,precipitation,wind_speed_10m,visibility,cape,dew_point_2m",
@@ -318,7 +860,15 @@ async function loadWeatherForCurrentLocation() {
       timezone: "auto",
     });
 
-    const [fResp, aqiResp, ensResp] = await Promise.all([
+    const zusWeatherPromise = fetch(
+      `${ZUS_API_BASE}/weather?lat=${latitude.toFixed(4)}&lon=${longitude.toFixed(
+        4
+      )}&city=${encodeURIComponent(name)}`
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+
+    const [fResp, aqiResp, ensResp, dopplerTel, zusWeather] = await Promise.all([
       fetch(`https://api.open-meteo.com/v1/forecast?${forecastParams.toString()}`),
       fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?${aqiParams.toString()}`).catch(
         () => null
@@ -326,6 +876,8 @@ async function loadWeatherForCurrentLocation() {
       fetch(`https://api.open-meteo.com/v1/forecast?${ensembleParams.toString()}`).catch(
         () => null
       ),
+      dopplerPromise,
+      zusWeatherPromise,
     ]);
 
     if (!fResp.ok) throw new Error(`HTTP ${fResp.status}`);
@@ -333,18 +885,31 @@ async function loadWeatherForCurrentLocation() {
     const rawAqi = aqiResp && aqiResp.ok ? await aqiResp.json() : null;
     const rawEnsemble = ensResp && ensResp.ok ? await ensResp.json() : null;
 
-    state.weather = parseWeatherData(rawForecast, rawAqi, rawEnsemble);
+    const mergedDoppler = zusWeather?.dopplerTelemetry || dopplerTel;
+    if (mergedDoppler) {
+      dopplerRadarMap.telemetry = mergedDoppler;
+    }
+
+    state.weather = parseWeatherData(
+      rawForecast,
+      rawAqi,
+      rawEnsemble,
+      mergedDoppler,
+      zusWeather
+    );
     renderDashboard();
+    dopplerRadarMap.renderTelemetryStrip(mergedDoppler);
   } catch (_) {
     document.getElementById("last-updated").textContent = "Connection interrupted";
   }
 }
 
-function parseWeatherData(raw, rawAqi, rawEnsemble) {
+function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeather = null) {
   const c = raw.current || {};
   const h = raw.hourly || {};
   const d = raw.daily || {};
   const m15 = raw.minutely_15 || {};
+  const zCur = zusWeather?.current || null;
 
   const nowMs = Date.now();
   let startHourIdx = 0;
@@ -353,46 +918,59 @@ function parseWeatherData(raw, rawAqi, rawEnsemble) {
     if (found >= 0) startHourIdx = found;
   }
 
-  // Extract 60-minute precipitation curve from minutely_15
+  // Extract 60-minute precipitation curve from minutely_15 blended with 1km Züs Doppler trajectory
   let startM15Idx = 0;
   if (Array.isArray(m15.time)) {
     const foundM15 = m15.time.findIndex((t) => new Date(t).getTime() >= nowMs - 900000);
     if (foundM15 >= 0) startM15Idx = foundM15;
   }
 
-  const m15Points = [];
-  for (let i = 0; i < 5; i++) {
-    const idx = startM15Idx + i;
-    const mm15 = Number(m15.precipitation?.[idx] ?? 0);
-    // Convert 15-min accumulation to hourly rate (mm/hr)
-    m15Points.push(mm15 * 4);
+  const dopRates =
+    dopplerTel && dopplerTel.inConusGrid && Array.isArray(dopplerTel.minuteRates60m)
+      ? dopplerTel.minuteRates60m
+      : [];
+
+  // Build 13 5-minute trajectory steps (0..60m) blending 1km Züs Doppler with 15-min NWP model
+  const fiveMinPoints = [];
+  for (let s = 0; s <= 12; s++) {
+    const m15Idx = startM15Idx + Math.min(4, Math.floor(s / 3));
+    const mm15 = Number(m15.precipitation?.[m15Idx] ?? 0);
+    const modelRate = mm15 * 4;
+    if (dopRates.length >= 13) {
+      const dopRate = Number(dopRates[s] ?? 0);
+      fiveMinPoints.push(Math.max(dopRate, dopRate * 0.85 + modelRate * 0.15));
+    } else {
+      fiveMinPoints.push(modelRate);
+    }
   }
 
-  // Interpolate 61 minute-by-minute points (0..60m)
+  // Interpolate 61 minute-by-minute points (0..60m) from 5-minute Doppler trajectory
   const minuteRates = [];
   for (let min = 0; min <= 60; min++) {
-    const seg = Math.min(3, Math.floor(min / 15));
-    const frac = (min - seg * 15) / 15;
-    const v0 = m15Points[seg] ?? 0;
-    const v1 = m15Points[seg + 1] ?? v0;
+    const seg = Math.min(11, Math.floor(min / 5));
+    const frac = (min - seg * 5) / 5;
+    const v0 = fiveMinPoints[seg] ?? 0;
+    const v1 = fiveMinPoints[seg + 1] ?? v0;
     // Cosine smooth interpolation
     const mu = (1 - Math.cos(frac * Math.PI)) / 2;
     minuteRates.push(Math.max(0, v0 * (1 - mu) + v1 * mu));
   }
 
-  // Next 24 hours
+  // Next 24 hours (assimilate ZüsAPI MOS bias-corrected & ground-truth hourly stream when available)
+  const zHourly = Array.isArray(zusWeather?.hourly) ? zusWeather.hourly : [];
   const hourly = [];
   for (let i = 0; i < 24; i++) {
     const idx = startHourIdx + i;
     if (!h.time || idx >= h.time.length) break;
+    const zh = zHourly[i] || null;
     hourly.push({
       time: new Date(h.time[idx]),
-      temperature: h.temperature_2m[idx],
-      feelsLike: h.apparent_temperature?.[idx] ?? h.temperature_2m[idx],
-      wmoCode: h.weather_code[idx],
-      precipProb: h.precipitation_probability?.[idx] ?? 0,
-      precipMm: h.precipitation?.[idx] ?? 0,
-      windSpeed: h.wind_speed_10m?.[idx] ?? 0,
+      temperature: zh?.temperature ?? h.temperature_2m[idx],
+      feelsLike: zh?.feelsLike ?? h.apparent_temperature?.[idx] ?? h.temperature_2m[idx],
+      wmoCode: zh?.wmoCode ?? h.weather_code[idx],
+      precipProb: zh?.precipitationChance ?? h.precipitation_probability?.[idx] ?? 0,
+      precipMm: zh?.precipMm ?? h.precipitation?.[idx] ?? 0,
+      windSpeed: zh?.windSpeed ?? h.wind_speed_10m?.[idx] ?? 0,
     });
   }
 
@@ -452,31 +1030,45 @@ function parseWeatherData(raw, rawAqi, rawEnsemble) {
     validTemps.length > 1
       ? Math.max(...validTemps) - Math.min(...validTemps)
       : 0.4;
-  const confidencePct = Math.max(82, Math.min(99, Math.round(100 - spreadC * 4.5)));
+  const confidencePct =
+    zCur?.consensusScore ?? Math.max(82, Math.min(99, Math.round(100 - spreadC * 4.5)));
+
+  // Determine observed WMO weather code (assimilating ZüsAPI METAR/Doppler ground truth)
+  let effectiveWmo = zCur?.observedWeatherCode ?? c.weather_code ?? 0;
+  if (effectiveWmo < 51 && minuteRates[0] >= 0.15) {
+    effectiveWmo = minuteRates[0] >= 4.0 ? 65 : minuteRates[0] >= 0.8 ? 61 : 51;
+  }
+  if (hourly.length > 0 && effectiveWmo >= 51 && hourly[0].wmoCode < 51) {
+    hourly[0].wmoCode = effectiveWmo;
+    hourly[0].precipProb = Math.max(hourly[0].precipProb, 80);
+  }
 
   return {
-    elevation: raw.elevation ?? 0,
-    temperature: c.temperature_2m,
-    feelsLike: c.apparent_temperature,
-    humidity: c.relative_humidity_2m,
+    elevation: zCur?.elevationMeters ?? raw.elevation ?? 0,
+    temperature: zCur?.temperature ?? c.temperature_2m,
+    feelsLike: zCur?.feelsLike ?? c.apparent_temperature,
+    humidity: zCur?.humidity ?? c.relative_humidity_2m,
     dewPoint:
+      zCur?.dewPoint ??
       h.dew_point_2m?.[startHourIdx] ??
       c.temperature_2m - (100 - c.relative_humidity_2m) / 5,
-    pressure: c.surface_pressure,
-    windSpeed: c.wind_speed_10m,
-    windDirection: c.wind_direction_10m,
-    windGusts: c.wind_gusts_10m ?? c.wind_speed_10m * 1.25,
-    cloudCover: c.cloud_cover ?? 0,
-    wmoCode: c.weather_code ?? 0,
-    tempMax: daily[0]?.tempMax ?? c.temperature_2m,
-    tempMin: daily[0]?.tempMin ?? c.temperature_2m,
-    uvIndex: daily[0]?.uvMax ?? 5,
+    pressure: zCur?.airPressure ?? c.pressure_msl ?? c.surface_pressure,
+    windSpeed: zCur?.windSpeed ?? c.wind_speed_10m,
+    windDirection: zCur?.windDirection ?? c.wind_direction_10m,
+    windGusts: zCur?.windGust ?? c.wind_gusts_10m ?? c.wind_speed_10m * 1.25,
+    cloudCover: zCur?.cloudCover ?? c.cloud_cover ?? 0,
+    wmoCode: effectiveWmo,
+    tempMax: zCur?.tempMax ?? daily[0]?.tempMax ?? c.temperature_2m,
+    tempMin: zCur?.tempMin ?? daily[0]?.tempMin ?? c.temperature_2m,
+    uvIndex: zCur?.uvIndex ?? daily[0]?.uvMax ?? 5,
     sunrise: daily[0]?.sunrise ?? null,
     sunset: daily[0]?.sunset ?? null,
-    visibilityKm: (h.visibility?.[startHourIdx] ?? 10000) / 1000,
+    visibilityKm: zCur?.visibility ?? (h.visibility?.[startHourIdx] ?? 10000) / 1000,
     cape: h.cape?.[startHourIdx] ?? 0,
-    usAqi: rawAqi?.current?.us_aqi ?? 28,
+    usAqi: zCur?.usAqi ?? rawAqi?.current?.us_aqi ?? 28,
     pm25: rawAqi?.current?.pm2_5 ?? 6.2,
+    localStationName: zCur?.localStationName ?? null,
+    localStationWx: zCur?.localStationWx ?? null,
     minuteRates,
     hourly,
     daily,
@@ -588,8 +1180,17 @@ function renderDashboard() {
 function renderNextHourNowcast(minuteRates, currentHour) {
   const headlineEl = document.getElementById("nowcast-headline");
   const subEl = document.getElementById("nowcast-subheadline");
+  const badgeEl = document.getElementById("nowcast-updated-label");
   const canvas = document.getElementById("nowcast-canvas");
   if (!canvas) return;
+
+  const dopTel = dopplerRadarMap.telemetry;
+  if (badgeEl) {
+    badgeEl.textContent =
+      dopTel && dopTel.inConusGrid
+        ? `📡 1km Doppler (${dopTel.currentDbz.toFixed(0)} dBZ)`
+        : "Down to the Minute";
+  }
 
   const threshold = 0.08; // mm/hr perceptible rain threshold
   const maxRate = Math.max(...minuteRates);
@@ -599,10 +1200,27 @@ function renderNextHourNowcast(minuteRates, currentHour) {
   if (maxRate < threshold) {
     const nextPrecipProb = currentHour?.precipProb ?? 0;
     headlineEl.textContent = "Clear of precipitation for the hour.";
-    subEl.textContent =
-      nextPrecipProb > 25
-        ? `${nextPrecipProb}% chance of scattered moisture in the broader vicinity.`
-        : "No radar echoes detected within the 60-minute hyperlocal window.";
+    if (
+      dopTel &&
+      dopTel.inConusGrid &&
+      dopTel.nearestEchoKm !== null &&
+      dopTel.nearestEchoKm !== undefined &&
+      dopTel.nearestEchoKm > 0
+    ) {
+      const distStr = state.useImperial
+        ? `${(dopTel.nearestEchoKm * 0.621371).toFixed(1)} mi`
+        : `${dopTel.nearestEchoKm.toFixed(1)} km`;
+      subEl.textContent = `Nearest 1km Doppler echo ${distStr} ${
+        dopTel.nearestEchoCompass || ""
+      } (35km peak ${dopTel.maxDbzNearby.toFixed(0)} dBZ, tracking ${
+        dopTel.stormMotionCompass
+      } at ${formatWind(dopTel.stormMotionKmh)}).`;
+    } else {
+      subEl.textContent =
+        nextPrecipProb > 25
+          ? `${nextPrecipProb}% chance of scattered moisture in the broader vicinity.`
+          : "No radar echoes detected within the 60-minute hyperlocal window.";
+    }
   } else if (currentlyWet) {
     const stopIdx = minuteRates.findIndex((r, idx) => idx > 0 && r < threshold);
     const intensityLabel =
@@ -612,12 +1230,21 @@ function renderNextHourNowcast(minuteRates, currentHour) {
     } else {
       headlineEl.textContent = `${intensityLabel} continuing for the hour.`;
     }
-    subEl.textContent = `Peak intensity ${maxRate.toFixed(1)} mm/hr during the next 60 minutes.`;
+    const dbzNote =
+      dopTel && dopTel.inConusGrid ? ` (${dopTel.currentDbz.toFixed(0)} dBZ overhead)` : "";
+    subEl.textContent = `Peak intensity ${maxRate.toFixed(
+      1
+    )} mm/hr${dbzNote} during the next 60 minutes.`;
   } else {
     const intensityLabel =
       maxRate >= 6.0 ? "Heavy rain" : maxRate >= 2.0 ? "Rain" : "Light rain";
     headlineEl.textContent = `${intensityLabel} starting in ${firstWetIdx} min.`;
-    subEl.textContent = `60-minute radar trajectory indicates approaching precipitation.`;
+    subEl.textContent =
+      dopTel && dopTel.inConusGrid
+        ? `1km Doppler trajectory (${dopTel.stormMotionCompass} at ${formatWind(
+            dopTel.stormMotionKmh
+          )}) indicates approaching precipitation.`
+        : `60-minute radar trajectory indicates approaching precipitation.`;
   }
 
   const ctx = canvas.getContext("2d");
@@ -984,7 +1611,7 @@ function setupCitySearch() {
             };
             input.value = "";
             dropdown.classList.remove("open");
-            renderLocationsStrip();
+            saveRecentSearch(state.location);
             loadWeatherForCurrentLocation();
           });
           dropdown.appendChild(btn);
@@ -1037,7 +1664,7 @@ function acquireUserLocation(isAutoStartup = false) {
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
           <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
         </svg> GPS`;
-      renderLocationsStrip();
+      saveRecentSearch(state.location);
       loadWeatherForCurrentLocation();
     },
     () => {
@@ -1070,6 +1697,8 @@ function setupControls() {
     localStorage.setItem("zus_unit_imp", String(state.useImperial));
     updateUnitLabel();
     if (state.weather) renderDashboard();
+    dopplerRadarMap.renderTelemetryStrip(dopplerRadarMap.telemetry);
+    dopplerRadarMap.updateInteropLinks(state.location.latitude, state.location.longitude);
   });
 
   // 24-Hour Timeline Mode Tabs
@@ -1091,6 +1720,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupCitySearch();
   setupControls();
   atmosphereCanvas.init();
+  dopplerRadarMap.init();
 
   // Preload initial forecast and automatically request GPS coordinates
   loadWeatherForCurrentLocation();

@@ -14,7 +14,13 @@
 
   <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=3" />
   <link rel="manifest" href="./site.webmanifest?v=3" />
-  <link rel="stylesheet" href="./styles.css?v=3" />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <link rel="stylesheet" href="./styles.css?v=6" />
 </head>
 <body class="sky-clear">
   <!-- Ambient Atmospheric Canvas -->
@@ -210,19 +216,124 @@
 
       <!-- Right: Live Precipitation Radar + 6 Liquid Glass Telemetry Cards -->
       <div class="right-col-stack">
-        <!-- Interactive Precipitation Radar Map -->
-        <article class="radar-map-card liquid-glass">
+        <!-- Interactive Züs 1km Doppler Radar & Nowcast Map -->
+        <article class="radar-map-card liquid-glass" id="radar-map-card">
           <div class="section-header">
-            <span class="section-kicker">📡 Live Doppler &amp; Wind Map</span>
-            <span class="section-kicker" id="radar-coords-label">Interactive</span>
+            <span class="section-kicker">
+              <span class="radar-live-dot"></span>
+              📡 Züs 1km Doppler &amp; Nowcast
+            </span>
+            <div class="radar-header-actions">
+              <span class="radar-engine-badge" id="radar-engine-badge">ZüsAPI 8-Bit Core</span>
+              <button type="button" id="radar-interop-btn" class="radar-mini-btn" title="View Standardized Dark Sky, RainViewer &amp; TileJSON Endpoints">
+                ⇄ Feeds
+              </button>
+              <button type="button" id="radar-expand-btn" class="radar-mini-btn" title="Toggle Expanded Radar Viewport">
+                ⤢ Expand
+              </button>
+            </div>
           </div>
-          <div class="radar-map-frame">
-            <iframe
-              id="radar-iframe"
-              title="Live Weather Radar Map"
-              loading="lazy"
-              src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=default&metricTemp=default&metricWind=default&zoom=7&overlay=radar&product=radar&level=surface&lat=40.713&lon=-74.006"
-            ></iframe>
+
+          <div class="radar-map-frame" id="radar-map-frame">
+            <div id="zus-doppler-map" aria-label="Interactive Züs Doppler Radar Map"></div>
+            <div class="radar-hud-overlay">
+              <span class="radar-coords-chip" id="radar-coords-label" title="Click anywhere on the map to probe 1km Doppler reflectivity">40.71°, -74.01° • Tap map to probe</span>
+              <span class="radar-frame-pill" id="radar-frame-label">LIVE</span>
+            </div>
+
+            <!-- Floating Map Controls (Zoom, Recenter, 35km Ring) -->
+            <div class="radar-map-controls">
+              <button type="button" id="radar-zoom-in" class="radar-ctrl-btn" title="Zoom In" aria-label="Zoom in">+</button>
+              <button type="button" id="radar-zoom-out" class="radar-ctrl-btn" title="Zoom Out" aria-label="Zoom out">&minus;</button>
+              <button type="button" id="radar-recenter-btn" class="radar-ctrl-btn" title="Recenter on active location" aria-label="Recenter map">◎</button>
+            </div>
+
+            <!-- Interactive Point Probe Toast (when clicking on map) -->
+            <div class="radar-probe-toast" id="radar-probe-toast" hidden>
+              <div class="radar-probe-text" id="radar-probe-text">Probing 1km grid...</div>
+              <button type="button" id="radar-probe-close" class="radar-probe-close" title="Reset to active location">&times;</button>
+            </div>
+          </div>
+
+          <!-- Play / Pause Timeline Scrubber (-45m -> LIVE -> +30m Nowcast) -->
+          <div class="radar-controls-bar">
+            <button type="button" id="radar-play-btn" class="radar-play-btn" title="Play / Pause Doppler loop" aria-label="Play Doppler radar animation">
+              ▶
+            </button>
+            <input
+              type="range"
+              id="radar-frame-slider"
+              class="radar-slider"
+              min="0"
+              max="7"
+              value="5"
+              step="1"
+              aria-label="Scrub Doppler radar timeline"
+            />
+            <span class="radar-time-readout" id="radar-time-readout">LIVE</span>
+          </div>
+
+          <!-- Quick Frame Selector Pills -->
+          <div class="radar-frame-pills" id="radar-frame-pills" role="tablist" aria-label="Doppler Timeline Frames"></div>
+
+          <!-- Hyperlocal 1km Grid Point Readout Strip -->
+          <div class="radar-telemetry-strip" id="radar-telemetry-strip">
+            <div class="radar-stat-item">
+              <span class="radar-stat-label" id="radar-stat-dbz-label">Overhead</span>
+              <span class="radar-stat-val" id="radar-stat-dbz">0 dBZ</span>
+            </div>
+            <div class="radar-stat-item">
+              <span class="radar-stat-label">35km Peak</span>
+              <span class="radar-stat-val" id="radar-stat-peak">-- dBZ</span>
+            </div>
+            <div class="radar-stat-item">
+              <span class="radar-stat-label">Nearest Echo</span>
+              <span class="radar-stat-val" id="radar-stat-echo">Clear</span>
+            </div>
+            <div class="radar-stat-item">
+              <span class="radar-stat-label">Storm Vector</span>
+              <span class="radar-stat-val" id="radar-stat-vector">--</span>
+            </div>
+          </div>
+
+          <!-- Züs 8-Bit Storm Palette Legend -->
+          <div class="radar-legend-row">
+            <span>Light (10 dBZ)</span>
+            <div class="radar-legend-gradient"></div>
+            <span>Severe (55+ dBZ)</span>
+          </div>
+
+          <!-- Dataset Engine & 24h Backfill Status Bar -->
+          <div class="radar-dataset-bar" id="radar-dataset-bar">
+            <span class="radar-dataset-meta" id="radar-dataset-meta">
+              1km CONUS Master Grid • 8 Frames in RAM • 24h Auto-Backfill Active
+            </span>
+            <button type="button" id="radar-backfill-btn" class="radar-backfill-btn" title="Verify 24-hour NEXRAD archive &amp; backfill any offline gaps">
+              ↻ Sync 24h Archive
+            </button>
+          </div>
+
+          <!-- Collapsible Standardized Interop Feeds Drawer -->
+          <div class="radar-interop-drawer" id="radar-interop-drawer" hidden>
+            <div class="radar-interop-title">Standardized Drop-In Endpoints (Dark Sky / RainViewer / TileJSON 3.0)</div>
+            <div class="radar-interop-list">
+              <div class="radar-interop-row">
+                <span class="interop-tag">Dark Sky v1</span>
+                <code id="interop-darksky-url">/forecast/zus_key/40.7128,-74.0060?units=us</code>
+              </div>
+              <div class="radar-interop-row">
+                <span class="interop-tag">RainViewer v2</span>
+                <code id="interop-rainviewer-url">/public/weather-maps.json</code>
+              </div>
+              <div class="radar-interop-row">
+                <span class="interop-tag">TileJSON 3.0</span>
+                <code id="interop-tilejson-url">/api/v1/radar/tilejson.json</code>
+              </div>
+              <div class="radar-interop-row">
+                <span class="interop-tag">XYZ Tiles</span>
+                <code id="interop-xyz-url">/api/v1/radar/tiles/latest/{z}/{x}/{y}.png</code>
+              </div>
+            </div>
           </div>
         </article>
 
@@ -316,6 +427,12 @@
     </footer>
   </div>
 
-  <script src="./app.js?v=3" defer></script>
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+    defer
+  ></script>
+  <script src="./app.js?v=6" defer></script>
 </body>
 </html>
