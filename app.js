@@ -1885,6 +1885,12 @@ const HOURLY_METRIC_PILLS = [
 /* 24-Hour Connected Curve + Multi-Model Envelope Chart (11 Selectable Metrics) */
 function getHourlyMetricDescriptor(mode) {
   const imp = state.useImperial;
+  const fmtTempSpread = (s) => {
+    const half = (imp ? s * 1.8 : s) / 2;
+    return half >= 1.5
+      ? `±${Math.round(half)}°`
+      : `±${Math.max(0.1, half).toFixed(1)}°`;
+  };
   switch (mode) {
     case "feels":
       return {
@@ -1895,7 +1901,7 @@ function getHourlyMetricDescriptor(mode) {
         extract: (h) => ({ val: h.feelsLike, min: h.feelsMin, max: h.feelsMax }),
         formatNode: (v) => String(Math.round(imp ? (v * 9) / 5 + 32 : v)),
         formatFull: (v) => formatTemp(v, true),
-        formatSpread: (s) => `±${((imp ? s * 1.8 : s) / 2).toFixed(1)}${imp ? "°F" : "°C"}`,
+        formatSpread: fmtTempSpread,
       };
     case "precip":
       return {
@@ -1906,7 +1912,7 @@ function getHourlyMetricDescriptor(mode) {
         extract: (h) => ({ val: h.precipProb, min: h.precipProbMin, max: h.precipProbMax }),
         formatNode: (v) => `${Math.round(v)}%`,
         formatFull: (v) => `${Math.round(v)}%`,
-        formatSpread: (s) => `±${Math.round(s / 2)}%`,
+        formatSpread: (s) => `±${Math.max(1, Math.round(s / 2))}%`,
       };
     case "precipAmount":
       return {
@@ -1919,7 +1925,9 @@ function getHourlyMetricDescriptor(mode) {
           imp ? `${(v / 25.4).toFixed(2)}"` : `${v.toFixed(1)}mm`,
         formatFull: (v) => formatPrecipAmount(v),
         formatSpread: (s) =>
-          imp ? `±${(s / 25.4 / 2).toFixed(2)} in` : `±${(s / 2).toFixed(1)} mm`,
+          imp
+            ? `±${Math.max(0.01, s / 25.4 / 2).toFixed(2)}"`
+            : `±${Math.max(0.1, s / 2).toFixed(1)}mm`,
       };
     case "wind":
       return {
@@ -1930,8 +1938,12 @@ function getHourlyMetricDescriptor(mode) {
         extract: (h) => ({ val: h.windSpeed, min: h.windMin, max: h.windMax }),
         formatNode: (v) => String(Math.round(imp ? v * 0.621371 : v)),
         formatFull: (v) => formatWind(v),
-        formatSpread: (s) =>
-          `±${((imp ? s * 0.621371 : s) / 2).toFixed(1)} ${imp ? "mph" : "km/h"}`,
+        formatSpread: (s) => {
+          const half = (imp ? s * 0.621371 : s) / 2;
+          return half >= 1.5
+            ? `±${Math.round(half)}`
+            : `±${Math.max(0.1, half).toFixed(1)}`;
+        },
       };
     case "gusts":
       return {
@@ -1942,8 +1954,12 @@ function getHourlyMetricDescriptor(mode) {
         extract: (h) => ({ val: h.windGusts, min: h.gustMin, max: h.gustMax }),
         formatNode: (v) => String(Math.round(imp ? v * 0.621371 : v)),
         formatFull: (v) => formatWind(v),
-        formatSpread: (s) =>
-          `±${((imp ? s * 0.621371 : s) / 2).toFixed(1)} ${imp ? "mph" : "km/h"}`,
+        formatSpread: (s) => {
+          const half = (imp ? s * 0.621371 : s) / 2;
+          return half >= 1.5
+            ? `±${Math.round(half)}`
+            : `±${Math.max(0.1, half).toFixed(1)}`;
+        },
       };
     case "uv":
       return {
@@ -1954,7 +1970,7 @@ function getHourlyMetricDescriptor(mode) {
         extract: (h) => ({ val: h.uvIndex, min: h.uvMin, max: h.uvMax }),
         formatNode: (v) => (v < 1 ? v.toFixed(1) : String(Math.round(v))),
         formatFull: (v) => `${v.toFixed(1)} UV`,
-        formatSpread: (s) => `±${(s / 2).toFixed(1)} UV`,
+        formatSpread: (s) => `±${Math.max(0.1, s / 2).toFixed(1)}`,
       };
     case "dew":
       return {
@@ -1965,7 +1981,7 @@ function getHourlyMetricDescriptor(mode) {
         extract: (h) => ({ val: h.dewPoint, min: h.dewMin, max: h.dewMax }),
         formatNode: (v) => String(Math.round(imp ? (v * 9) / 5 + 32 : v)),
         formatFull: (v) => formatTemp(v, true),
-        formatSpread: (s) => `±${((imp ? s * 1.8 : s) / 2).toFixed(1)}${imp ? "°F" : "°C"}`,
+        formatSpread: fmtTempSpread,
       };
     case "clouds":
       return {
@@ -1976,7 +1992,7 @@ function getHourlyMetricDescriptor(mode) {
         extract: (h) => ({ val: h.cloudCover, min: h.cloudMin, max: h.cloudMax }),
         formatNode: (v) => `${Math.round(v)}%`,
         formatFull: (v) => `${Math.round(v)}%`,
-        formatSpread: (s) => `±${Math.round(s / 2)}%`,
+        formatSpread: (s) => `±${Math.max(1, Math.round(s / 2))}%`,
       };
     case "visibility":
       return {
@@ -1990,7 +2006,9 @@ function getHourlyMetricDescriptor(mode) {
         formatFull: (v) =>
           imp ? `${(v * 0.621371).toFixed(1)} mi` : `${v.toFixed(1)} km`,
         formatSpread: (s) =>
-          imp ? `±${((s * 0.621371) / 2).toFixed(1)} mi` : `±${(s / 2).toFixed(1)} km`,
+          imp
+            ? `±${Math.max(0.1, (s * 0.621371) / 2).toFixed(1)}mi`
+            : `±${Math.max(0.1, s / 2).toFixed(1)}km`,
       };
     case "pressure":
       return {
@@ -2003,7 +2021,9 @@ function getHourlyMetricDescriptor(mode) {
           imp ? (v * 0.02953).toFixed(2) : String(Math.round(v)),
         formatFull: (v) => formatPressure(v),
         formatSpread: (s) =>
-          imp ? `±${((s * 0.02953) / 2).toFixed(2)} inHg` : `±${(s / 2).toFixed(1)} hPa`,
+          imp
+            ? `±${Math.max(0.01, (s * 0.02953) / 2).toFixed(2)}`
+            : `±${Math.max(1, Math.round(s / 2))}`,
       };
     case "temp":
     default:
@@ -2015,7 +2035,7 @@ function getHourlyMetricDescriptor(mode) {
         extract: (h) => ({ val: h.temperature, min: h.tempMin, max: h.tempMax }),
         formatNode: (v) => String(Math.round(imp ? (v * 9) / 5 + 32 : v)),
         formatFull: (v) => formatTemp(v, true),
-        formatSpread: (s) => `±${((imp ? s * 1.8 : s) / 2).toFixed(1)}${imp ? "°F" : "°C"}`,
+        formatSpread: fmtTempSpread,
       };
   }
 }
@@ -2052,7 +2072,6 @@ function renderHourlyCurveIntoContainer(
   scrollEl,
   hourly,
   mode,
-  spreadBadgeEl = null,
   options = {}
 ) {
   if (!scrollEl) return;
@@ -2073,18 +2092,9 @@ function renderHourlyCurveIntoContainer(
   const allMax = Math.max(...series.map((s) => s.max));
   const rawSpan = Math.max(0.0001, allMax - allMin);
 
-  const avgSpread =
-    series.reduce((acc, s) => acc + Math.max(0, s.max - s.min), 0) / series.length;
-  const defaultBadgeText = `${desc.label} • Primary API + Model Envelope (${desc.formatSpread(
-    avgSpread
-  )} avg spread)`;
-  if (spreadBadgeEl) {
-    spreadBadgeEl.textContent = defaultBadgeText;
-  }
-
   const W = hourly.length * colW;
-  const yTop = Math.round(H * 0.45);
-  const yBottom = Math.round(H * 0.85);
+  const yTop = Math.round(H * 0.44);
+  const yBottom = Math.round(H * 0.78);
   const ySpan = yBottom - yTop;
 
   const valueToY = (v) => {
@@ -2169,27 +2179,12 @@ function renderHourlyCurveIntoContainer(
         .toUpperCase();
     }
 
-    const plainTime = isNow
-      ? "NOW"
-      : `${item.time.toLocaleDateString([], {
-          weekday: "short",
-        })} ${item.time
-          .toLocaleTimeString([], { hour: "numeric", hour12: true })
-          .replace(/\s+/g, "")
-          .toUpperCase()}`;
-
     const showPopBadge =
       mode !== "precip" && item.precipProb >= 20
         ? `<div class="hourly-node-pop">${Math.round(item.precipProb)}%</div>`
         : "";
 
     const hoverSpread = Math.max(0, s.max - s.min);
-    const hoverText = `${plainTime} • ${desc.label}: ${desc.formatFull(
-      s.val
-    )} (Model Range: ${desc.formatFull(s.min)} – ${desc.formatFull(
-      s.max
-    )}, ${desc.formatSpread(hoverSpread)})`;
-    col.title = hoverText;
 
     col.innerHTML = `
       <div class="hourly-col-time">${rawTime}</div>
@@ -2197,19 +2192,13 @@ function renderHourlyCurveIntoContainer(
         ${showPopBadge}
         <div class="hourly-node-icon">${getWeatherSVG(cond.icon)}</div>
         <div class="hourly-node-val">${desc.formatNode(s.val)}</div>
+        <div class="hourly-node-spread">${desc.formatSpread(hoverSpread)}</div>
       </div>
     `;
 
-    col.addEventListener("mouseenter", () => {
-      if (spreadBadgeEl) spreadBadgeEl.textContent = hoverText;
-    });
-    col.addEventListener("mouseleave", () => {
-      if (spreadBadgeEl) spreadBadgeEl.textContent = defaultBadgeText;
-    });
     col.addEventListener("click", () => {
       colsLayer.querySelectorAll(".hourly-col").forEach((c) => c.classList.remove("active"));
       col.classList.add("active");
-      if (spreadBadgeEl) spreadBadgeEl.textContent = hoverText;
     });
 
     colsLayer.appendChild(col);
@@ -2221,13 +2210,12 @@ function renderHourlyCurveIntoContainer(
 
 function renderHourlyTimeline(hourly) {
   const scroll = document.getElementById("hourly-scroll");
-  const spreadBadge = document.getElementById("timeline-spread-readout");
   if (!scroll || !hourly || !hourly.length) return;
 
   const prevScrollLeft = scroll.scrollLeft;
   const colW = 74;
 
-  renderHourlyCurveIntoContainer(scroll, hourly, state.hourlyMode, spreadBadge, {
+  renderHourlyCurveIntoContainer(scroll, hourly, state.hourlyMode, {
     showNowOnFirst: true,
     showDayDividers: true,
     colW,
@@ -2315,7 +2303,6 @@ function renderDailyForecast(daily) {
       <div class="day-drawer">
         <div class="day-drawer-top">
           <div class="day-drawer-summary">${dayNarrative}</div>
-          <span class="timeline-spread-badge day-spread-badge">Model Envelope</span>
         </div>
         <div class="hourly-chart-scroll day-hourly-scroll"></div>
         <div class="timeline-pill-bar day-pill-bar" role="tablist" aria-label="${dayName} Hourly Metric Selector">
@@ -2325,7 +2312,6 @@ function renderDailyForecast(daily) {
     `;
 
     const dayScrollEl = wrapper.querySelector(".day-hourly-scroll");
-    const daySpreadEl = wrapper.querySelector(".day-spread-badge");
     const dayHours = Array.isArray(dItem.hours) ? dItem.hours : [];
 
     // Compact 24-hour chart inside each day drawer (constrained to card width with internal scroll)
@@ -2340,7 +2326,6 @@ function renderDailyForecast(daily) {
       dayScrollEl,
       dayHours,
       activeDayMode,
-      daySpreadEl,
       dayChartOpts
     );
 
@@ -2357,7 +2342,6 @@ function renderDailyForecast(daily) {
           dayScrollEl,
           dayHours,
           mode,
-          daySpreadEl,
           dayChartOpts
         );
         dayScrollEl.scrollLeft = prevLeft;
@@ -2725,7 +2709,7 @@ function openTileDetailModal(tileType) {
     if (chartLabelEl) {
       chartLabelEl.textContent = `24-Hour ${desc.label} Curve + Model Envelope`;
     }
-    renderHourlyCurveIntoContainer(chartScrollEl, next24, chartMode, spreadBadgeEl, {
+    renderHourlyCurveIntoContainer(chartScrollEl, next24, chartMode, {
       showNowOnFirst: true,
       showDayDividers: true,
       colW: 54,

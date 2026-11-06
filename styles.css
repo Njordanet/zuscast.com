@@ -876,6 +876,31 @@ body.sky-storm {
   background: rgba(14, 23, 42, 0.98);
 }
 
+.hourly-node-spread {
+  position: absolute;
+  top: calc(100% + 3px);
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: rgba(148, 163, 184, 0.95);
+  background: rgba(10, 15, 27, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  padding: 1px 5px;
+  border-radius: 5px;
+  line-height: 1.15;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+  pointer-events: none;
+}
+
+.hourly-col:hover .hourly-node-spread,
+.hourly-col.active .hourly-node-spread {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 /* Bottom Scrollable Metric Pill Selector (Matching Screenshot Aesthetic) */
 .timeline-pill-bar {
   display: flex;
@@ -1127,6 +1152,11 @@ body.sky-storm {
 .day-hourly-scroll .hourly-node-val {
   font-size: 0.82rem;
   padding: 1px 5px;
+}
+
+.day-hourly-scroll .hourly-node-spread {
+  font-size: 0.6rem;
+  padding: 1px 4px;
 }
 
 .day-pill-bar {
