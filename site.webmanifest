@@ -1,0 +1,17 @@
+{
+  "name": "ZüsCast — Divine Weather & Lightning Telemetry",
+  "short_name": "ZüsCast",
+  "description": "Atmospheric weather dashboard and convective lightning telemetry powered by Züs.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0D1221",
+  "theme_color": "#0D1221",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

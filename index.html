@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZüsCast — Atmospheric Weather & Lightning Telemetry | zuscast.com</title>
+  <meta name="description" content="ZüsCast (zuscast.com) — Next-generation atmospheric weather dashboard and convective lightning telemetry inspired by Zeus, ruler of Mount Olympus." />
+  <meta name="theme-color" content="#0D1221" />
+
+  <!-- Open Graph / Social Meta -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://zuscast.com/" />
+  <meta property="og:title" content="ZüsCast ⚡️ Divine Weather & Lightning Telemetry" />
+  <meta property="og:description" content="Live global forecasts, convective CAPE lightning threat analysis, and Zeus atmospheric storm telemetry." />
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <!-- Atmospheric Storm & Lightning Canvas -->
+  <canvas id="storm-canvas" aria-hidden="true"></canvas>
+  <div id="lightning-flash" aria-hidden="true"></div>
+
+  <div class="app-shell">
+    <!-- Top Bar -->
+    <header class="top-nav glass-card">
+      <a href="/" class="brand" aria-label="ZüsCast Home">
+        <div class="brand-emblem">
+          <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M36 6L14 35H31L26 58L50 27H33L36 6Z" fill="#FFD600" />
+          </svg>
+        </div>
+        <div>
+          <div class="brand-title">
+            ZüsCast
+            <span class="brand-badge">Olympus Web</span>
+          </div>
+          <div class="brand-subtitle">Atmospheric &amp; Lightning Telemetry • zuscast.com</div>
+        </div>
+      </a>
+
+      <!-- City Search & Geolocation -->
+      <div class="search-wrapper">
+        <div class="search-input-group">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input
+            type="text"
+            id="city-search-input"
+            placeholder="Search any mortal city or summit..."
+            autocomplete="off"
+            aria-label="Search city"
+          />
+          <button type="button" id="locate-me-btn" class="locate-btn" title="Use current GPS coordinates">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+            </svg>
+            Locate
+          </button>
+        </div>
+        <div id="search-dropdown" class="search-dropdown" role="listbox"></div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="nav-controls">
+        <button type="button" id="strike-btn" class="pill-btn gold-btn" title="Trigger Zeus lightning bolt & storm simulation">
+          ⚡ Summon Bolt
+        </button>
+        <button type="button" id="unit-toggle-btn" class="pill-btn" title="Switch Fahrenheit / Celsius">
+          °F / mph
+        </button>
+        <button type="button" id="api-settings-btn" class="pill-btn" title="Configure ZüsAPI Backend">
+          ⚙︎ API
+        </button>
+      </div>
+    </header>
+
+    <!-- Sacred Presets Bar (matching LocationModel.popularPresets in iOS) -->
+    <nav class="presets-bar" aria-label="Sacred City Presets" id="presets-bar"></nav>
+
+    <!-- Main Hero + Convective Lightning Row -->
+    <section class="top-grid">
+      <!-- Current Weather Hero Card -->
+      <article class="hero-card glass-card">
+        <div class="hero-header">
+          <div>
+            <div class="location-badge" id="location-country-badge">
+              <span>⚡ Sacred Sky Telemetry</span>
+            </div>
+            <h1 class="hero-city" id="hero-city">Mount Olympus</h1>
+            <div class="hero-coords" id="hero-coords">40.0856° N, 22.3585° E</div>
+          </div>
+          <div class="source-pill" id="data-source-pill" title="Active weather telemetry feed">
+            <span class="source-dot"></span>
+            <span id="data-source-text">Open-Meteo Live</span>
+          </div>
+        </div>
+
+        <div class="hero-main">
+          <div class="hero-temp-group">
+            <div id="hero-icon-container" class="hero-weather-icon"></div>
+            <div class="hero-temp" id="hero-temp">--°</div>
+          </div>
+          <div class="hero-condition-meta">
+            <div class="hero-condition-label" id="hero-condition">Loading Skies...</div>
+            <div class="hero-high-low" id="hero-high-low">H: --° &nbsp; L: --°</div>
+            <div class="hero-feels-like" id="hero-feels-like">Feels like --°</div>
+          </div>
+        </div>
+
+        <div class="zeus-oracle-box">
+          <div class="zeus-oracle-quote" id="zeus-quote">"The oracles ponder the coming winds."</div>
+          <div class="zeus-updated" id="last-updated">Syncing...</div>
+        </div>
+      </article>
+
+      <!-- Zeus Lightning & Convective Instability Card -->
+      <article class="lightning-card glass-card">
+        <div class="card-section-title">
+          <span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="#FFD600">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+            Zeus Lightning &amp; Convective Telemetry
+          </span>
+          <span class="threat-badge threat-calm" id="threat-badge">Calm</span>
+        </div>
+
+        <div class="lightning-radar-row">
+          <div class="radar-box" title="50km Convective Strike Radar">
+            <canvas id="radar-canvas" width="118" height="118"></canvas>
+          </div>
+          <div class="convective-stats">
+            <div class="mini-stat">
+              <div class="mini-stat-label">CAPE Potential</div>
+              <div class="mini-stat-value" id="cape-value">0 J/kg</div>
+              <div class="mini-stat-sub" id="cape-desc">Stable atmosphere</div>
+            </div>
+            <div class="mini-stat">
+              <div class="mini-stat-label">Lifted Index</div>
+              <div class="mini-stat-value" id="lifted-index-value">+2.0°C</div>
+              <div class="mini-stat-sub" id="lifted-desc">Low updraft risk</div>
+            </div>
+            <div class="mini-stat">
+              <div class="mini-stat-label">Storm Simulation</div>
+              <div class="mini-stat-value" id="storm-sim-status">Auto</div>
+              <div class="mini-stat-sub">Reactive to sky code</div>
+            </div>
+            <div class="mini-stat">
+              <div class="mini-stat-label">Peak Gusts</div>
+              <div class="mini-stat-value" id="gust-value">--</div>
+              <div class="mini-stat-sub">Surface 10m</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cape-meter-wrap">
+          <div class="cape-meter-labels">
+            <span>Convective Instability Scale</span>
+            <span id="cape-scale-readout">0 / 3000+ J/kg</span>
+          </div>
+          <div class="cape-meter-bar">
+            <div class="cape-meter-fill" id="cape-meter-fill"></div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- 24-Hour Forecast Strip -->
+    <section class="hourly-card glass-card" aria-label="24-Hour Forecast">
+      <div class="card-section-title">
+        <span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          24-Hour Atmospheric Horizon
+        </span>
+        <span id="hourly-summary-label">Next 24 hours</span>
+      </div>
+      <div class="hourly-scroll" id="hourly-scroll"></div>
+    </section>
+
+    <!-- Bottom Grid: 10-Day Forecast + Atmospheric Details -->
+    <section class="bottom-grid">
+      <!-- 10-Day Forecast -->
+      <article class="daily-card glass-card" aria-label="10-Day Forecast">
+        <div class="card-section-title">
+          <span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            10-Day Olympian Forecast
+          </span>
+          <span>Temperature Range</span>
+        </div>
+        <div class="daily-list" id="daily-list"></div>
+      </article>
+
+      <!-- 6-Card Atmospheric Telemetry Grid -->
+      <div class="details-grid">
+        <article class="detail-card glass-card">
+          <div class="card-section-title">
+            <span>💨 Wind &amp; Azimuth</span>
+          </div>
+          <div class="detail-value" id="detail-wind">--</div>
+          <div class="detail-sub" id="detail-wind-dir">Direction: --</div>
+        </article>
+
+        <article class="detail-card glass-card">
+          <div class="card-section-title">
+            <span>💧 Humidity</span>
+          </div>
+          <div class="detail-value" id="detail-humidity">--%</div>
+          <div class="detail-sub" id="detail-dewpoint">Dew point: --</div>
+        </article>
+
+        <article class="detail-card glass-card">
+          <div class="card-section-title">
+            <span>☀️ UV Index</span>
+          </div>
+          <div>
+            <div class="detail-value" id="detail-uv">--</div>
+            <div class="uv-bar">
+              <div class="uv-dot" id="uv-dot" style="left: 10%"></div>
+            </div>
+          </div>
+          <div class="detail-sub" id="detail-uv-advice">--</div>
+        </article>
+
+        <article class="detail-card glass-card">
+          <div class="card-section-title">
+            <span>🧭 Surface Pressure</span>
+          </div>
+          <div class="detail-value" id="detail-pressure">-- hPa</div>
+          <div class="detail-sub" id="detail-pressure-desc">Standard atmosphere</div>
+        </article>
+
+        <article class="detail-card glass-card">
+          <div class="card-section-title">
+            <span>👁️ Visibility</span>
+          </div>
+          <div class="detail-value" id="detail-visibility">--</div>
+          <div class="detail-sub" id="detail-visibility-desc">Clear horizon</div>
+        </article>
+
+        <article class="detail-card glass-card">
+          <div class="card-section-title">
+            <span>🌅 Solar Cycle</span>
+          </div>
+          <div class="detail-value" id="detail-sunrise">--:--</div>
+          <div class="detail-sub" id="detail-sunset">Sunset: --:--</div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="site-footer glass-card">
+      <div>
+        <strong>ZüsCast (zuscast.com)</strong> — Web companion to the native <strong>Züs iOS 17+</strong> app &amp; <strong>ZüsAPI</strong> telemetry engine.
+      </div>
+      <div class="footer-links">
+        <button type="button" class="footer-link" id="footer-storm-toggle">⚡ Toggle Storm Mode</button>
+        <button type="button" class="footer-link" id="footer-api-btn">Configure ZüsAPI</button>
+        <a href="https://github.com/Njordanet/Zus" target="_blank" rel="noopener noreferrer" class="footer-link">
+          GitHub Repository ↗
+        </a>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ZüsAPI Configuration Modal -->
+  <div class="modal-backdrop" id="api-modal" role="dialog" aria-modal="true" aria-labelledby="api-modal-title">
+    <div class="modal-panel glass-card">
+      <div class="modal-header">
+        <div class="modal-title" id="api-modal-title">⚡ ZüsAPI Telemetry Endpoint</div>
+        <button type="button" class="modal-close" id="api-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-field">
+        <label for="zus-api-url-input">Custom ZüsAPI Base URL (Optional)</label>
+        <input
+          type="url"
+          id="zus-api-url-input"
+          placeholder="e.g. https://api.zuscast.com/api/v1 or http://192.168.1.65:8000/api/v1"
+        />
+        <div class="modal-help">
+          Just like the Züs iOS client, ZüsCast queries your configured <code>ZüsAPI</code> server first
+          (<code>/weather</code> &amp; <code>/lightning</code>) and seamlessly falls back to direct Open-Meteo REST telemetry when offline or unconfigured.
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="pill-btn" id="api-reset-btn">Use Direct Open-Meteo</button>
+        <button type="button" class="pill-btn gold-btn" id="api-save-btn">Save &amp; Sync</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
