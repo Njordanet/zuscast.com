@@ -1,11 +1,11 @@
 {
-  "name": "ZüsCast — Divine Weather & Lightning Telemetry",
+  "name": "ZüsCast — Hyperlocal Weather",
   "short_name": "ZüsCast",
-  "description": "Atmospheric weather dashboard and convective lightning telemetry powered by Züs.",
+  "description": "Down-to-the-minute hyperlocal weatherforecasts and liquid glass atmospheric telemetry.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0D1221",
-  "theme_color": "#0D1221",
+  "background_color": "#0b0f1a",
+  "theme_color": "#0b0f1a",
   "icons": [
     {
       "src": "/favicon.svg",

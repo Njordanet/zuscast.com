@@ -1,15 +1,10 @@
-# ZüsCast (`zuscast.com`) ⚡️
+# ZüsCast (`zuscast.com`)
 
-**ZüsCast** ([https://zuscast.com](https://zuscast.com)) is the official web weather dashboard and convective lightning telemetry client for the **Züs** platform.
+Hyperlocal, down-to-the-minute weather intelligence crafted with a Liquid Glass interface.
 
-## Features
-- **Live Global Weather & 10-Day Forecast**: Powered by Open-Meteo REST API with optional primary connection to a **ZüsAPI** backend (`/weather` & `/lightning`).
-- **Zeus Lightning & Convective Instability Telemetry**: Real-time CAPE (J/kg), Lifted Index, storm threat classification (*Calm* → *Divine Wrath*), and an animated 50km strike radar.
-- **Interactive Storm & Lightning Engine**: Fullscreen HTML5 canvas rendering atmospheric precipitation and branching lightning bolts (`⚡ Summon Bolt` & `⚡ Toggle Storm Mode`).
-- **Sacred Presets & Global Search**: Instant switching between Mount Olympus, Athens, New York, Tokyo, London, and Reykjavik, plus global city search and GPS geolocation.
-
-## Local Development
-```bash
-python3 -m http.server 8080
-# Open http://localhost:8080
-```
+## Capabilities
+- **Next-Hour Minute-by-Minute Nowcast**: High-resolution 60-minute precipitation intensity curve with `LIGHT`, `MED`, and `HEAVY` thresholds.
+- **24-Hour Condition Timeline & Curve**: Continuous sky-condition color ribbon paired with hourly temperatures, feels-like, wind, and precipitation probability.
+- **Interactive 10-Day Forecast**: Proportional temperature range bars with expandable day-by-day hourly breakdowns and daily meteorological summaries.
+- **Multi-Model Ensemble Confidence**: Real-time agreement scoring across HRRR, ECMWF, GFS, and ICON numerical weather models.
+- **Atmospheric Telemetry**: UV Index, Air Quality (US AQI), Dew Point & Muggy Scale, Barometric Pressure trend, Wind & Gust vectors, Visibility, and Solar cycle.
