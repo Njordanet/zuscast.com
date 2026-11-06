@@ -319,7 +319,12 @@ function renderLocationsStrip() {
   });
 }
 
-const ZUS_API_HOST = "http://192.168.1.65:8000";
+const ZUS_API_HTTPS_HOST = "https://euros-screensaver-outstanding-remedies.trycloudflare.com";
+const ZUS_API_LAN_HOST = "http://192.168.1.65:8000";
+const ZUS_API_HOST =
+  typeof window !== "undefined" && window.location.protocol === "https:"
+    ? ZUS_API_HTTPS_HOST
+    : ZUS_API_LAN_HOST;
 const ZUS_API_BASE = `${ZUS_API_HOST}/api/v1`;
 
 /* Interactive Züs 1km Doppler Radar & Nowcast Map Controller */
