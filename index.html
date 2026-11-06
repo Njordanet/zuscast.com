@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ZüsCast — Atmospheric Weather & Lightning Telemetry | zuscast.com</title>
-  <meta name="description" content="ZüsCast (zuscast.com) — Next-generation atmospheric weather dashboard and convective lightning telemetry inspired by Zeus, ruler of Mount Olympus." />
+  <title>ZüsCast — Multi-Model Consensus, Hyperlocal Dataset &amp; Lightning | zuscast.com</title>
+  <meta name="description" content="ZüsCast (zuscast.com) — Next-generation atmospheric weather dashboard, multi-model NWP consensus, hyperlocal station assimilation, and convective lightning telemetry powered by ZüsAPI on panda." />
   <meta name="theme-color" content="#0D1221" />
 
   <!-- Open Graph / Social Meta -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://zuscast.com/" />
-  <meta property="og:title" content="ZüsCast ⚡️ Divine Weather & Lightning Telemetry" />
-  <meta property="og:description" content="Live global forecasts, convective CAPE lightning threat analysis, and Zeus atmospheric storm telemetry." />
+  <meta property="og:title" content="ZüsCast ⚡️ Multi-Model Weather Consensus &amp; Dataset Workbench" />
+  <meta property="og:description" content="Live NWP ensemble consensus, hyperlocal METAR/PWS station assimilation, PostGIS dataset telemetry, and Zeus storm engine." />
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="manifest" href="/site.webmanifest" />
@@ -34,9 +34,9 @@
         <div>
           <div class="brand-title">
             ZüsCast
-            <span class="brand-badge">Olympus Web</span>
+            <span class="brand-badge">Panda v2.0 Core</span>
           </div>
-          <div class="brand-subtitle">Atmospheric &amp; Lightning Telemetry • zuscast.com</div>
+          <div class="brand-subtitle">Multi-Model Consensus &amp; Dataset Workbench • zuscast.com</div>
         </div>
       </a>
 
@@ -66,19 +66,19 @@
 
       <!-- Action Buttons -->
       <div class="nav-controls">
-        <button type="button" id="strike-btn" class="pill-btn gold-btn" title="Trigger Zeus lightning bolt & storm simulation">
+        <button type="button" id="strike-btn" class="pill-btn gold-btn" title="Trigger Zeus lightning bolt &amp; storm simulation">
           ⚡ Summon Bolt
         </button>
         <button type="button" id="unit-toggle-btn" class="pill-btn" title="Switch Fahrenheit / Celsius">
           °F / mph
         </button>
-        <button type="button" id="api-settings-btn" class="pill-btn" title="Configure ZüsAPI Backend">
-          ⚙︎ API
+        <button type="button" id="api-settings-btn" class="pill-btn" title="Configure Panda ZüsAPI Endpoint">
+          ⚙︎ Panda API
         </button>
       </div>
     </header>
 
-    <!-- Sacred Presets Bar (matching LocationModel.popularPresets in iOS) -->
+    <!-- Sacred Presets Bar -->
     <nav class="presets-bar" aria-label="Sacred City Presets" id="presets-bar"></nav>
 
     <!-- Main Hero + Convective Lightning Row -->
@@ -88,14 +88,14 @@
         <div class="hero-header">
           <div>
             <div class="location-badge" id="location-country-badge">
-              <span>⚡ Sacred Sky Telemetry</span>
+              <span>📍 Requesting GPS Skies...</span>
             </div>
-            <h1 class="hero-city" id="hero-city">Mount Olympus</h1>
-            <div class="hero-coords" id="hero-coords">40.0856° N, 22.3585° E</div>
+            <h1 class="hero-city" id="hero-city">Locating...</h1>
+            <div class="hero-coords" id="hero-coords">Acquiring coordinates...</div>
           </div>
           <div class="source-pill" id="data-source-pill" title="Active weather telemetry feed">
-            <span class="source-dot"></span>
-            <span id="data-source-text">Open-Meteo Live</span>
+            <span class="source-dot" id="data-source-dot"></span>
+            <span id="data-source-text">Connecting to Panda...</span>
           </div>
         </div>
 
@@ -105,13 +105,34 @@
             <div class="hero-temp" id="hero-temp">--°</div>
           </div>
           <div class="hero-condition-meta">
-            <div class="hero-condition-label" id="hero-condition">Loading Skies...</div>
+            <div class="hero-condition-label" id="hero-condition">Syncing Skies...</div>
             <div class="hero-high-low" id="hero-high-low">H: --° &nbsp; L: --°</div>
             <div class="hero-feels-like" id="hero-feels-like">Feels like --°</div>
           </div>
         </div>
 
-        <div class="zeus-oracle-box">
+        <!-- Panda Multi-Model Consensus & Hyperlocal Telemetry Banner -->
+        <div class="consensus-banner" id="consensus-banner">
+          <div class="consensus-chips">
+            <span class="telemetry-chip" title="Multi-model ensemble agreement score">
+              🎯 Consensus: <strong id="chip-consensus">--%</strong>
+            </span>
+            <span class="telemetry-chip" title="Dominant NWP model blend for this grid cell">
+              🧠 Blend: <strong id="chip-model">--</strong>
+            </span>
+            <span class="telemetry-chip" title="Assimilated hyperlocal weather station">
+              📡 Station: <strong id="chip-station">--</strong>
+            </span>
+            <span class="telemetry-chip" title="Grid cell elevation &amp; Air Quality Index">
+              ⛰️ Elev: <strong id="chip-elev">--</strong> &bull; AQI: <strong id="chip-aqi">--</strong>
+            </span>
+          </div>
+          <div class="nowcast-strip" id="nowcast-summary-text">
+            60-Min Radar Nowcast: Syncing...
+          </div>
+        </div>
+
+        <div class="zeus-oracle-box" style="margin-top: 12px;">
           <div class="zeus-oracle-quote" id="zeus-quote">"The oracles ponder the coming winds."</div>
           <div class="zeus-updated" id="last-updated">Syncing...</div>
         </div>
@@ -145,9 +166,9 @@
               <div class="mini-stat-sub" id="lifted-desc">Low updraft risk</div>
             </div>
             <div class="mini-stat">
-              <div class="mini-stat-label">Storm Simulation</div>
-              <div class="mini-stat-value" id="storm-sim-status">Auto</div>
-              <div class="mini-stat-sub">Reactive to sky code</div>
+              <div class="mini-stat-label">Region Mode</div>
+              <div class="mini-stat-value" id="region-mode-value">--</div>
+              <div class="mini-stat-sub" id="comfort-level-sub">Comfort: --</div>
             </div>
             <div class="mini-stat">
               <div class="mini-stat-label">Peak Gusts</div>
@@ -177,11 +198,140 @@
             <circle cx="12" cy="12" r="10"></circle>
             <polyline points="12 6 12 12 16 14"></polyline>
           </svg>
-          24-Hour Atmospheric Horizon
+          24-Hour Consensus Horizon
         </span>
         <span id="hourly-summary-label">Next 24 hours</span>
       </div>
       <div class="hourly-scroll" id="hourly-scroll"></div>
+    </section>
+
+    <!-- PANDA DATASET & MULTI-MODEL CONSENSUS WORKBENCH -->
+    <section class="workbench-section" aria-label="Panda Dataset &amp; Consensus Workbench">
+      <div class="workbench-header glass-card">
+        <div class="workbench-title-group">
+          <div class="workbench-title">
+            🐼 Panda ZüsAPI v2.0 Dataset &amp; Multi-Model Consensus Workbench
+          </div>
+          <div class="workbench-subtitle" id="panda-engine-subtitle">
+            Live PostGIS verification loop, dynamic NWP accuracy weighting (MAE + MOS bias), and hyperlocal station assimilation (`192.168.1.65:8000`)
+          </div>
+        </div>
+        <div class="workbench-actions">
+          <button type="button" class="pill-btn" id="refresh-dataset-btn">
+            🔄 Re-Sync Panda
+          </button>
+          <button type="button" class="pill-btn gold-btn" id="inspect-json-btn">
+            { } Inspect Raw Dataset JSON
+          </button>
+        </div>
+      </div>
+
+      <!-- PostGIS Live Database KPIs + Active Tracked Grid Cells -->
+      <article class="workbench-card glass-card">
+        <div class="card-section-title">
+          <span>🗄️ Panda PostGIS Telemetry Store &amp; Active "Follow-the-User" Grid Cells</span>
+          <span id="postgis-engine-label">PostgreSQL 16 + PostGIS 3.4 (NVMe)</span>
+        </div>
+
+        <div class="db-kpi-grid" id="db-kpi-grid">
+          <div class="db-kpi-box">
+            <div class="db-kpi-label">Database Size</div>
+            <div class="db-kpi-val" id="kpi-db-size">--</div>
+            <div class="db-kpi-sub">PostGIS NVMe store</div>
+          </div>
+          <div class="db-kpi-box">
+            <div class="db-kpi-label">Tracked Grid Cells</div>
+            <div class="db-kpi-val" id="kpi-cells">--</div>
+            <div class="db-kpi-sub">30-min auto verification</div>
+          </div>
+          <div class="db-kpi-box">
+            <div class="db-kpi-label">Indexed Stations</div>
+            <div class="db-kpi-val" id="kpi-stations">--</div>
+            <div class="db-kpi-sub">METAR &amp; CWOP PWS</div>
+          </div>
+          <div class="db-kpi-box">
+            <div class="db-kpi-label">Station Observations</div>
+            <div class="db-kpi-val" id="kpi-obs">--</div>
+            <div class="db-kpi-sub">Ground-truth readings</div>
+          </div>
+          <div class="db-kpi-box">
+            <div class="db-kpi-label">Forecast Snapshots</div>
+            <div class="db-kpi-val" id="kpi-snapshots">--</div>
+            <div class="db-kpi-sub">NWP model runs archived</div>
+          </div>
+          <div class="db-kpi-box">
+            <div class="db-kpi-label">Verified Predictions</div>
+            <div class="db-kpi-val" id="kpi-verified">--</div>
+            <div class="db-kpi-sub">Graded against stations</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card-section-title" style="margin-bottom: 6px;">
+            <span>📍 Active Tracked Grid Cells on Panda (Click to Load Cell Dataset)</span>
+          </div>
+          <div class="active-cells-list" id="active-cells-list">
+            <span class="search-result-meta">Querying Panda PostGIS active_cells...</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- Side-by-Side: Model Accuracy Leaderboard + Hyperlocal Station Assimilation -->
+      <div class="workbench-grid">
+        <!-- Multi-Model Accuracy & MOS Bias Leaderboard -->
+        <article class="workbench-card glass-card">
+          <div class="card-section-title">
+            <span>🏆 Multi-Model Accuracy Leaderboard &amp; MOS Bias</span>
+            <span id="leaderboard-cell-label">Cell Weights</span>
+          </div>
+          <div class="table-scroll">
+            <table class="zus-table">
+              <thead>
+                <tr>
+                  <th>Model</th>
+                  <th>Ensemble Weight</th>
+                  <th>Accuracy</th>
+                  <th>MAE</th>
+                  <th>MOS Bias</th>
+                  <th>Samples</th>
+                </tr>
+              </thead>
+              <tbody id="model-weights-tbody">
+                <tr>
+                  <td colspan="6" style="color: var(--zeus-text-muted);">Loading model weights from Panda...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <!-- Hyperlocal Station Assimilation (METAR / CWOP PWS) -->
+        <article class="workbench-card glass-card">
+          <div class="card-section-title">
+            <span>📡 Hyperlocal Station Assimilation (Lapse-Rate Adjusted)</span>
+            <span id="stations-count-label">Nearby Ground Truth</span>
+          </div>
+          <div class="table-scroll">
+            <table class="zus-table">
+              <thead>
+                <tr>
+                  <th>Station</th>
+                  <th>Network</th>
+                  <th>Dist / Elev</th>
+                  <th>Raw → Adj Temp</th>
+                  <th>RH / Wind</th>
+                  <th>MADIS QC</th>
+                </tr>
+              </thead>
+              <tbody id="nearby-stations-tbody">
+                <tr>
+                  <td colspan="6" style="color: var(--zeus-text-muted);">Loading assimilated stations from Panda...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
     </section>
 
     <!-- Bottom Grid: 10-Day Forecast + Atmospheric Details -->
@@ -215,7 +365,7 @@
 
         <article class="detail-card glass-card">
           <div class="card-section-title">
-            <span>💧 Humidity</span>
+            <span>💧 Humidity &amp; Dew Point</span>
           </div>
           <div class="detail-value" id="detail-humidity">--%</div>
           <div class="detail-sub" id="detail-dewpoint">Dew point: --</div>
@@ -263,13 +413,16 @@
     <!-- Footer -->
     <footer class="site-footer glass-card">
       <div>
-        <strong>ZüsCast (zuscast.com)</strong> — Web companion to the native <strong>Züs iOS 17+</strong> app &amp; <strong>ZüsAPI</strong> telemetry engine.
+        <strong>ZüsCast (zuscast.com)</strong> — Powered by <strong>ZüsAPI v2.0 on Panda (`192.168.1.65:8000`)</strong> &amp; <strong>Züs iOS 17+</strong>.
       </div>
       <div class="footer-links">
         <button type="button" class="footer-link" id="footer-storm-toggle">⚡ Toggle Storm Mode</button>
-        <button type="button" class="footer-link" id="footer-api-btn">Configure ZüsAPI</button>
+        <button type="button" class="footer-link" id="footer-api-btn">Configure Panda API</button>
+        <a href="https://github.com/Njordanet/zuscast.com" target="_blank" rel="noopener noreferrer" class="footer-link">
+          zuscast.com Repo ↗
+        </a>
         <a href="https://github.com/Njordanet/Zus" target="_blank" rel="noopener noreferrer" class="footer-link">
-          GitHub Repository ↗
+          Züs iOS &amp; API Repo ↗
         </a>
       </div>
     </footer>
@@ -279,24 +432,38 @@
   <div class="modal-backdrop" id="api-modal" role="dialog" aria-modal="true" aria-labelledby="api-modal-title">
     <div class="modal-panel glass-card">
       <div class="modal-header">
-        <div class="modal-title" id="api-modal-title">⚡ ZüsAPI Telemetry Endpoint</div>
+        <div class="modal-title" id="api-modal-title">🐼 Panda ZüsAPI v2.0 Endpoint</div>
         <button type="button" class="modal-close" id="api-modal-close" aria-label="Close">&times;</button>
       </div>
       <div class="modal-field">
-        <label for="zus-api-url-input">Custom ZüsAPI Base URL (Optional)</label>
+        <label for="zus-api-url-input">Primary ZüsAPI Base URL</label>
         <input
           type="url"
           id="zus-api-url-input"
-          placeholder="e.g. https://api.zuscast.com/api/v1 or http://192.168.1.65:8000/api/v1"
+          placeholder="http://192.168.1.65:8000/api/v1"
         />
         <div class="modal-help">
-          Just like the Züs iOS client, ZüsCast queries your configured <code>ZüsAPI</code> server first
-          (<code>/weather</code> &amp; <code>/lightning</code>) and seamlessly falls back to direct Open-Meteo REST telemetry when offline or unconfigured.
+          Defaults to your Ubuntu server <code>panda</code> at <code>http://192.168.1.65:8000/api/v1</code>.
+          Queries <code>/weather</code>, <code>/lightning</code>, <code>/dataset/inventory</code>, and <code>/dataset/leaderboard</code>.
         </div>
       </div>
       <div class="modal-actions">
-        <button type="button" class="pill-btn" id="api-reset-btn">Use Direct Open-Meteo</button>
+        <button type="button" class="pill-btn" id="api-reset-btn">Reset to Panda Default</button>
         <button type="button" class="pill-btn gold-btn" id="api-save-btn">Save &amp; Sync</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Raw Dataset JSON Inspector Modal -->
+  <div class="modal-backdrop" id="json-modal" role="dialog" aria-modal="true" aria-labelledby="json-modal-title">
+    <div class="modal-panel glass-card" style="max-width: 780px;">
+      <div class="modal-header">
+        <div class="modal-title" id="json-modal-title">{ } Live ZüsAPI / iOS Dataset Schema Inspector</div>
+        <button type="button" class="modal-close" id="json-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <pre class="json-viewer" id="json-viewer-content">Loading...</pre>
+      <div class="modal-actions">
+        <button type="button" class="pill-btn gold-btn" id="copy-json-btn">Copy JSON Payload</button>
       </div>
     </div>
   </div>

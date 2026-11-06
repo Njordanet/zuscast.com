@@ -1,7 +1,10 @@
 /**
- * ZüsCast (zuscast.com) — Web Weather Dashboard & Lightning Telemetry Engine
- * Mirrors the architecture, models, and Zeus theme of the native Züs iOS client.
+ * ZüsCast (zuscast.com) — Web Weather Dashboard & Panda v2.0 Dataset Workbench
+ * Connected by default to ZüsAPI v2.0 on PC `panda` (http://192.168.1.65:8000/api/v1)
+ * with automatic GPS location acquisition on startup.
  */
+
+const DEFAULT_PANDA_API = "http://192.168.1.65:8000/api/v1";
 
 const SACRED_PRESETS = [
   { name: "Mount Olympus", country: "Greece", latitude: 40.0856, longitude: 22.3585 },
@@ -169,20 +172,38 @@ function getWeatherSVG(type) {
 
 /* Application State */
 const state = {
-  location: { ...SACRED_PRESETS[0] },
+  location: { ...SACRED_PRESETS[2] }, // Default to New York while awaiting GPS
   useFahrenheit: localStorage.getItem("zus_unit_f") !== "false",
-  zusApiUrl: localStorage.getItem("zus_api_url") || "",
+  zusApiUrl: localStorage.getItem("zus_api_url") || DEFAULT_PANDA_API,
   forcedStormMode: false,
   weather: null,
+  rawPandaPayload: null,
+  pandaInventory: null,
   radarBlips: [],
   radarAngle: 0,
 };
 
 /* Utility Formatters */
-function formatTemp(celsius) {
+function formatTemp(celsius, showUnit = false) {
   if (celsius === null || celsius === undefined || Number.isNaN(celsius)) return "--°";
   const val = state.useFahrenheit ? (celsius * 9) / 5 + 32 : celsius;
-  return `${Math.round(val)}°`;
+  const suffix = showUnit ? (state.useFahrenheit ? "°F" : "°C") : "°";
+  return `${Math.round(val)}${suffix}`;
+}
+
+function formatTempExact(celsius) {
+  if (celsius === null || celsius === undefined || Number.isNaN(celsius)) return "--";
+  const val = state.useFahrenheit ? (celsius * 9) / 5 + 32 : celsius;
+  const unit = state.useFahrenheit ? "°F" : "°C";
+  return `${val.toFixed(1)}${unit}`;
+}
+
+function formatTempDelta(deltaCelsius) {
+  if (deltaCelsius === null || deltaCelsius === undefined || Number.isNaN(deltaCelsius)) return "--";
+  const val = state.useFahrenheit ? deltaCelsius * 1.8 : deltaCelsius;
+  const unit = state.useFahrenheit ? "°F" : "°C";
+  const sign = val > 0 ? "+" : "";
+  return `${sign}${val.toFixed(2)}${unit}`;
 }
 
 function formatWind(kmh) {
@@ -227,7 +248,77 @@ function renderPresets() {
   });
 }
 
-/* Fetch Weather + Convective Telemetry */
+/* Fetch Panda PostGIS Inventory */
+async function fetchPandaInventory(baseUrl) {
+  try {
+    const resp = await fetch(`${baseUrl}/dataset/inventory`);
+    if (!resp.ok) return null;
+    const inv = await resp.json();
+    state.pandaInventory = inv;
+    renderPandaInventory(inv);
+    return inv;
+  } catch (_) {
+    return null;
+  }
+}
+
+function renderPandaInventory(inv) {
+  const db = inv?.database;
+  if (!db) return;
+
+  document.getElementById("postgis-engine-label").textContent =
+    db.engine || "PostgreSQL 16 + PostGIS 3.4";
+  document.getElementById("kpi-db-size").textContent = db.database_size || "--";
+  document.getElementById("kpi-cells").textContent = String(db.tracked_cells_count ?? 0);
+  document.getElementById("kpi-stations").textContent = String(db.stations_indexed ?? 0);
+  document.getElementById("kpi-obs").textContent = String(
+    db.station_observations_stored ?? 0
+  );
+  document.getElementById("kpi-snapshots").textContent = String(
+    db.forecast_snapshots_stored ?? 0
+  );
+  document.getElementById("kpi-verified").textContent = String(
+    db.verified_predictions_count ?? 0
+  );
+
+  const cellsContainer = document.getElementById("active-cells-list");
+  const cells = db.active_cells || [];
+  if (!cells.length) {
+    cellsContainer.innerHTML = `<span class="search-result-meta">No active cells recorded yet.</span>`;
+    return;
+  }
+
+  cellsContainer.innerHTML = "";
+  cells.forEach((cell) => {
+    const [latStr, lonStr] = String(cell.cell_id || "").split(":");
+    const lat = parseFloat(latStr);
+    const lon = parseFloat(lonStr);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cell-chip";
+    btn.innerHTML = `
+      <strong>${cell.city_name}</strong>
+      <span class="cell-chip-meta">${cell.cell_id} &bull; ${cell.region_mode} &bull; ${Math.round(
+      cell.elevation_m || 0
+    )}m &bull; ${cell.request_count} reqs</span>
+    `;
+    btn.addEventListener("click", () => {
+      if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+        state.location = {
+          name: cell.city_name,
+          country: `${cell.region_mode} (${cell.cell_id})`,
+          latitude: lat,
+          longitude: lon,
+        };
+        renderPresets();
+        loadWeatherForCurrentLocation();
+      }
+    });
+    cellsContainer.appendChild(btn);
+  });
+}
+
+/* Fetch Weather + Convective Telemetry + Panda Dataset */
 async function loadWeatherForCurrentLocation() {
   const { latitude, longitude, name, country } = state.location;
   document.getElementById("hero-city").textContent = name;
@@ -239,12 +330,18 @@ async function loadWeatherForCurrentLocation() {
   document.getElementById("hero-coords").textContent = `${Math.abs(latitude).toFixed(
     4
   )}° ${latDir}, ${Math.abs(longitude).toFixed(4)}° ${lonDir}`;
-  document.getElementById("last-updated").textContent = "Syncing skies...";
+  document.getElementById("last-updated").textContent = "Syncing Panda ZüsAPI...";
 
-  // 1. Try custom ZüsAPI if configured
-  if (state.zusApiUrl) {
+  // 1. Query Panda ZüsAPI v2.0 first
+  const candidateUrls = [
+    state.zusApiUrl,
+    DEFAULT_PANDA_API,
+    "http://panda.local:8000/api/v1",
+  ].filter((v, i, a) => v && a.indexOf(v) === i);
+
+  for (const rawBase of candidateUrls) {
     try {
-      const base = state.zusApiUrl.replace(/\/+$/, "");
+      const base = rawBase.replace(/\/+$/, "");
       const [wResp, lResp] = await Promise.all([
         fetch(
           `${base}/weather?lat=${latitude}&lon=${longitude}&city=${encodeURIComponent(name)}`
@@ -254,16 +351,25 @@ async function loadWeatherForCurrentLocation() {
       if (wResp.ok) {
         const wData = await wResp.json();
         const lData = lResp.ok ? await lResp.json() : null;
+        const invData = await fetchPandaInventory(base);
+
+        state.rawPandaPayload = {
+          endpoint: base,
+          weather: wData,
+          lightning: lData,
+          inventory: invData,
+        };
+
         state.weather = normalizeZusApiResponse(wData, lData);
-        updateDashboardUI("ZüsAPI Live");
+        updateDashboardUI(wData.source || "Panda ZüsAPI v2.0", true);
         return;
       }
     } catch (_) {
-      // Fallback to Open-Meteo
+      // Try next candidate URL or fall back to Open-Meteo
     }
   }
 
-  // 2. Direct Open-Meteo Forecast + Convective Telemetry
+  // 2. Fallback to Direct Open-Meteo if Panda is unreachable (e.g. off-LAN or HTTPS Mixed Content)
   try {
     const params = new URLSearchParams({
       latitude: String(latitude),
@@ -281,13 +387,80 @@ async function loadWeatherForCurrentLocation() {
     const resp = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const raw = await resp.json();
+    state.rawPandaPayload = {
+      note: "Panda LAN endpoint (http://192.168.1.65:8000) was unreachable from this browser context (e.g. HTTPS mixed-content or off-LAN). Showing Open-Meteo direct feed.",
+      openMeteoRaw: raw,
+    };
     state.weather = normalizeOpenMeteoResponse(raw);
-    updateDashboardUI("Open-Meteo Live");
+    updateDashboardUI("Open-Meteo Fallback", false);
   } catch (err) {
     document.getElementById("last-updated").textContent = "Offline fallback active";
-    state.weather = buildMockFallback();
-    updateDashboardUI("Olympus Offline Sim");
   }
+}
+
+function normalizeZusApiResponse(wData, lData) {
+  const curr = wData.current || {};
+  const condMap = {
+    Clear: 0,
+    "Partly Cloudy": 2,
+    Overcast: 3,
+    Foggy: 45,
+    Drizzle: 51,
+    Rain: 61,
+    "Heavy Rain": 65,
+    Snow: 71,
+    Thunderstorm: 95,
+    "Severe Thunderstorm": 99,
+  };
+  const wmoCode = condMap[curr.condition] ?? 0;
+  return {
+    temperature: curr.temperature,
+    feelsLike: curr.feelsLike,
+    humidity: curr.humidity,
+    pressure: curr.airPressure,
+    windSpeed: curr.windSpeed,
+    windDirection: curr.windDirection,
+    windGusts: curr.windSpeed * 1.28,
+    wmoCode,
+    tempMax: curr.tempMax,
+    tempMin: curr.tempMin,
+    uvIndex: curr.uvIndex ?? 5,
+    sunrise: null,
+    sunset: null,
+    visibilityKm: curr.visibility ?? 10,
+    cape: lData?.capeJkg ?? 120,
+    liftedIndex: lData?.liftedIndex ?? 1.2,
+    // Panda v2.0 Consensus & Hyperlocal Fields
+    consensusScore: curr.consensusScore ?? 95,
+    dominantModel: curr.dominantModel || "Multi-Model Blend",
+    localStationName: curr.localStationName || null,
+    localStationDistanceKm: curr.localStationDistanceKm ?? null,
+    elevationMeters: curr.elevationMeters ?? null,
+    usAqi: curr.usAqi ?? null,
+    aqiCategory: curr.aqiCategory || null,
+    dewPoint: curr.dewPoint ?? null,
+    comfortLevel: curr.comfortLevel || "Comfortable",
+    nowcastSummary:
+      wData.nowcast?.summaryText ||
+      curr.nowcastSummary ||
+      "Clear skies for the next 60 minutes.",
+    regionMode: wData.regionMode || "GLOBAL_ENSEMBLE",
+    modelWeights: wData.modelWeights || [],
+    nearbyStations: wData.nearbyStations || [],
+    hourly: (wData.hourly || []).map((item) => ({
+      time: new Date(item.time),
+      temperature: item.temperature,
+      wmoCode: condMap[item.condition] ?? 0,
+      precipProb: item.precipitationChance ?? 0,
+    })),
+    daily: (wData.daily || []).map((item) => ({
+      date: new Date(item.date),
+      wmoCode: condMap[item.condition] ?? 0,
+      tempMin: item.minTemperature,
+      tempMax: item.maxTemperature,
+      precipProb: item.precipitationChance ?? 0,
+    })),
+  };
 }
 
 function normalizeOpenMeteoResponse(raw) {
@@ -295,7 +468,6 @@ function normalizeOpenMeteoResponse(raw) {
   const h = raw.hourly || {};
   const d = raw.daily || {};
 
-  // Find current hour index in hourly array
   const nowMs = Date.now();
   let startIdx = 0;
   if (Array.isArray(h.time)) {
@@ -349,106 +521,33 @@ function normalizeOpenMeteoResponse(raw) {
     visibilityKm: visibilityMeters / 1000,
     cape,
     liftedIndex,
+    consensusScore: 90,
+    dominantModel: "Open-Meteo Direct",
+    localStationName: "Direct Grid Cell",
+    localStationDistanceKm: 0,
+    elevationMeters: raw.elevation ?? 0,
+    usAqi: null,
+    aqiCategory: null,
+    dewPoint: c.temperature_2m - (100 - c.relative_humidity_2m) / 5,
+    comfortLevel: "Standard",
+    nowcastSummary: "Direct Open-Meteo feed active (connect over HTTP LAN for Panda PostGIS).",
+    regionMode: "DIRECT_OPEN_METEO",
+    modelWeights: [],
+    nearbyStations: [],
     hourly,
     daily,
   };
 }
 
-function normalizeZusApiResponse(wData, lData) {
-  const curr = wData.current || {};
-  const condMap = {
-    Clear: 0,
-    "Partly Cloudy": 2,
-    Overcast: 3,
-    Foggy: 45,
-    Drizzle: 51,
-    Rain: 61,
-    "Heavy Rain": 65,
-    Snow: 71,
-    Thunderstorm: 95,
-    "Severe Thunderstorm": 99,
-  };
-  const wmoCode = condMap[curr.condition] ?? 0;
-  return {
-    temperature: curr.temperature,
-    feelsLike: curr.feelsLike,
-    humidity: curr.humidity,
-    pressure: curr.airPressure,
-    windSpeed: curr.windSpeed,
-    windDirection: curr.windDirection,
-    windGusts: curr.windSpeed * 1.3,
-    wmoCode,
-    tempMax: curr.tempMax,
-    tempMin: curr.tempMin,
-    uvIndex: curr.uvIndex ?? 5,
-    sunrise: null,
-    sunset: null,
-    visibilityKm: curr.visibility ?? 10,
-    cape: lData?.capeJkg ?? 120,
-    liftedIndex: lData?.liftedIndex ?? 1.2,
-    hourly: (wData.hourly || []).map((item) => ({
-      time: new Date(item.time),
-      temperature: item.temperature,
-      wmoCode: condMap[item.condition] ?? 0,
-      precipProb: item.precipitationChance ?? 0,
-    })),
-    daily: (wData.daily || []).map((item) => ({
-      date: new Date(item.date),
-      wmoCode: condMap[item.condition] ?? 0,
-      tempMin: item.minTemperature,
-      tempMax: item.maxTemperature,
-      precipProb: item.precipitationChance ?? 0,
-    })),
-  };
-}
-
-function buildMockFallback() {
-  const now = Date.now();
-  return {
-    temperature: 19,
-    feelsLike: 18,
-    humidity: 68,
-    pressure: 1012,
-    windSpeed: 24,
-    windDirection: 240,
-    windGusts: 38,
-    wmoCode: 95,
-    tempMax: 22,
-    tempMin: 13,
-    uvIndex: 6,
-    sunrise: new Date().setHours(6, 24),
-    sunset: new Date().setHours(19, 48),
-    visibilityKm: 9.5,
-    cape: 1450,
-    liftedIndex: -3.2,
-    hourly: Array.from({ length: 24 }, (_, i) => ({
-      time: new Date(now + i * 3600000),
-      temperature: 18 + Math.sin(i / 4) * 4,
-      wmoCode: i % 5 === 0 ? 95 : 2,
-      precipProb: i % 5 === 0 ? 80 : 20,
-    })),
-    daily: Array.from({ length: 10 }, (_, i) => ({
-      date: new Date(now + i * 86400000),
-      wmoCode: i === 0 || i === 4 ? 95 : i % 2 === 0 ? 0 : 2,
-      tempMin: 12 + (i % 3),
-      tempMax: 22 + (i % 4),
-      precipProb: i === 0 || i === 4 ? 85 : 15,
-    })),
-  };
-}
-
-/* Update All Dashboard UI Elements */
-function updateDashboardUI(sourceName) {
+/* Update All Dashboard & Panda Workbench UI Elements */
+function updateDashboardUI(sourceName, isPandaConnected) {
   const w = state.weather;
   if (!w) return;
 
   const effectiveWmo = state.forcedStormMode ? 96 : w.wmoCode;
   const cond = conditionFromWMO(effectiveWmo);
 
-  // Body theme class
   document.body.className = cond.theme;
-
-  // Source badge
   document.getElementById("data-source-text").textContent = sourceName;
 
   // Hero card
@@ -462,10 +561,36 @@ function updateDashboardUI(sourceName) {
     w.feelsLike
   )}`;
   document.getElementById("zeus-quote").textContent = `"${cond.quote}"`;
-  document.getElementById("last-updated").textContent = `Updated ${new Date().toLocaleTimeString(
+  document.getElementById("last-updated").textContent = `Synced ${new Date().toLocaleTimeString(
     [],
-    { hour: "2-digit", minute: "2-digit" }
+    { hour: "2-digit", minute: "2-digit", second: "2-digit" }
   )}`;
+
+  // Consensus & Hyperlocal Banner
+  document.getElementById("chip-consensus").textContent = `${w.consensusScore ?? 95}%`;
+  document.getElementById("chip-model").textContent = w.dominantModel || "Ensemble";
+  if (w.localStationName) {
+    const dist =
+      w.localStationDistanceKm !== null && w.localStationDistanceKm !== undefined
+        ? ` (${w.localStationDistanceKm.toFixed(1)} km)`
+        : "";
+    document.getElementById("chip-station").textContent = `${w.localStationName}${dist}`;
+  } else {
+    document.getElementById("chip-station").textContent = "Grid Interpolated";
+  }
+  const elevStr =
+    w.elevationMeters !== null && w.elevationMeters !== undefined
+      ? `${Math.round(w.elevationMeters)}m`
+      : "--";
+  const aqiStr =
+    w.usAqi !== null && w.usAqi !== undefined
+      ? `${w.usAqi} (${w.aqiCategory || "Good"})`
+      : "N/A";
+  document.getElementById("chip-elev").textContent = elevStr;
+  document.getElementById("chip-aqi").textContent = aqiStr;
+  document.getElementById(
+    "nowcast-summary-text"
+  ).textContent = `📡 60-Min Radar Nowcast: ${w.nowcastSummary}`;
 
   // Convective & Lightning Telemetry
   const effectiveCape = state.forcedStormMode ? Math.max(w.cape, 2650) : w.cape;
@@ -510,9 +635,11 @@ function updateDashboardUI(sourceName) {
       ? "Unstable parcel lift"
       : "Low updraft risk";
 
-  document.getElementById("storm-sim-status").textContent = state.forcedStormMode
-    ? "Wrath Active ⚡"
-    : "Auto Sky";
+  document.getElementById("region-mode-value").textContent =
+    w.regionMode === "US_HYPERLOCAL" ? "US Hyperlocal" : "Global Ensemble";
+  document.getElementById("comfort-level-sub").textContent = `Comfort: ${
+    w.comfortLevel || "Optimal"
+  }`;
   document.getElementById("gust-value").textContent = formatWind(w.windGusts);
 
   const capePct = Math.min(100, Math.max(5, (effectiveCape / 3000) * 100));
@@ -521,8 +648,13 @@ function updateDashboardUI(sourceName) {
     "cape-scale-readout"
   ).textContent = `${Math.round(effectiveCape)} / 3000 J/kg`;
 
-  // Regenerate radar strike blips based on threat
   regenerateRadarBlips(effectiveCape, effectiveWmo);
+
+  // Render Panda Model Weights Leaderboard
+  renderModelWeightsTable(w.modelWeights, w.regionMode);
+
+  // Render Panda Nearby Hyperlocal Stations Table
+  renderNearbyStationsTable(w.nearbyStations);
 
   // 24-Hour Strip
   const hourlyScroll = document.getElementById("hourly-scroll");
@@ -586,10 +718,13 @@ function updateDashboardUI(sourceName) {
   }° (${compassDirection(w.windDirection)})`;
 
   document.getElementById("detail-humidity").textContent = `${Math.round(w.humidity)}%`;
-  const dewPointC = w.temperature - (100 - w.humidity) / 5;
-  document.getElementById(
-    "detail-dewpoint"
-  ).textContent = `Dew point: ${formatTemp(dewPointC)}`;
+  const dewPointC =
+    w.dewPoint !== null && w.dewPoint !== undefined
+      ? w.dewPoint
+      : w.temperature - (100 - w.humidity) / 5;
+  document.getElementById("detail-dewpoint").textContent = `Dew point: ${formatTemp(
+    dewPointC
+  )} (${w.comfortLevel || "Optimal"})`;
 
   const uv = Math.round(w.uvIndex * 10) / 10;
   document.getElementById("detail-uv").textContent = `${uv}`;
@@ -630,7 +765,84 @@ function updateDashboardUI(sourceName) {
   }
 }
 
-/* Convective Radar Canvas (50km Strike Sweep) */
+function renderModelWeightsTable(models, regionMode) {
+  const tbody = document.getElementById("model-weights-tbody");
+  const cellLabel = `${state.location.latitude.toFixed(1)}:${state.location.longitude.toFixed(
+    1
+  )} (${regionMode || "ENSEMBLE"})`;
+  document.getElementById("leaderboard-cell-label").textContent = cellLabel;
+
+  if (!models || !models.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="color: var(--zeus-text-muted);">Connect to Panda ZüsAPI (http://localhost:8080 or LAN) to view live NWP model weights.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = "";
+  models.forEach((m) => {
+    const pctWeight = Math.round((m.weight || 0) * 100);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><span class="model-name-badge">⚡ ${m.modelName}</span></td>
+      <td>
+        <div class="weight-bar-wrap">
+          <div class="weight-bar-track">
+            <div class="weight-bar-fill" style="width: ${Math.min(100, pctWeight * 2)}%"></div>
+          </div>
+          <span>${pctWeight}%</span>
+        </div>
+      </td>
+      <td style="color: var(--zeus-success); font-weight: 700;">${Number(
+        m.accuracyPercent || 0
+      ).toFixed(1)}%</td>
+      <td>${formatTempDelta(m.maeCelsius).replace("+", "")}</td>
+      <td>${formatTempDelta(m.biasCelsius)}</td>
+      <td>${m.samplesVerified ?? 0}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderNearbyStationsTable(stations) {
+  const tbody = document.getElementById("nearby-stations-tbody");
+  document.getElementById("stations-count-label").textContent = `${
+    stations?.length || 0
+  } Stations Assimilated`;
+
+  if (!stations || !stations.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="color: var(--zeus-text-muted);">No local PWS/METAR stations returned for this grid cell.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = "";
+  stations.forEach((s) => {
+    const qcClass = s.qcPassed ? "qc-pass" : "qc-fail";
+    const qcText = s.qcPassed ? `PASS (z=${Number(s.zScore || 0).toFixed(1)})` : "REJECTED";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>
+        <strong>${s.stationId}</strong>
+        <div style="font-size: 0.7rem; color: var(--zeus-text-muted);">${s.stationName}</div>
+      </td>
+      <td><span class="telemetry-chip">${s.network}</span></td>
+      <td>${Number(s.distanceKm || 0).toFixed(1)} km &bull; ${Math.round(
+      s.elevationMeters || 0
+    )}m</td>
+      <td>
+        ${formatTempExact(s.rawTempCelsius)} &rarr;
+        <strong style="color: var(--zeus-gold);">${formatTempExact(
+          s.elevationAdjustedTempCelsius
+        )}</strong>
+      </td>
+      <td>${s.humidity !== null ? `${s.humidity}%` : "--"} &bull; ${
+      s.windSpeedKmh !== null ? formatWind(s.windSpeedKmh) : "--"
+    }</td>
+      <td><span class="qc-badge ${qcClass}">${qcText}</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+/* Convective Radar Canvas */
 function regenerateRadarBlips(cape, wmoCode) {
   let count = 0;
   if (wmoCode >= 95 || cape >= 1200) count = 9;
@@ -643,7 +855,6 @@ function regenerateRadarBlips(cape, wmoCode) {
     return {
       x: 59 + Math.cos(angle) * dist,
       y: 59 + Math.sin(angle) * dist,
-      alpha: Math.random(),
     };
   });
 }
@@ -658,7 +869,6 @@ function animateRadar() {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Rings
   ctx.strokeStyle = "rgba(255, 214, 0, 0.18)";
   ctx.lineWidth = 1;
   [18, 36, 52].forEach((radius) => {
@@ -667,7 +877,6 @@ function animateRadar() {
     ctx.stroke();
   });
 
-  // Crosshair
   ctx.beginPath();
   ctx.moveTo(cx - r, cy);
   ctx.lineTo(cx + r, cy);
@@ -675,7 +884,6 @@ function animateRadar() {
   ctx.lineTo(cx, cy + r);
   ctx.stroke();
 
-  // Sweep line
   state.radarAngle = (state.radarAngle + 0.03) % (Math.PI * 2);
   const grad = ctx.createConicGradient(state.radarAngle, cx, cy);
   grad.addColorStop(0, "rgba(255, 214, 0, 0.35)");
@@ -687,7 +895,6 @@ function animateRadar() {
   ctx.arc(cx, cy, 52, 0, Math.PI * 2);
   ctx.fill();
 
-  // Strike blips
   state.radarBlips.forEach((b) => {
     ctx.fillStyle = `rgba(255, 214, 0, ${0.45 + 0.5 * Math.sin(Date.now() * 0.006 + b.x)})`;
     ctx.beginPath();
@@ -716,7 +923,6 @@ const stormEngine = {
       y: Math.random() * window.innerHeight,
       len: 12 + Math.random() * 18,
       speed: 7 + Math.random() * 8,
-      opacity: 0.1 + Math.random() * 0.25,
     }));
 
     const loop = () => {
@@ -725,7 +931,6 @@ const stormEngine = {
     };
     requestAnimationFrame(loop);
 
-    // Periodic ambient lightning when in storm condition
     setInterval(() => {
       const wmo = state.forcedStormMode ? 96 : state.weather?.wmoCode ?? 0;
       if (wmo >= 95 && Math.random() < 0.45) {
@@ -736,8 +941,7 @@ const stormEngine = {
 
   triggerBolt(customX) {
     const canvas = document.getElementById("storm-canvas");
-    const startX =
-      customX ?? canvas.width * (0.2 + Math.random() * 0.6);
+    const startX = customX ?? canvas.width * (0.2 + Math.random() * 0.6);
     const segments = [];
     let x = startX;
     let y = 0;
@@ -748,7 +952,6 @@ const stormEngine = {
       const nextY = y + 18 + Math.random() * 28;
       segments.push({ x1: x, y1: y, x2: nextX, y2: nextY, width: 2.8 });
 
-      // Occasional branch
       if (Math.random() < 0.28) {
         let bx = nextX;
         let by = nextY;
@@ -766,7 +969,6 @@ const stormEngine = {
 
     this.bolts.push({ segments, alpha: 1.0 });
 
-    // Ambient screen flash
     const flash = document.getElementById("lightning-flash");
     flash.style.opacity = "0.85";
     setTimeout(() => {
@@ -799,7 +1001,6 @@ const stormEngine = {
       });
     }
 
-    // Draw active lightning bolts
     for (let i = this.bolts.length - 1; i >= 0; i--) {
       const bolt = this.bolts[i];
       ctx.save();
@@ -823,7 +1024,7 @@ const stormEngine = {
   },
 };
 
-/* City Search (Open-Meteo Geocoding API) */
+/* City Search */
 function setupCitySearch() {
   const input = document.getElementById("city-search-input");
   const dropdown = document.getElementById("search-dropdown");
@@ -888,45 +1089,62 @@ function setupCitySearch() {
   });
 }
 
-/* Geolocation Handler */
-function setupGeolocation() {
+/* Geolocation Handler (Automatic on Startup + Manual Button) */
+function acquireUserLocation(isAutoStartup = false) {
+  if (!navigator.geolocation) {
+    if (isAutoStartup) loadWeatherForCurrentLocation();
+    return;
+  }
+
   const btn = document.getElementById("locate-me-btn");
-  btn.addEventListener("click", () => {
-    if (!navigator.geolocation) return;
-    btn.textContent = "Locating...";
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        let cityName = "Current Skies";
-        let country = "GPS Telemetry";
-        try {
-          const rev = await fetch(
-            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
-          );
-          if (rev.ok) {
-            const info = await rev.json();
-            cityName = info.city || info.locality || "Current Skies";
-            country = info.countryName || "GPS Telemetry";
-          }
-        } catch (_) {}
-        state.location = { name: cityName, country, latitude, longitude };
-        btn.innerHTML = `
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-            <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
-          </svg> Locate`;
-        renderPresets();
+  btn.textContent = "Locating...";
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      let cityName = "Current Location";
+      let country = "GPS Hyperlocal";
+      try {
+        const rev = await fetch(
+          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+        );
+        if (rev.ok) {
+          const info = await rev.json();
+          cityName = info.city || info.locality || "Current Location";
+          const admin = info.principalSubdivisionCode
+            ? info.principalSubdivisionCode.replace(/^US-/, "")
+            : info.countryName;
+          country = [admin, "GPS Hyperlocal"].filter(Boolean).join(" • ");
+        }
+      } catch (_) {}
+
+      state.location = { name: cityName, country, latitude, longitude };
+      btn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+        </svg> Locate`;
+      renderPresets();
+      loadWeatherForCurrentLocation();
+    },
+    () => {
+      btn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+        </svg> Locate`;
+      if (isAutoStartup) {
         loadWeatherForCurrentLocation();
-      },
-      () => {
-        btn.textContent = "Locate";
-      },
-      { timeout: 8000 }
-    );
-  });
+      }
+    },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+  );
 }
 
-/* Controls & Modal Bindings */
+/* Controls & Modals */
 function setupControls() {
+  document
+    .getElementById("locate-me-btn")
+    .addEventListener("click", () => acquireUserLocation(false));
+
   const unitBtn = document.getElementById("unit-toggle-btn");
   const updateUnitBtnLabel = () => {
     unitBtn.textContent = state.useFahrenheit ? "°F / mph" : "°C / km/h";
@@ -938,7 +1156,7 @@ function setupControls() {
     localStorage.setItem("zus_unit_f", String(state.useFahrenheit));
     updateUnitBtnLabel();
     if (state.weather) {
-      updateDashboardUI(document.getElementById("data-source-text").textContent);
+      updateDashboardUI(document.getElementById("data-source-text").textContent, true);
     }
   });
 
@@ -955,11 +1173,37 @@ function setupControls() {
       stormEngine.triggerBolt();
     }
     if (state.weather) {
-      updateDashboardUI(document.getElementById("data-source-text").textContent);
+      updateDashboardUI(document.getElementById("data-source-text").textContent, true);
     }
   });
 
-  // ZüsAPI Modal
+  document.getElementById("refresh-dataset-btn").addEventListener("click", () => {
+    loadWeatherForCurrentLocation();
+  });
+
+  // Raw Dataset JSON Modal
+  const jsonModal = document.getElementById("json-modal");
+  const jsonViewer = document.getElementById("json-viewer-content");
+  document.getElementById("inspect-json-btn").addEventListener("click", () => {
+    jsonViewer.textContent = JSON.stringify(
+      state.rawPandaPayload || state.weather || {},
+      null,
+      2
+    );
+    jsonModal.classList.add("open");
+  });
+  document.getElementById("json-modal-close").addEventListener("click", () => {
+    jsonModal.classList.remove("open");
+  });
+  document.getElementById("copy-json-btn").addEventListener("click", (e) => {
+    navigator.clipboard.writeText(jsonViewer.textContent);
+    e.target.textContent = "Copied!";
+    setTimeout(() => {
+      e.target.textContent = "Copy JSON Payload";
+    }, 1500);
+  });
+
+  // ZüsAPI Endpoint Modal
   const modal = document.getElementById("api-modal");
   const urlInput = document.getElementById("zus-api-url-input");
   const openModal = () => {
@@ -973,28 +1217,31 @@ function setupControls() {
   document.getElementById("api-modal-close").addEventListener("click", closeModal);
 
   document.getElementById("api-save-btn").addEventListener("click", () => {
-    state.zusApiUrl = urlInput.value.trim();
+    state.zusApiUrl = urlInput.value.trim() || DEFAULT_PANDA_API;
     localStorage.setItem("zus_api_url", state.zusApiUrl);
     closeModal();
     loadWeatherForCurrentLocation();
   });
 
   document.getElementById("api-reset-btn").addEventListener("click", () => {
-    state.zusApiUrl = "";
-    urlInput.value = "";
-    localStorage.removeItem("zus_api_url");
+    state.zusApiUrl = DEFAULT_PANDA_API;
+    urlInput.value = DEFAULT_PANDA_API;
+    localStorage.setItem("zus_api_url", DEFAULT_PANDA_API);
     closeModal();
     loadWeatherForCurrentLocation();
   });
 }
 
-/* Boot ZüsCast */
+/* Boot ZüsCast: Preload Panda Inventory + Auto-Request GPS Location */
 document.addEventListener("DOMContentLoaded", () => {
   renderPresets();
   setupCitySearch();
-  setupGeolocation();
   setupControls();
   stormEngine.init();
   animateRadar();
+
+  // Immediately load initial forecast from Panda while browser prompts for GPS,
+  // then automatically switch to exact GPS coordinates as soon as permission resolves!
   loadWeatherForCurrentLocation();
+  acquireUserLocation(true);
 });
