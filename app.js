@@ -372,6 +372,34 @@ function muggyDescription(dewPointC) {
   return "Oppressive humidity";
 }
 
+function calculateHumidex(tempC, dewPointC = null, relativeHumidity = null) {
+  const T = Number(tempC ?? 0);
+  let e;
+  if (dewPointC !== null && dewPointC !== undefined && !Number.isNaN(Number(dewPointC))) {
+    const Td = Number(dewPointC);
+    e = 6.11 * Math.pow(10, (7.5 * Td) / (237.3 + Td));
+  } else {
+    const rh = Math.max(0, Math.min(100, Number(relativeHumidity ?? 50)));
+    e = (rh / 100) * 6.112 * Math.exp((17.67 * T) / (T + 243.5));
+  }
+  const humidex = T + (5 / 9) * (e - 10);
+  return { humidex, vaporPressureHpa: e };
+}
+
+function humidexComfortTier(humidexVal) {
+  const h = Math.round(Number(humidexVal ?? 0));
+  if (h < 20) {
+    return { label: "Cool", shortLabel: "Cool", pillClass: "pill-sky" };
+  }
+  if (h <= 29) {
+    return { label: "Comfortable", shortLabel: "Comfy", pillClass: "pill-emerald" };
+  }
+  if (h <= 39) {
+    return { label: "Muggy", shortLabel: "Muggy", pillClass: "pill-amber" };
+  }
+  return { label: "Dangerous", shortLabel: "Danger", pillClass: "pill-rose" };
+}
+
 function aqiCategoryLabel(aqi) {
   if (aqi === null || aqi === undefined) return "Good air quality";
   if (aqi <= 50) return "Good — Clean air";
@@ -2828,18 +2856,66 @@ function renderDashboard() {
     w.tempMax
   )} &bull; Low ${formatTemp(w.tempMin)}`;
 
-  // Hero 4-Column Micro Strip
-  document.getElementById("micro-wind").textContent = `${formatWind(
-    w.windSpeed
-  )} ${compassDirection(w.windDirection)}`;
-  document.getElementById("micro-humidity").textContent = `${Math.round(w.humidity)}%`;
-  document.getElementById("micro-dew").textContent = formatTemp(w.dewPoint);
+  // Hero 4-Column Micro Strip (Wind, AQI, Humidex, UV Index)
+  const microWindEl = document.getElementById("micro-wind");
+  if (microWindEl) {
+    microWindEl.textContent = formatWind(w.windSpeed);
+  }
+  const microWindBadgeEl = document.getElementById("micro-wind-badge");
+  if (microWindBadgeEl) {
+    microWindBadgeEl.textContent = compassDirection(w.windDirection);
+    microWindBadgeEl.className = "detail-status-pill micro-status-pill pill-sky";
+  }
+
+  const aqi = Math.round(w.usAqi ?? 28);
+  const microAqiEl = document.getElementById("micro-aqi");
+  if (microAqiEl) {
+    microAqiEl.textContent = String(aqi);
+  }
+  const microAqiBadgeEl = document.getElementById("micro-aqi-badge");
+  if (microAqiBadgeEl) {
+    microAqiBadgeEl.textContent =
+      aqi <= 50
+        ? "Good"
+        : aqi <= 100
+        ? "Mod"
+        : aqi <= 150
+        ? "Sens"
+        : aqi <= 200
+        ? "Poor"
+        : "Haz";
+    microAqiBadgeEl.className = `detail-status-pill micro-status-pill ${
+      aqi <= 50 ? "pill-emerald" : aqi <= 100 ? "pill-amber" : "pill-rose"
+    }`;
+  }
+
+  const { humidex } = calculateHumidex(w.temperature, w.dewPoint, w.humidity);
+  const humidexRounded = Math.round(humidex);
+  const hTier = humidexComfortTier(humidexRounded);
+  const microHumidexEl = document.getElementById("micro-humidex");
+  if (microHumidexEl) {
+    microHumidexEl.textContent = String(humidexRounded);
+  }
+  const microHumidexBadgeEl = document.getElementById("micro-humidex-badge");
+  if (microHumidexBadgeEl) {
+    microHumidexBadgeEl.textContent = hTier.shortLabel;
+    microHumidexBadgeEl.title = `${hTier.label} (Humidex ${humidexRounded})`;
+    microHumidexBadgeEl.className = `detail-status-pill micro-status-pill ${hTier.pillClass}`;
+  }
+
   const uvVal = Math.round((w.uvIndex ?? 0) * 10) / 10;
   const uvCat =
     uvVal < 3 ? "Low" : uvVal < 6 ? "Mod" : uvVal < 8 ? "High" : uvVal < 11 ? "V.High" : "Ext";
   const microUvEl = document.getElementById("micro-uv");
   if (microUvEl) {
-    microUvEl.textContent = `${uvVal} (${uvCat})`;
+    microUvEl.textContent = String(uvVal);
+  }
+  const microUvBadgeEl = document.getElementById("micro-uv-badge");
+  if (microUvBadgeEl) {
+    microUvBadgeEl.textContent = uvCat;
+    microUvBadgeEl.className = `detail-status-pill micro-status-pill ${
+      uvVal < 3 ? "pill-amber" : uvVal < 6 ? "pill-orange" : "pill-rose"
+    }`;
   }
 
   // Next-Hour Minute-by-Minute Nowcast
@@ -2852,7 +2928,6 @@ function renderDashboard() {
   renderDailyForecast(w.daily);
 
   // 6 Atmospheric Telemetry Cards
-  const aqi = Math.round(w.usAqi ?? 28);
   document.getElementById("detail-aqi").textContent = String(aqi);
   document.getElementById("aqi-dot").style.left = `${Math.min(
     100,
@@ -4562,21 +4637,33 @@ function openTileDetailModal(tileType) {
     }
 
     case "humidity": {
-      kickerEl.textContent = "💧 HYGROMETER & COMFORT SCALE";
-      titleEl.textContent = "Humidity & Dew Point";
-      primaryEl.textContent = `${Math.round(w.humidity)}%`;
-      badgeEl.textContent = muggyDescription(w.dewPoint);
-      narrativeEl.textContent = `Dew point is a more direct measure of atmospheric moisture and human comfort than relative humidity. At ${formatTemp(
+      const { humidex, vaporPressureHpa } = calculateHumidex(
+        w.temperature,
+        w.dewPoint,
+        w.humidity
+      );
+      const hRounded = Math.round(humidex);
+      const hTier = humidexComfortTier(hRounded);
+      kickerEl.textContent = "💧 HYGROMETER & HUMIDEX COMFORT SCALE";
+      titleEl.textContent = "Humidex, Humidity & Dew Point";
+      primaryEl.textContent = `${hRounded} Humidex`;
+      badgeEl.textContent = `${hTier.label} • ${Math.round(w.humidity)}% RH`;
+      narrativeEl.textContent = `Humidex combines air temperature (${formatTemp(
+        w.temperature,
+        true
+      )}) and actual vapor pressure (${vaporPressureHpa.toFixed(
+        1
+      )} hPa from a ${formatTemp(
         w.dewPoint,
         true
-      )}, conditions feel ${muggyDescription(w.dewPoint).toLowerCase()}.`;
+      )} dew point) into a Canadian-standard perceived warmth index. At ${hRounded}, conditions feel ${hTier.label.toLowerCase()}.`;
       chartMode = "dew";
       jumpLabel = "View Dew Point on 10-Day Timeline ↗";
       stats = [
+        { label: "Humidex Index", val: `${hRounded} (${hTier.label})`, sub: "<20 Cool • 20–29 Comfy • 30–39 Muggy" },
+        { label: "Vapor Pressure (e)", val: `${vaporPressureHpa.toFixed(1)} hPa`, sub: "Actual moisture tension" },
         { label: "Dew Point (2m)", val: formatTemp(w.dewPoint, true), sub: muggyDescription(w.dewPoint) },
         { label: "Relative Humidity", val: `${Math.round(w.humidity)}%`, sub: "Saturation ratio" },
-        { label: "Apparent Temp", val: formatTemp(w.feelsLike, true), sub: "Heat index / wind chill" },
-        { label: "Air Temperature", val: formatTemp(w.temperature, true), sub: "Dry-bulb reading" },
       ];
       break;
     }
