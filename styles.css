@@ -986,7 +986,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-  padding-top: 4px;
+  padding-top: 14px;
   border-top: none;
 }
 
@@ -1099,7 +1099,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     justify-content: center;
     align-items: center;
     gap: 28px;
-    padding: 4px 0 8px;
+    padding: 4px 0 20px;
   }
 
   .hero-nowcast-grid.is-dry .hero-summary-col {
@@ -4051,7 +4051,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     width: 100%;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
-    padding-top: 22px;
+    padding-top: 28px;
     border-top: none;
   }
 
