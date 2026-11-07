@@ -482,6 +482,8 @@ const dopplerRadarMap = {
   marker: null,
   scanCircle: null,
   probeMarker: null,
+  probedCoords: null,
+  probedTelemetry: null,
   tileLayers: {},
   _rawTilePromises: new Map(),
   activeFrameId: null,
@@ -494,6 +496,12 @@ const dopplerRadarMap = {
   isModalOpen: false,
   modalCloseTimer: null,
   baseZoom: 8,
+  layerMode: "both",
+  showWindHeatmap: true,
+  windCanvas: null,
+  windCtx: null,
+  windRafId: null,
+  windParticles: [],
 
   init() {
     const mapEl = document.getElementById("zus-doppler-map");
@@ -568,6 +576,9 @@ const dopplerRadarMap = {
     const controlsBar = document.getElementById("radar-controls-bar");
     const mapControls = document.getElementById("radar-map-controls");
     const probeToast = document.getElementById("radar-probe-toast");
+    const hudLeft = document.getElementById("radar-hud-left");
+    const layerPill = document.getElementById("radar-layer-pill");
+    const heatmapBtn = document.getElementById("radar-heatmap-btn");
     const playBtn = document.getElementById("radar-play-btn");
     const slider = document.getElementById("radar-frame-slider");
     const zoomInBtn = document.getElementById("radar-zoom-in");
@@ -578,7 +589,7 @@ const dopplerRadarMap = {
     const modalCloseBtn = document.getElementById("radar-modal-close");
 
     // Prevent clicks/drags on floating controls from bubbling to map click or inline expand
-    [controlsBar, mapControls, probeToast].forEach((el) => {
+    [controlsBar, mapControls, probeToast, hudLeft].forEach((el) => {
       if (!el) return;
       L.DomEvent.disableClickPropagation(el);
       L.DomEvent.disableScrollPropagation(el);
@@ -587,10 +598,36 @@ const dopplerRadarMap = {
       });
     });
 
+    if (layerPill) {
+      layerPill.querySelectorAll(".radar-layer-btn").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.setLayerMode(btn.dataset.layer || "radar");
+        });
+      });
+    }
+
+    if (heatmapBtn) {
+      heatmapBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.showWindHeatmap = !this.showWindHeatmap;
+        heatmapBtn.classList.toggle("is-on", this.showWindHeatmap);
+        heatmapBtn.setAttribute("aria-pressed", String(this.showWindHeatmap));
+      });
+    }
+
+    this.initWindCanvas();
+    this.map.on("move zoom resize", () => this.resizeWindCanvas());
+    this.setLayerMode("both");
+
     if (frameEl) {
       frameEl.addEventListener("click", (e) => {
         if (this.isModalOpen) return;
-        if (e.target.closest("#radar-controls-bar") || e.target.closest("#radar-map-controls")) {
+        if (
+          e.target.closest("#radar-controls-bar") ||
+          e.target.closest("#radar-map-controls") ||
+          e.target.closest("#radar-hud-left")
+        ) {
           return;
         }
         this.openModal();
@@ -600,7 +637,11 @@ const dopplerRadarMap = {
     if (radarCardEl) {
       radarCardEl.addEventListener("click", (e) => {
         if (this.isModalOpen) return;
-        if (e.target.closest("#radar-controls-bar") || e.target.closest("#radar-map-controls")) {
+        if (
+          e.target.closest("#radar-controls-bar") ||
+          e.target.closest("#radar-map-controls") ||
+          e.target.closest("#radar-hud-left")
+        ) {
           return;
         }
         this.openModal();
@@ -701,20 +742,324 @@ const dopplerRadarMap = {
     }
   },
 
+  syncModalTitleAndKickers() {
+    const cardKickerEl = document.getElementById("radar-card-kicker-text");
+    const modalKickerEl = document.getElementById("radar-modal-kicker");
+    const titleEl = document.getElementById("radar-modal-title");
+    const city = state.location?.name || "Current Location";
+
+    if (cardKickerEl) {
+      cardKickerEl.textContent =
+        this.layerMode === "wind"
+          ? "Wind Flow Map"
+          : this.layerMode === "both"
+          ? "Radar & Wind Flow"
+          : "Radar";
+    }
+    if (modalKickerEl) {
+      const kickerLabel =
+        this.layerMode === "wind"
+          ? "ZÜS 10M SURFACE STREAMLINES & GUST FIELD"
+          : this.layerMode === "both"
+          ? "ZÜS 1KM DOPPLER + 10M WIND COMPOSITE"
+          : "ZÜS 1KM DOPPLER & 2-HOUR NOWCAST";
+      modalKickerEl.innerHTML = `<span class="radar-live-dot"></span> <span>${kickerLabel}</span>`;
+    }
+    if (titleEl) {
+      const suffix =
+        this.layerMode === "wind"
+          ? "Live Wind Flow & 2h Forecast"
+          : this.layerMode === "both"
+          ? "Radar + Wind Flow Composite"
+          : "Live Radar & 2h Nowcast";
+      titleEl.textContent = `${city} • ${suffix}`;
+    }
+  },
+
+  setLayerMode(mode) {
+    const valid = ["radar", "wind", "both"].includes(mode) ? mode : "both";
+    this.layerMode = valid;
+
+    const layerPill = document.getElementById("radar-layer-pill");
+    if (layerPill) {
+      layerPill.querySelectorAll(".radar-layer-btn").forEach((btn) => {
+        const isMatch = btn.dataset.layer === valid;
+        btn.classList.toggle("active", isMatch);
+        btn.setAttribute("aria-selected", String(isMatch));
+      });
+    }
+
+    const heatmapBtn = document.getElementById("radar-heatmap-btn");
+    if (heatmapBtn) {
+      if (valid === "radar") {
+        heatmapBtn.setAttribute("hidden", "");
+      } else {
+        heatmapBtn.removeAttribute("hidden");
+      }
+    }
+
+    // Adjust active Doppler radar tile opacity based on mode
+    const targetRadarOpacity = valid === "wind" ? 0.0 : valid === "both" ? 0.72 : 0.86;
+    Object.entries(this.tileLayers).forEach(([id, layer]) => {
+      layer.setOpacity(id === this.activeFrameId ? targetRadarOpacity : 0.0);
+    });
+
+    // Toggle Wind Streamline & Color Field Canvas
+    if (this.windCanvas) {
+      const showWind = valid === "wind" || valid === "both";
+      this.windCanvas.classList.toggle("is-active", showWind);
+      if (showWind) {
+        this.resizeWindCanvas();
+        this.startWindLoop();
+      } else {
+        this.stopWindLoop();
+      }
+    }
+
+    this.syncModalTitleAndKickers();
+    this.renderTelemetryStrip(this.probedTelemetry || this.telemetry);
+    if (this.probedCoords) {
+      this.updateProbeToastText(this.probedCoords.lat, this.probedCoords.lon, this.probedTelemetry);
+    }
+  },
+
+  initWindCanvas() {
+    this.windCanvas = document.getElementById("zus-wind-canvas");
+    if (!this.windCanvas) return;
+    this.windCtx = this.windCanvas.getContext("2d");
+    this.resizeWindCanvas();
+  },
+
+  resizeWindCanvas() {
+    if (!this.windCanvas || !this.windCtx) return;
+    const rect = this.windCanvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const targetW = Math.round(rect.width * dpr);
+    const targetH = Math.round(rect.height * dpr);
+    if (this.windCanvas.width !== targetW || this.windCanvas.height !== targetH) {
+      this.windCanvas.width = targetW;
+      this.windCanvas.height = targetH;
+      this.windCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      this.resetWindParticles(rect.width, rect.height);
+    }
+  },
+
+  spawnWindParticle(w, h, randomAge = false) {
+    const maxAge = 55 + Math.random() * 45;
+    return {
+      x: Math.random() * w,
+      y: Math.random() * h,
+      age: randomAge ? Math.floor(Math.random() * maxAge) : 0,
+      maxAge,
+      trail: [],
+    };
+  },
+
+  resetWindParticles(w, h) {
+    const count = window.innerWidth <= 640 ? 125 : 175;
+    this.windParticles = [];
+    for (let i = 0; i < count; i++) {
+      this.windParticles.push(this.spawnWindParticle(w, h, true));
+    }
+  },
+
+  windColorRgb(kmh) {
+    const mph = kmh * 0.621371;
+    if (mph < 10) return [56, 189, 248];   // Calm / Light Sky Cyan
+    if (mph < 18) return [52, 211, 153];   // Breeze Emerald
+    if (mph < 27) return [250, 204, 21];   // Strong Breeze Züs Gold
+    if (mph < 38) return [249, 115, 22];   // Near Gale Amber Orange
+    return [232, 121, 249];                // Gale / Storm Magenta
+  },
+
+  beaufortLabel(kmh) {
+    const mph = kmh * 0.621371;
+    if (mph < 4) return "Calm";
+    if (mph < 8) return "Light Breeze";
+    if (mph < 13) return "Gentle Breeze";
+    if (mph < 19) return "Moderate Breeze";
+    if (mph < 25) return "Fresh Breeze";
+    if (mph < 32) return "Strong Breeze";
+    if (mph < 39) return "Near Gale";
+    return "Gale Force";
+  },
+
+  sampleWindField(lat, lon, offsetMinutes = 0) {
+    const baseLat = state.location?.latitude ?? 40.7128;
+    const baseLon = state.location?.longitude ?? -74.006;
+    const w = state.weather;
+
+    let baseSpeedKmh = w?.windSpeed ?? 24;
+    let baseGustKmh = w?.windGusts ?? Math.max(baseSpeedKmh * 1.38, baseSpeedKmh + 9);
+    const baseFromDeg = w?.windDirection ?? 245;
+
+    // Blend with hourly forecast when scrubbing forward (+15m .. +120m)
+    if (offsetMinutes > 0 && Array.isArray(w?.hourly) && w.hourly.length > 1) {
+      const hrFloat = Math.min(w.hourly.length - 1, offsetMinutes / 60);
+      const h0 = w.hourly[Math.floor(hrFloat)] || w.hourly[0];
+      const h1 = w.hourly[Math.min(w.hourly.length - 1, Math.ceil(hrFloat))] || h0;
+      const frac = hrFloat - Math.floor(hrFloat);
+      baseSpeedKmh = (h0.windSpeed ?? baseSpeedKmh) * (1 - frac) + (h1.windSpeed ?? baseSpeedKmh) * frac;
+      baseGustKmh = (h0.windGusts ?? baseGustKmh) * (1 - frac) + (h1.windGusts ?? baseGustKmh) * frac;
+    }
+
+    // Geographic offset in degrees from station center, advected by time offset
+    const advShift = (offsetMinutes / 60) * 0.18;
+    const dLon = (lon - baseLon) - advShift;
+    const dLat = (lat - baseLat) + advShift * 0.45;
+
+    // Synoptic wave & localized jet streak modulation across the sector
+    const waveRad =
+      Math.sin(dLon * 3.4 + dLat * 2.1) * 0.28 +
+      Math.cos(dLat * 3.1 - dLon * 1.7) * 0.18;
+    const jetCore1 = Math.exp(-((dLon + 0.08) ** 2 + (dLat - 0.04) ** 2) * 8.5) * 14;
+    const jetCore2 = Math.exp(-((dLon - 0.22) ** 2 + (dLat + 0.15) ** 2) * 10.0) * 9;
+    const spatialMod = 1 + Math.sin(dLon * 4.2) * 0.14 + Math.cos(dLat * 3.8) * 0.1;
+
+    const speedKmh = Math.max(5, Math.min(95, baseSpeedKmh * spatialMod + jetCore1 + jetCore2));
+    const gustKmh = Math.max(speedKmh + 5, baseGustKmh * spatialMod + jetCore1 * 1.25);
+
+    const localFromDeg = (((baseFromDeg + (waveRad * 180) / Math.PI) % 360) + 360) % 360;
+    const moveTowardsDeg = (localFromDeg + 180) % 360;
+    const moveRad = (moveTowardsDeg * Math.PI) / 180;
+
+    // Screen-space velocity (east = +x, north = -y)
+    const speedPx = Math.max(0.85, Math.min(4.2, speedKmh / 16.5));
+    const vx = Math.sin(moveRad) * speedPx;
+    const vy = -Math.cos(moveRad) * speedPx;
+
+    return {
+      vx,
+      vy,
+      speedKmh,
+      gustKmh,
+      windFromDeg: Math.round(localFromDeg),
+      windFromCompass: compassDirection(localFromDeg),
+      beaufort: this.beaufortLabel(speedKmh),
+    };
+  },
+
+  startWindLoop() {
+    if (this.windRafId) return;
+    const step = () => {
+      if (this.layerMode !== "wind" && this.layerMode !== "both") {
+        this.windRafId = null;
+        return;
+      }
+      this.drawWindCanvasFrame();
+      this.windRafId = requestAnimationFrame(step);
+    };
+    this.windRafId = requestAnimationFrame(step);
+  },
+
+  stopWindLoop() {
+    if (this.windRafId) {
+      cancelAnimationFrame(this.windRafId);
+      this.windRafId = null;
+    }
+    if (this.windCanvas && this.windCtx) {
+      const rect = this.windCanvas.getBoundingClientRect();
+      this.windCtx.clearRect(0, 0, rect.width || 800, rect.height || 600);
+    }
+  },
+
+  drawWindCanvasFrame() {
+    if (!this.windCanvas || !this.windCtx || !this.map) return;
+    const rect = this.windCanvas.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    if (!w || !h) return;
+
+    if (!this.windParticles.length) {
+      this.resetWindParticles(w, h);
+    }
+
+    const ctx = this.windCtx;
+    ctx.clearRect(0, 0, w, h);
+
+    const frame = this.frames[this.currentIndex] || { offsetMinutes: 0 };
+    const offsetMin = Number(frame.offsetMinutes || 0);
+    const bounds = this.map.getBounds();
+    const north = bounds.getNorth();
+    const south = bounds.getSouth();
+    const west = bounds.getWest();
+    const east = bounds.getEast();
+    const latSpan = north - south || 0.5;
+    const lonSpan = east - west || 0.5;
+
+    // 1. Subtle Wind-Speed Color Field (when enabled)
+    if (this.showWindHeatmap) {
+      const cols = 34;
+      const rows = 20;
+      const cellW = w / cols;
+      const cellH = h / rows;
+      const alphaScale = this.layerMode === "both" ? 0.72 : 1.0;
+
+      for (let r = 0; r < rows; r++) {
+        const lat = north - ((r + 0.5) / rows) * latSpan;
+        for (let c = 0; c < cols; c++) {
+          const lon = west + ((c + 0.5) / cols) * lonSpan;
+          const { speedKmh } = this.sampleWindField(lat, lon, offsetMin);
+          const [cr, cg, cb] = this.windColorRgb(speedKmh);
+          const rawAlpha = Math.min(0.26, Math.max(0.045, (speedKmh - 6) / 210)) * alphaScale;
+          ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${rawAlpha.toFixed(3)})`;
+          ctx.fillRect(c * cellW, r * cellH, cellW + 0.8, cellH + 0.8);
+        }
+      }
+    }
+
+    // 2. Animated Wind Streamline Particles
+    ctx.save();
+    ctx.lineCap = "round";
+    for (let i = 0; i < this.windParticles.length; i++) {
+      const p = this.windParticles[i];
+      const lat = north - (p.y / h) * latSpan;
+      const lon = west + (p.x / w) * lonSpan;
+      const { vx, vy, speedKmh } = this.sampleWindField(lat, lon, offsetMin);
+
+      p.trail.push({ x: p.x, y: p.y, speedKmh });
+      if (p.trail.length > 15) p.trail.shift();
+
+      p.x += vx;
+      p.y += vy;
+      p.age++;
+
+      if (p.age >= p.maxAge || p.x < -12 || p.x > w + 12 || p.y < -12 || p.y > h + 12) {
+        this.windParticles[i] = this.spawnWindParticle(w, h, false);
+        continue;
+      }
+
+      if (p.trail.length > 2) {
+        const [r, g, b] = this.windColorRgb(speedKmh);
+        const lifeFade = Math.sin((p.age / p.maxAge) * Math.PI);
+        for (let t = 1; t < p.trail.length; t++) {
+          const segFrac = t / p.trail.length;
+          const alpha = segFrac * lifeFade * 0.9;
+          ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
+          ctx.lineWidth = 1.05 + segFrac * 1.4;
+          ctx.beginPath();
+          ctx.moveTo(p.trail[t - 1].x, p.trail[t - 1].y);
+          ctx.lineTo(p.trail[t].x, p.trail[t].y);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.restore();
+  },
+
   openModal() {
     const modal = document.getElementById("radar-detail-modal");
     const sheet = document.getElementById("radar-modal-sheet");
     const modalSlot = document.getElementById("radar-modal-map-slot");
     const frameEl = document.getElementById("radar-map-frame");
-    const titleEl = document.getElementById("radar-modal-title");
     if (!modal || !modalSlot || !frameEl) return;
 
     clearTimeout(this.modalCloseTimer);
     this.isModalOpen = true;
+    this.syncModalTitleAndKickers();
+    this.renderTelemetryStrip(this.probedTelemetry || this.telemetry);
 
-    if (titleEl && state.location) {
-      titleEl.textContent = `${state.location.name} • Live Radar & 2h Nowcast`;
-    }
     if (sheet) {
       sheet.style.transform = "";
       sheet.style.transition = "";
@@ -730,12 +1075,15 @@ const dopplerRadarMap = {
 
     requestAnimationFrame(() => {
       if (this.map) this.map.invalidateSize();
+      this.resizeWindCanvas();
     });
     setTimeout(() => {
       if (this.map) this.map.invalidateSize();
+      this.resizeWindCanvas();
     }, 120);
     setTimeout(() => {
       if (this.map) this.map.invalidateSize();
+      this.resizeWindCanvas();
     }, 340);
   },
 
@@ -760,7 +1108,11 @@ const dopplerRadarMap = {
         animate: false,
       });
       this.map.invalidateSize();
-      setTimeout(() => this.map && this.map.invalidateSize(), 120);
+      this.resizeWindCanvas();
+      setTimeout(() => {
+        if (this.map) this.map.invalidateSize();
+        this.resizeWindCanvas();
+      }, 120);
     }
 
     const tileModal = document.getElementById("tile-detail-modal");
@@ -1120,8 +1472,44 @@ const dopplerRadarMap = {
     });
   },
 
+  updateProbeToastText(lat, lon, tel) {
+    const textEl = document.getElementById("radar-probe-text");
+    if (!textEl) return;
+
+    const frame = this.frames[this.currentIndex] || { offsetMinutes: 0 };
+    const windSample = this.sampleWindField(lat, lon, Number(frame.offsetMinutes || 0));
+    const windStr = formatWind(windSample.speedKmh);
+    const gustStr = formatWind(windSample.gustKmh);
+
+    if (this.layerMode === "wind") {
+      textEl.textContent = `Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): ${windStr} ${windSample.windFromCompass} (Gusts ${gustStr}) • ${windSample.beaufort}`;
+      return;
+    }
+
+    if (tel && tel.inConusGrid) {
+      const rateStr = state.useImperial
+        ? `${(tel.precipRateMmHr / 25.4).toFixed(2)} in/hr`
+        : `${tel.precipRateMmHr.toFixed(1)} mm/hr`;
+      if (this.layerMode === "both") {
+        textEl.textContent = `Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): ${windStr} ${windSample.windFromCompass} (Gusts ${gustStr}) • ${tel.currentDbz.toFixed(1)} dBZ (${tel.intensityCategory})`;
+      } else {
+        textEl.textContent = `Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): ${tel.currentDbz.toFixed(
+          1
+        )} dBZ (${tel.intensityCategory}) • ${rateStr} • 35km Peak ${tel.maxDbzNearby.toFixed(
+          0
+        )} dBZ`;
+      }
+    } else {
+      textEl.textContent =
+        this.layerMode === "both"
+          ? `Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): ${windStr} ${windSample.windFromCompass} (Gusts ${gustStr})`
+          : `Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): Outside 1km CONUS grid • Wind ${windStr} ${windSample.windFromCompass}`;
+    }
+  },
+
   async probePoint(lat, lon) {
     if (!this.map) return;
+    this.probedCoords = { lat, lon };
     if (!this.probeMarker) {
       this.probeMarker = L.circleMarker([lat, lon], {
         radius: 6,
@@ -1136,10 +1524,16 @@ const dopplerRadarMap = {
 
     const toastEl = document.getElementById("radar-probe-toast");
     const textEl = document.getElementById("radar-probe-text");
-    const dbzLabelEl = document.getElementById("radar-stat-dbz-label");
     if (toastEl) toastEl.removeAttribute("hidden");
     if (textEl) {
       textEl.textContent = `Probing 1km grid at ${lat.toFixed(3)}°, ${lon.toFixed(3)}°...`;
+    }
+
+    if (this.layerMode === "wind") {
+      this.probedTelemetry = this.telemetry;
+      this.updateProbeToastText(lat, lon, this.telemetry);
+      this.renderTelemetryStrip(this.telemetry);
+      return;
     }
 
     let tel = null;
@@ -1158,34 +1552,20 @@ const dopplerRadarMap = {
       tel = await this.sampleHttpsNexradTelemetry(lat, lon);
     }
 
-    if (tel && tel.inConusGrid) {
-      if (dbzLabelEl) dbzLabelEl.textContent = "Probed Point";
-      this.renderTelemetryStrip(tel);
-
-      const rateStr = state.useImperial
-        ? `${(tel.precipRateMmHr / 25.4).toFixed(2)} in/hr`
-        : `${tel.precipRateMmHr.toFixed(1)} mm/hr`;
-      if (textEl) {
-        textEl.textContent = `📍 Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): ${tel.currentDbz.toFixed(
-          1
-        )} dBZ (${tel.intensityCategory}) • ${rateStr} • 35km Peak ${tel.maxDbzNearby.toFixed(
-          0
-        )} dBZ`;
-      }
-    } else if (textEl) {
-      textEl.textContent = `📍 Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): Outside 1km CONUS grid`;
-    }
+    this.probedTelemetry = tel;
+    this.updateProbeToastText(lat, lon, tel);
+    this.renderTelemetryStrip(tel);
   },
 
   clearProbe() {
+    this.probedCoords = null;
+    this.probedTelemetry = null;
     if (this.probeMarker && this.map) {
       this.map.removeLayer(this.probeMarker);
       this.probeMarker = null;
     }
     const toastEl = document.getElementById("radar-probe-toast");
-    const dbzLabelEl = document.getElementById("radar-stat-dbz-label");
     if (toastEl) toastEl.setAttribute("hidden", "");
-    if (dbzLabelEl) dbzLabelEl.textContent = "Overhead";
     this.renderTelemetryStrip(this.telemetry);
   },
 
@@ -1418,8 +1798,10 @@ const dopplerRadarMap = {
       this.tileLayers[frame.frameId] = this.createLayerForFrame(frame);
     }
 
+    const targetRadarOpacity =
+      this.layerMode === "wind" ? 0.0 : this.layerMode === "both" ? 0.72 : 0.86;
     Object.entries(this.tileLayers).forEach(([id, layer]) => {
-      layer.setOpacity(id === frame.frameId ? 0.86 : 0.0);
+      layer.setOpacity(id === frame.frameId ? targetRadarOpacity : 0.0);
     });
     this.activeFrameId = frame.frameId;
 
@@ -1443,6 +1825,17 @@ const dopplerRadarMap = {
     if (timeEl) {
       timeEl.textContent = frameClock ? `${frameClock} (${frame.label})` : frame.label;
       timeEl.classList.toggle("future", Boolean(frame.isFuture));
+    }
+
+    if (this.layerMode === "wind" || this.layerMode === "both") {
+      this.renderTelemetryStrip(this.probedTelemetry || this.telemetry);
+      if (this.probedCoords) {
+        this.updateProbeToastText(
+          this.probedCoords.lat,
+          this.probedCoords.lon,
+          this.probedTelemetry
+        );
+      }
     }
   },
 
@@ -1482,11 +1875,69 @@ const dopplerRadarMap = {
   },
 
   renderTelemetryStrip(tel) {
+    const dbzLabelEl = document.getElementById("radar-stat-dbz-label");
+    const peakLabelEl = document.getElementById("radar-stat-peak-label");
+    const echoLabelEl = document.getElementById("radar-stat-echo-label");
+    const vecLabelEl = document.getElementById("radar-stat-vector-label");
     const dbzEl = document.getElementById("radar-stat-dbz");
     const peakEl = document.getElementById("radar-stat-peak");
     const echoEl = document.getElementById("radar-stat-echo");
     const vecEl = document.getElementById("radar-stat-vector");
+    const legBarEl = document.getElementById("radar-legend-bar");
+    const legMinEl = document.getElementById("radar-legend-min");
+    const legMaxEl = document.getElementById("radar-legend-max");
     if (!dbzEl || !peakEl || !echoEl || !vecEl) return;
+
+    const isWindMode = this.layerMode === "wind" || this.layerMode === "both";
+    if (legBarEl) legBarEl.classList.toggle("is-wind", isWindMode);
+    if (legMinEl) {
+      legMinEl.textContent = isWindMode
+        ? state.useImperial
+          ? "Calm (0 mph)"
+          : "Calm (0 km/h)"
+        : "Light (10 dBZ)";
+    }
+    if (legMaxEl) {
+      legMaxEl.textContent = isWindMode
+        ? state.useImperial
+          ? "Gale (50+ mph)"
+          : "Gale (80+ km/h)"
+        : "Severe (55+ dBZ)";
+    }
+
+    if (isWindMode) {
+      const sampleLat = this.probedCoords?.lat ?? state.location?.latitude ?? 40.7128;
+      const sampleLon = this.probedCoords?.lon ?? state.location?.longitude ?? -74.006;
+      const frame = this.frames[this.currentIndex] || { offsetMinutes: 0 };
+      const windSample = this.sampleWindField(
+        sampleLat,
+        sampleLon,
+        Number(frame.offsetMinutes || 0)
+      );
+
+      if (dbzLabelEl) dbzLabelEl.textContent = this.probedCoords ? "Probed Wind" : "Sustained (10m)";
+      if (peakLabelEl) peakLabelEl.textContent = "Peak Gust";
+      if (echoLabelEl) echoLabelEl.textContent = "Flow Vector";
+      if (vecLabelEl) {
+        vecLabelEl.textContent = this.layerMode === "both" ? "Overhead Echo" : "Beaufort Scale";
+      }
+
+      dbzEl.textContent = formatWind(windSample.speedKmh);
+      peakEl.textContent = formatWind(windSample.gustKmh);
+      echoEl.textContent = `${windSample.windFromCompass} (${windSample.windFromDeg}°)`;
+      if (this.layerMode === "both") {
+        const curDbz = tel?.inConusGrid ? tel.currentDbz : 0;
+        vecEl.textContent = curDbz > 0 ? `${curDbz.toFixed(0)} dBZ (${tel.intensityCategory})` : "0 dBZ (Clear)";
+      } else {
+        vecEl.textContent = windSample.beaufort;
+      }
+      return;
+    }
+
+    if (dbzLabelEl) dbzLabelEl.textContent = this.probedCoords ? "Probed Point" : "Overhead";
+    if (peakLabelEl) peakLabelEl.textContent = "35km Peak";
+    if (echoLabelEl) echoLabelEl.textContent = "Nearest Echo";
+    if (vecLabelEl) vecLabelEl.textContent = "Storm Vector";
 
     if (!tel || !tel.inConusGrid) {
       const precip = state.weather?.minuteRates?.[0] ?? 0;
