@@ -442,6 +442,7 @@ const dopplerRadarMap = {
   cacheStats: null,
   isModalOpen: false,
   modalCloseTimer: null,
+  baseZoom: 8,
 
   init() {
     const mapEl = document.getElementById("zus-doppler-map");
@@ -449,7 +450,7 @@ const dopplerRadarMap = {
 
     this.map = L.map(mapEl, {
       center: [state.location.latitude, state.location.longitude],
-      zoom: 6,
+      zoom: this.baseZoom,
       minZoom: 3,
       maxZoom: 10,
       zoomControl: false,
@@ -593,7 +594,7 @@ const dopplerRadarMap = {
         e.stopPropagation();
         this.clearProbe();
         if (this.map) {
-          this.map.setView([state.location.latitude, state.location.longitude], 6, {
+          this.map.setView([state.location.latitude, state.location.longitude], this.baseZoom, {
             animate: true,
           });
         }
@@ -693,7 +694,7 @@ const dopplerRadarMap = {
     }
 
     if (this.map && state.location) {
-      this.map.setView([state.location.latitude, state.location.longitude], 6, {
+      this.map.setView([state.location.latitude, state.location.longitude], this.baseZoom, {
         animate: false,
       });
       this.map.invalidateSize();
@@ -1150,7 +1151,7 @@ const dopplerRadarMap = {
     this.updateCoordsHudLabel();
 
     if (this.map) {
-      this.map.setView([lat, lon], 6, { animate: true });
+      this.map.setView([lat, lon], this.baseZoom, { animate: true });
       if (this.marker) this.marker.setLatLng([lat, lon]);
       if (this.scanCircle) this.scanCircle.setLatLng([lat, lon]);
     }
