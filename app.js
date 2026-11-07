@@ -366,6 +366,7 @@ const dopplerRadarMap = {
       maxZoom: 10,
       zoomControl: false,
       attributionControl: false,
+      scrollWheelZoom: false,
     });
 
     // Keyless Esri World Dark Gray Base (works on localhost, file://, and production without API keys)
@@ -454,16 +455,25 @@ const dopplerRadarMap = {
         const isExp = frameEl.classList.toggle("expanded");
         expandBtn.classList.toggle("active", isExp);
         expandBtn.textContent = isExp ? "⤡ Compact" : "⤢ Expand";
-        setTimeout(() => this.map && this.map.invalidateSize(), 260);
+        if (this.map && this.map.scrollWheelZoom) {
+          if (isExp) this.map.scrollWheelZoom.enable();
+          else this.map.scrollWheelZoom.disable();
+        }
+        if (isExp && window.innerWidth <= 640) {
+          frameEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        setTimeout(() => this.map && this.map.invalidateSize(), 120);
+        setTimeout(() => this.map && this.map.invalidateSize(), 320);
       });
     }
     if (interopBtn) {
       interopBtn.addEventListener("click", () => {
         const drawer = document.getElementById("radar-interop-drawer");
         if (!drawer) return;
-        const willOpen = drawer.hasAttribute("hidden");
-        if (willOpen) drawer.removeAttribute("hidden");
-        else drawer.setAttribute("hidden", "");
+        drawer.removeAttribute("hidden");
+        const willOpen = !drawer.classList.contains("open");
+        drawer.classList.toggle("open", willOpen);
+        drawer.setAttribute("aria-hidden", String(!willOpen));
         interopBtn.classList.toggle("active", willOpen);
       });
     }
@@ -1137,6 +1147,9 @@ const dopplerRadarMap = {
 /* Load Hyperlocal Weather, Minutely-15 Nowcast, Air Quality & Multi-Model Ensemble */
 async function loadWeatherForCurrentLocation() {
   renderLocationsStrip();
+  if (!state.weather) {
+    document.body.classList.add("is-loading");
+  }
   const { latitude, longitude, name, region } = state.location;
   document.getElementById("hero-city").textContent = name;
   document.getElementById("location-kicker").innerHTML = `<span>📍 ${
@@ -1147,7 +1160,6 @@ async function loadWeatherForCurrentLocation() {
   document.getElementById("hero-coords").textContent = `${Math.abs(latitude).toFixed(
     4
   )}° ${latDir}, ${Math.abs(longitude).toFixed(4)}° ${lonDir}`;
-  document.getElementById("last-updated").textContent = "Updating forecast...";
 
   document.getElementById("radar-coords-label").textContent = `${latitude.toFixed(
     2
@@ -1623,13 +1635,43 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
   };
 }
 
+let tileCascadeTimer = null;
+
+function playTilesAppearCascade(skyClass) {
+  const wasLoading = document.body.classList.contains("is-loading");
+  document.body.classList.remove("is-loading", "tiles-entering");
+  document.body.classList.remove("sky-clear", "sky-overcast", "sky-rain", "sky-storm");
+  if (skyClass) document.body.classList.add(skyClass);
+
+  // Force reflow so staggered tile materialization animation plays cleanly
+  void document.body.offsetWidth;
+  document.body.classList.add("tiles-entering");
+
+  clearTimeout(tileCascadeTimer);
+  tileCascadeTimer = setTimeout(() => {
+    document.body.classList.remove("tiles-entering");
+  }, 1150);
+
+  if (wasLoading) {
+    setTimeout(() => {
+      if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize();
+      syncLiquidPillGlider(document.getElementById("timeline-pill-bar"));
+      if (state.weather?.minuteRates) {
+        renderNextHourNowcast(state.weather.minuteRates, state.weather.hourly?.[0]);
+      }
+    }, 80);
+    setTimeout(() => {
+      if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize();
+    }, 380);
+  }
+}
+
 /* Render Full Dark Sky + Liquid Glass Dashboard */
 function renderDashboard() {
   const w = state.weather;
   if (!w) return;
 
   const cond = conditionFromWMO(w.wmoCode);
-  document.body.className = cond.bodyClass;
 
   // Hero Card
   document.getElementById(
@@ -1746,6 +1788,8 @@ function renderDashboard() {
     [],
     { hour: "numeric", minute: "2-digit" }
   )}`;
+
+  playTilesAppearCascade(cond.bodyClass);
 }
 
 /* Dark Sky Next-Hour Precipitation Curve & Headline */
@@ -1820,8 +1864,19 @@ function renderNextHourNowcast(minuteRates, currentHour) {
   }
 
   const ctx = canvas.getContext("2d");
-  const W = canvas.width;
-  const H = canvas.height;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const cssW = Math.max(240, canvas.clientWidth || 560);
+  const cssH = Math.max(76, canvas.clientHeight || 94);
+  const targetW = Math.round(cssW * dpr);
+  const targetH = Math.round(cssH * dpr);
+  if (canvas.width !== targetW || canvas.height !== targetH) {
+    canvas.width = targetW;
+    canvas.height = targetH;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const W = cssW;
+  const H = cssH;
   ctx.clearRect(0, 0, W, H);
 
   // Horizontal threshold dashed lines (LIGHT, MED, HEAVY)
@@ -1837,7 +1892,7 @@ function renderNextHourNowcast(minuteRates, currentHour) {
   });
   ctx.setLineDash([]);
 
-  // Plot curve (scale 0..10 mm/hr)
+  // Plot smooth curve (scale 0..9 mm/hr)
   const scaleMax = 9.0;
   const points = minuteRates.map((rate, i) => {
     const x = (i / 60) * W;
@@ -1847,7 +1902,7 @@ function renderNextHourNowcast(minuteRates, currentHour) {
   });
 
   const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, "rgba(56, 189, 248, 0.65)");
+  grad.addColorStop(0, "rgba(56, 189, 248, 0.68)");
   grad.addColorStop(1, "rgba(56, 189, 248, 0.04)");
 
   ctx.beginPath();
@@ -1865,7 +1920,19 @@ function renderNextHourNowcast(minuteRates, currentHour) {
   });
   ctx.strokeStyle = "#58c7ff";
   ctx.lineWidth = 2.4;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
   ctx.stroke();
+
+  if (!canvas._nowcastResizeBound && typeof ResizeObserver !== "undefined") {
+    canvas._nowcastResizeBound = true;
+    const ro = new ResizeObserver(() => {
+      if (state.weather?.minuteRates) {
+        renderNextHourNowcast(state.weather.minuteRates, state.weather.hourly?.[0]);
+      }
+    });
+    ro.observe(canvas);
+  }
 }
 
 const HOURLY_METRIC_PILLS = [
@@ -2068,6 +2135,67 @@ function buildEnvelopeBandPath(upperPts, lowerPts) {
   return d;
 }
 
+/* Certified Liquid Glass Sliding Pill Indicator */
+function syncLiquidPillGlider(pillBarEl) {
+  if (!pillBarEl) return;
+  let glider = pillBarEl.querySelector(".liquid-pill-glider");
+  if (!glider) {
+    glider = document.createElement("div");
+    glider.className = "liquid-pill-glider";
+    glider.setAttribute("aria-hidden", "true");
+    pillBarEl.prepend(glider);
+  }
+  const activeTab = pillBarEl.querySelector(".mode-tab.active");
+  if (!activeTab || activeTab.offsetWidth === 0) {
+    pillBarEl.classList.remove("has-glider");
+    pillBarEl.style.setProperty("--glider-opacity", "0");
+    return;
+  }
+  pillBarEl.classList.add("has-glider");
+  pillBarEl.style.setProperty("--glider-x", `${activeTab.offsetLeft}px`);
+  pillBarEl.style.setProperty("--glider-y", `${activeTab.offsetTop}px`);
+  pillBarEl.style.setProperty("--glider-w", `${activeTab.offsetWidth}px`);
+  pillBarEl.style.setProperty("--glider-h", `${activeTab.offsetHeight}px`);
+  pillBarEl.style.setProperty("--glider-opacity", "1");
+}
+
+function attachHourlyTouchScrubber(colsLayer) {
+  if (!colsLayer || colsLayer._scrubBound) return;
+  colsLayer._scrubBound = true;
+
+  const activateColAtClientX = (clientX) => {
+    const rect = colsLayer.getBoundingClientRect();
+    const relX = clientX - rect.left;
+    const cols = colsLayer.children;
+    if (!cols.length) return;
+    const colW = rect.width / cols.length;
+    const idx = Math.max(0, Math.min(cols.length - 1, Math.floor(relX / colW)));
+    const target = cols[idx];
+    if (target && !target.classList.contains("active")) {
+      Array.from(cols).forEach((c) => c.classList.remove("active"));
+      target.classList.add("active");
+    }
+  };
+
+  let isPointerScrubbing = false;
+  colsLayer.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    isPointerScrubbing = true;
+    activateColAtClientX(e.clientX);
+  });
+
+  colsLayer.addEventListener("pointermove", (e) => {
+    if (!isPointerScrubbing) return;
+    activateColAtClientX(e.clientX);
+  });
+
+  const endScrub = () => {
+    isPointerScrubbing = false;
+  };
+  window.addEventListener("pointerup", endScrub, { passive: true });
+  window.addEventListener("pointercancel", endScrub, { passive: true });
+}
+
 function renderHourlyCurveIntoContainer(
   scrollEl,
   hourly,
@@ -2075,8 +2203,10 @@ function renderHourlyCurveIntoContainer(
   options = {}
 ) {
   if (!scrollEl) return;
-  scrollEl.innerHTML = "";
-  if (!hourly || !hourly.length) return;
+  if (!hourly || !hourly.length) {
+    scrollEl.innerHTML = "";
+    return;
+  }
 
   const {
     showNowOnFirst = true,
@@ -2120,6 +2250,114 @@ function renderHourlyCurveIntoContainer(
     upperPts.push({ x, y: yUp });
     lowerPts.push({ x, y: yLow });
   });
+
+  // Check if we can smoothly morph an existing curve stage in-place (LG3 Certified Morphing)
+  const existingStage = scrollEl.querySelector(".hourly-curve-stage");
+  const prevState = scrollEl._curveState;
+  const firstKey = hourly[0]?.time ? hourly[0].time.getTime() : 0;
+
+  if (
+    existingStage &&
+    prevState &&
+    prevState.len === hourly.length &&
+    prevState.colW === colW &&
+    prevState.H === H &&
+    prevState.firstKey === firstKey
+  ) {
+    const svgPaths = existingStage.querySelectorAll(".hourly-curve-svg path");
+    const cols = existingStage.querySelectorAll(".hourly-col");
+
+    if (svgPaths.length === 4 && cols.length === hourly.length) {
+      const [bandPathEl, upperPathEl, lowerPathEl, mainPathEl] = svgPaths;
+      bandPathEl.setAttribute("fill", desc.bandFill);
+      upperPathEl.setAttribute("stroke", desc.bandStroke);
+      lowerPathEl.setAttribute("stroke", desc.bandStroke);
+      mainPathEl.setAttribute("stroke", desc.lineColor);
+
+      // Update node positions (animated via CSS spring transition) and labels
+      hourly.forEach((item, idx) => {
+        const col = cols[idx];
+        const s = series[idx];
+        const pt = mainPts[idx];
+        const node = col.querySelector(".hourly-point-node");
+        const valEl = col.querySelector(".hourly-node-val");
+        const spreadEl = col.querySelector(".hourly-node-spread");
+        const popEl = col.querySelector(".hourly-node-pop");
+
+        if (node) node.style.top = `${pt.y.toFixed(1)}px`;
+        if (valEl) valEl.textContent = desc.formatNode(s.val);
+        if (spreadEl) {
+          spreadEl.textContent = desc.formatSpread(Math.max(0, s.max - s.min));
+        }
+
+        const shouldShowPop = mode !== "precip" && item.precipProb >= 20;
+        if (shouldShowPop) {
+          if (popEl) {
+            popEl.textContent = `${Math.round(item.precipProb)}%`;
+          } else if (node) {
+            const newPop = document.createElement("div");
+            newPop.className = "hourly-node-pop";
+            newPop.textContent = `${Math.round(item.precipProb)}%`;
+            node.prepend(newPop);
+          }
+        } else if (popEl) {
+          popEl.remove();
+        }
+      });
+
+      // Animate SVG path morphing with spring easing
+      if (scrollEl._morphRaf) cancelAnimationFrame(scrollEl._morphRaf);
+      const fromMain = prevState.mainPts;
+      const fromUpper = prevState.upperPts;
+      const fromLower = prevState.lowerPts;
+      const startTime = performance.now();
+      const duration = 360;
+
+      const stepMorph = (now) => {
+        const rawT = Math.min(1, (now - startTime) / duration);
+        // Elastic-out smooth easing
+        const ease = 1 - Math.pow(1 - rawT, 3.2);
+
+        const curMain = mainPts.map((pt, i) => ({
+          x: pt.x,
+          y: fromMain[i].y + (pt.y - fromMain[i].y) * ease,
+        }));
+        const curUpper = upperPts.map((pt, i) => ({
+          x: pt.x,
+          y: fromUpper[i].y + (pt.y - fromUpper[i].y) * ease,
+        }));
+        const curLower = lowerPts.map((pt, i) => ({
+          x: pt.x,
+          y: fromLower[i].y + (pt.y - fromLower[i].y) * ease,
+        }));
+
+        bandPathEl.setAttribute("d", buildEnvelopeBandPath(curUpper, curLower));
+        upperPathEl.setAttribute("d", buildSmoothCurvePath(curUpper));
+        lowerPathEl.setAttribute("d", buildSmoothCurvePath(curLower));
+        mainPathEl.setAttribute("d", buildSmoothCurvePath(curMain));
+
+        scrollEl._curveState = {
+          len: hourly.length,
+          colW,
+          H,
+          firstKey,
+          mainPts: curMain,
+          upperPts: curUpper,
+          lowerPts: curLower,
+        };
+
+        if (rawT < 1) {
+          scrollEl._morphRaf = requestAnimationFrame(stepMorph);
+        }
+      };
+
+      scrollEl._morphRaf = requestAnimationFrame(stepMorph);
+      return;
+    }
+  }
+
+  // Initial full build of stage
+  scrollEl.innerHTML = "";
 
   const stage = document.createElement("div");
   stage.className = "hourly-curve-stage";
@@ -2204,8 +2442,19 @@ function renderHourlyCurveIntoContainer(
     colsLayer.appendChild(col);
   });
 
+  attachHourlyTouchScrubber(colsLayer);
   stage.appendChild(colsLayer);
   scrollEl.appendChild(stage);
+
+  scrollEl._curveState = {
+    len: hourly.length,
+    colW,
+    H,
+    firstKey,
+    mainPts,
+    upperPts,
+    lowerPts,
+  };
 }
 
 function renderHourlyTimeline(hourly) {
@@ -2223,6 +2472,7 @@ function renderHourlyTimeline(hourly) {
   });
 
   scroll.scrollLeft = prevScrollLeft;
+  syncLiquidPillGlider(document.getElementById("timeline-pill-bar"));
 }
 
 /* Dark Sky Expandable 10-Day Forecast */
@@ -2270,6 +2520,7 @@ function renderDailyForecast(daily) {
     // Start with all 10 days collapsed on load
     const wrapper = document.createElement("div");
     wrapper.className = "day-accordion";
+    wrapper.style.animationDelay = `${(0.22 + idx * 0.026).toFixed(3)}s`;
 
     const dayNarrative = `${cond.label} throughout the day. High of ${formatTemp(
       dItem.tempMax,
@@ -2301,17 +2552,20 @@ function renderDailyForecast(daily) {
         <span class="day-chevron">▾</span>
       </button>
       <div class="day-drawer">
-        <div class="day-drawer-top">
-          <div class="day-drawer-summary">${dayNarrative}</div>
-        </div>
-        <div class="hourly-chart-scroll day-hourly-scroll"></div>
-        <div class="timeline-pill-bar day-pill-bar" role="tablist" aria-label="${dayName} Hourly Metric Selector">
-          ${pillsHtml}
+        <div class="day-drawer-inner">
+          <div class="day-drawer-top">
+            <div class="day-drawer-summary">${dayNarrative}</div>
+          </div>
+          <div class="hourly-chart-scroll day-hourly-scroll"></div>
+          <div class="timeline-pill-bar day-pill-bar" role="tablist" aria-label="${dayName} Hourly Metric Selector">
+            ${pillsHtml}
+          </div>
         </div>
       </div>
     `;
 
     const dayScrollEl = wrapper.querySelector(".day-hourly-scroll");
+    const dayPillBarEl = wrapper.querySelector(".day-pill-bar");
     const dayHours = Array.isArray(dItem.hours) ? dItem.hours : [];
 
     // Compact 24-hour chart inside each day drawer (constrained to card width with internal scroll)
@@ -2335,6 +2589,7 @@ function renderDailyForecast(daily) {
           .querySelectorAll(".day-mode-tab")
           .forEach((t) => t.classList.remove("active"));
         tab.classList.add("active");
+        syncLiquidPillGlider(dayPillBarEl);
         const mode = tab.dataset.mode || "temp";
         state.dailyModes[idx] = mode;
         const prevLeft = dayScrollEl.scrollLeft;
@@ -2361,9 +2616,15 @@ function renderDailyForecast(daily) {
       });
       wrapper.classList.toggle("open", willOpen);
       rowBtn.setAttribute("aria-expanded", String(willOpen));
+      if (willOpen) {
+        requestAnimationFrame(() => syncLiquidPillGlider(dayPillBarEl));
+      }
       setTimeout(() => {
         if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize();
-      }, 60);
+      }, 120);
+      setTimeout(() => {
+        if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize();
+      }, 390);
     });
 
     list.appendChild(wrapper);
@@ -2381,9 +2642,10 @@ function renderEnsembleComparison(models, spreadC) {
   spreadLabel.textContent = `Model Spread: ±${(spreadVal / 2).toFixed(1)}${unit}`;
 
   grid.innerHTML = "";
-  models.forEach((m) => {
+  models.forEach((m, idx) => {
     const box = document.createElement("div");
     box.className = "ensemble-pill-box interactive-tile";
+    box.style.animationDelay = `${(0.54 + idx * 0.04).toFixed(2)}s`;
     box.setAttribute("role", "button");
     box.setAttribute("tabindex", "0");
     box.innerHTML = `
@@ -2422,6 +2684,7 @@ function jumpToTimelineMetric(mode) {
         t.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
       }
     });
+    syncLiquidPillGlider(pillBar);
   }
 
   if (state.weather?.hourly) {
@@ -2434,15 +2697,37 @@ function jumpToTimelineMetric(mode) {
   }
 }
 
+let modalCloseTimer = null;
+
 function closeTileDetailModal() {
   const modal = document.getElementById("tile-detail-modal");
-  if (modal) modal.setAttribute("hidden", "");
+  const sheet = document.getElementById("tile-modal-sheet");
+  if (!modal || modal.hasAttribute("hidden")) return;
+
+  document.body.classList.remove("modal-open");
+  if (sheet) {
+    sheet.style.transform = "";
+    sheet.style.transition = "";
+  }
+  modal.classList.add("closing");
+  clearTimeout(modalCloseTimer);
+  modalCloseTimer = setTimeout(() => {
+    modal.classList.remove("closing");
+    modal.setAttribute("hidden", "");
+  }, 230);
 }
 
 function openTileDetailModal(tileType) {
   const w = state.weather;
   const modal = document.getElementById("tile-detail-modal");
+  const sheet = document.getElementById("tile-modal-sheet");
   if (!w || !modal) return;
+  clearTimeout(modalCloseTimer);
+  modal.classList.remove("closing");
+  if (sheet) {
+    sheet.style.transform = "";
+    sheet.style.transition = "";
+  }
 
   const kickerEl = document.getElementById("tile-modal-kicker");
   const titleEl = document.getElementById("tile-modal-title");
@@ -2738,66 +3023,274 @@ function openTileDetailModal(tileType) {
     jumpBtnEl.textContent = jumpLabel;
     jumpBtnEl.onclick = () => {
       closeTileDetailModal();
-      jumpToTimelineMetric(chartMode);
+      setTimeout(() => jumpToTimelineMetric(chartMode), 140);
     };
   }
 
+  document.body.classList.add("modal-open");
   modal.removeAttribute("hidden");
 }
 
-/* Subtle Ambient Liquid Atmosphere Canvas */
+/* Certified Multi-Condition Liquid Glass Ambient Atmosphere Canvas */
 const atmosphereCanvas = {
   drops: [],
+  flakes: [],
+  orbs: [],
+  lightningAlpha: 0,
+  nextLightningAt: 0,
+  dpr: 1,
+  w: 0,
+  h: 0,
+
   init() {
     const canvas = document.getElementById("atmosphere-canvas");
     if (!canvas) return;
+
     const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      this.dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      this.w = window.innerWidth;
+      this.h = window.innerHeight;
+      canvas.width = Math.round(this.w * this.dpr);
+      canvas.height = Math.round(this.h * this.dpr);
     };
-    window.addEventListener("resize", resize);
+    window.addEventListener("resize", resize, { passive: true });
     resize();
 
-    this.drops = Array.from({ length: 75 }, () => ({
-      x: Math.random() * window.innerWidth,
-      y: Math.random() * window.innerHeight,
-      len: 10 + Math.random() * 14,
-      speed: 6 + Math.random() * 6,
+    this.drops = Array.from({ length: 78 }, () => ({
+      x: Math.random() * this.w,
+      y: Math.random() * this.h,
+      len: 12 + Math.random() * 16,
+      speed: 7 + Math.random() * 7,
     }));
 
-    const loop = () => {
-      this.render(canvas);
+    this.flakes = Array.from({ length: 55 }, () => ({
+      x: Math.random() * this.w,
+      y: Math.random() * this.h,
+      r: 1.4 + Math.random() * 2.4,
+      speedY: 0.7 + Math.random() * 1.2,
+      phase: Math.random() * Math.PI * 2,
+    }));
+
+    this.orbs = [
+      { xFrac: 0.22, yFrac: 0.16, r: 220, speed: 0.00035, phase: 0.4, color: "56, 189, 248" },
+      { xFrac: 0.78, yFrac: 0.14, r: 260, speed: 0.00028, phase: 2.1, color: "251, 191, 36" },
+      { xFrac: 0.52, yFrac: 0.28, r: 240, speed: 0.00031, phase: 4.2, color: "129, 140, 248" },
+    ];
+
+    this.nextLightningAt = performance.now() + 4500 + Math.random() * 6000;
+
+    const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    const loop = (now) => {
+      if (document.visibilityState === "visible" && !reducedMotionQuery.matches) {
+        this.render(canvas, now);
+      }
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
   },
 
-  render(canvas) {
+  render(canvas, now = performance.now()) {
     const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const W = this.w || window.innerWidth;
+    const H = this.h || window.innerHeight;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
 
     const wmo = state.weather?.wmoCode ?? 0;
-    const isRainy = [51, 53, 55, 61, 63, 65, 80, 81, 82, 95, 96, 99].includes(wmo);
+    const isThunder = [95, 96, 99].includes(wmo);
+    const isRainy = [51, 53, 55, 61, 63, 65, 80, 81, 82].includes(wmo) || isThunder;
+    const isSnowy = [71, 73, 75, 77, 85, 86].includes(wmo);
+    const isOvercast = [3, 45, 48].includes(wmo);
 
+    // 1. Subtle Liquid Caustic Refraction Orbs (All Conditions, Tuned by Sky State)
+    this.orbs.forEach((orb, idx) => {
+      const cx = W * orb.xFrac + Math.sin(now * orb.speed + orb.phase) * 55;
+      const cy = H * orb.yFrac + Math.cos(now * orb.speed * 0.85 + orb.phase) * 28;
+      const rad = orb.r * (W < 640 ? 0.72 : 1);
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
+      const alpha = isOvercast ? 0.045 : isRainy ? 0.05 : idx === 1 && wmo <= 2 ? 0.085 : 0.065;
+      const col = isRainy && idx === 1 ? "56, 189, 248" : orb.color;
+      grad.addColorStop(0, `rgba(${col}, ${alpha})`);
+      grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // 2. Raindrops + Terminal Micro-Splash
     if (isRainy) {
-      ctx.strokeStyle = "rgba(125, 211, 252, 0.18)";
-      ctx.lineWidth = 1.1;
+      ctx.strokeStyle = "rgba(125, 211, 252, 0.21)";
+      ctx.lineWidth = 1.15;
+      ctx.lineCap = "round";
       this.drops.forEach((d) => {
         ctx.beginPath();
         ctx.moveTo(d.x, d.y);
-        ctx.lineTo(d.x - 1.5, d.y + d.len);
+        ctx.lineTo(d.x - 1.8, d.y + d.len);
         ctx.stroke();
 
         d.y += d.speed;
-        d.x -= 0.8;
-        if (d.y > canvas.height) {
+        d.x -= 0.9;
+        if (d.y > H) {
           d.y = -20;
-          d.x = Math.random() * canvas.width;
+          d.x = Math.random() * (W + 60);
         }
+      });
+    }
+
+    // 3. Zeus Sheet Lightning Flash in Thunderstorms
+    if (isThunder) {
+      if (now >= this.nextLightningAt) {
+        this.lightningAlpha = 0.22;
+        this.nextLightningAt = now + 5000 + Math.random() * 8500;
+      }
+      if (this.lightningAlpha > 0.005) {
+        const flashGrad = ctx.createRadialGradient(W * 0.5, 0, 10, W * 0.5, 0, H * 0.85);
+        flashGrad.addColorStop(0, `rgba(250, 204, 21, ${this.lightningAlpha})`);
+        flashGrad.addColorStop(0.45, `rgba(56, 189, 248, ${this.lightningAlpha * 0.65})`);
+        flashGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = flashGrad;
+        ctx.fillRect(0, 0, W, H);
+        this.lightningAlpha *= 0.88;
+      }
+    }
+
+    // 4. Crystalline Snowflakes
+    if (isSnowy) {
+      ctx.fillStyle = "rgba(224, 242, 254, 0.45)";
+      this.flakes.forEach((f) => {
+        f.y += f.speedY;
+        f.x += Math.sin(now * 0.0012 + f.phase) * 0.45;
+        if (f.y > H + 10) {
+          f.y = -10;
+          f.x = Math.random() * W;
+        }
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+        ctx.fill();
       });
     }
   },
 };
+
+/* Ambient Sky Refraction Controller (LG1 — Damped, Ultra-Subtle Ambient Drift) */
+function setupLiquidGlassSheen() {
+  let activeCard = null;
+  let rafId = null;
+
+  const updateSheen = (card, clientX, clientY) => {
+    if (!card) return;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      const rect = card.getBoundingClientRect();
+      const rawX = clientX - rect.left;
+      const rawY = clientY - rect.top;
+      // Heavily damp cursor offset toward natural top-center sky reflection (only 20% drift)
+      const ambientX = rect.width * 0.5 + (rawX - rect.width * 0.5) * 0.2;
+      const ambientY = rect.height * 0.14 + (rawY - rect.height * 0.14) * 0.2;
+      card.style.setProperty("--sheen-x", `${ambientX.toFixed(0)}px`);
+      card.style.setProperty("--sheen-y", `${ambientY.toFixed(0)}px`);
+      card.style.setProperty("--sheen-opacity", "0.62");
+    });
+  };
+
+  document.addEventListener(
+    "pointermove",
+    (e) => {
+      if (e.pointerType === "touch") return;
+      const card = e.target.closest(".liquid-glass");
+      if (activeCard && activeCard !== card) {
+        activeCard.style.setProperty("--sheen-opacity", "0.35");
+      }
+      activeCard = card;
+      if (card) {
+        updateSheen(card, e.clientX, e.clientY);
+      }
+    },
+    { passive: true }
+  );
+
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      const card = e.target.closest(".liquid-glass");
+      if (card) {
+        if (activeCard && activeCard !== card) {
+          activeCard.style.setProperty("--sheen-opacity", "0.35");
+        }
+        activeCard = card;
+        updateSheen(card, e.clientX, e.clientY);
+      }
+    },
+    { passive: true }
+  );
+
+  const clearActiveSheen = () => {
+    if (activeCard) {
+      activeCard.style.setProperty("--sheen-opacity", "0.35");
+      activeCard = null;
+    }
+  };
+  document.addEventListener("pointerup", clearActiveSheen, { passive: true });
+  document.addEventListener("pointercancel", clearActiveSheen, { passive: true });
+}
+
+/* Native Mobile Bottom-Sheet Swipe-to-Dismiss Controller (M6) */
+function setupMobileBottomSheetSwipe() {
+  const sheet = document.getElementById("tile-modal-sheet");
+  const grabber = document.getElementById("sheet-grabber-bar");
+  if (!sheet) return;
+
+  let startY = 0;
+  let currentDY = 0;
+  let dragging = false;
+
+  const onTouchStart = (e) => {
+    if (window.innerWidth > 640) return;
+    const touch = e.touches?.[0];
+    if (!touch) return;
+    const isGrabber = grabber && grabber.contains(e.target);
+    if (!isGrabber && sheet.scrollTop > 2) return;
+    startY = touch.clientY;
+    currentDY = 0;
+    dragging = true;
+    sheet.style.transition = "none";
+  };
+
+  const onTouchMove = (e) => {
+    if (!dragging) return;
+    const touch = e.touches?.[0];
+    if (!touch) return;
+    const dy = touch.clientY - startY;
+    if (dy <= 0) {
+      currentDY = 0;
+      sheet.style.transform = "";
+      return;
+    }
+    // Prevent native pull-to-refresh while dragging the sheet down
+    if (e.cancelable) e.preventDefault();
+    currentDY = Math.pow(dy, 0.92);
+    sheet.style.transform = `translate3d(0, ${currentDY.toFixed(1)}px, 0)`;
+  };
+
+  const onTouchEnd = () => {
+    if (!dragging) return;
+    dragging = false;
+    if (currentDY > 82) {
+      closeTileDetailModal();
+    } else {
+      sheet.style.transition = "transform 0.32s cubic-bezier(0.22, 1.25, 0.36, 1)";
+      sheet.style.transform = "translate3d(0, 0, 0)";
+    }
+    currentDY = 0;
+  };
+
+  sheet.addEventListener("touchstart", onTouchStart, { passive: true });
+  sheet.addEventListener("touchmove", onTouchMove, { passive: false });
+  sheet.addEventListener("touchend", onTouchEnd, { passive: true });
+  sheet.addEventListener("touchcancel", onTouchEnd, { passive: true });
+}
 
 /* City Search */
 function setupCitySearch() {
@@ -2936,18 +3429,35 @@ function setupControls() {
   });
 
   // 24-Hour Timeline Mode Tabs (Top Chart)
+  const topPillBar = document.getElementById("timeline-pill-bar");
   document.querySelectorAll("#timeline-pill-bar .mode-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
       document
         .querySelectorAll("#timeline-pill-bar .mode-tab")
         .forEach((t) => t.classList.remove("active"));
       tab.classList.add("active");
+      syncLiquidPillGlider(topPillBar);
       state.hourlyMode = tab.dataset.mode || "temp";
       if (state.weather) {
         renderHourlyTimeline(state.weather.hourly);
       }
     });
   });
+
+  requestAnimationFrame(() => syncLiquidPillGlider(topPillBar));
+  window.addEventListener(
+    "resize",
+    () => {
+      syncLiquidPillGlider(topPillBar);
+      document
+        .querySelectorAll(".day-accordion.open .day-pill-bar")
+        .forEach((bar) => syncLiquidPillGlider(bar));
+    },
+    { passive: true }
+  );
+
+  setupLiquidGlassSheen();
+  setupMobileBottomSheetSwipe();
 
   // App-Like Interactive Tiles -> Open Detail Modal Sheet
   document.querySelectorAll(".interactive-tile[data-tile]").forEach((tile) => {

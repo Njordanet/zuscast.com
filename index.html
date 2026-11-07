@@ -2,11 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <meta name="zus-build-version" content="20261106-8b47f4699d" />
+  <meta name="zus-build-version" content="20261106-lgmobile1" />
   <title>ZüsCast — Hyperlocal Weather &amp; Down-to-the-Minute Nowcast</title>
   <meta name="description" content="ZüsCast (zuscast.com) — Hyperlocal, down-to-the-minute weather intelligence with Liquid Glass aesthetics." />
   <meta name="theme-color" content="#0b0f1a" />
@@ -24,13 +27,23 @@
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
     crossorigin=""
   />
-  <link rel="stylesheet" href="./styles.css?v=20261106-8b47f4699d" />
+  <link rel="stylesheet" href="./styles.css?v=20261106-lgmobile2" />
 </head>
-<body class="sky-clear">
+<body class="sky-clear is-loading">
   <!-- Ambient Atmospheric Canvas -->
   <canvas id="atmosphere-canvas" aria-hidden="true"></canvas>
 
   <div class="app-shell">
+    <!-- Ambient Liquid Glass Boot Pulse (dissolves as tiles materialize in) -->
+    <div class="liquid-boot-stage" id="liquid-boot-stage" aria-hidden="true">
+      <div class="liquid-boot-orb">
+        <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M32 10C32 10 16 28.5 16 39.5C16 48.3366 23.1634 55.5 32 55.5C40.8366 55.5 48 48.3366 48 39.5C48 28.5 32 10 32 10Z" fill="#58C7FF" />
+          <path d="M25 39C25 34.5 28 28 30 24C26 30 23.5 35 23.5 39.5C23.5 44.5 27 48.5 32 49.5C28 48 25 44 25 39Z" fill="rgba(255,255,255,0.65)" />
+        </svg>
+      </div>
+    </div>
+
     <!-- Top Header: Brand Top-Left, Unit Toggle + Search Top-Right (No Outer Glass Box) -->
     <header class="top-nav">
       <a href="/" class="brand" aria-label="ZüsCast Home">
@@ -94,8 +107,8 @@
             <div class="location-kicker" id="location-kicker">
               <span>📍 Hyperlocal Forecast</span>
             </div>
-            <h1 class="hero-city" id="hero-city">Locating...</h1>
-            <div class="hero-submeta" id="hero-coords">Acquiring GPS coordinates...</div>
+            <h1 class="hero-city" id="hero-city">New York</h1>
+            <div class="hero-submeta" id="hero-coords">40.7128° N, 74.0060° W</div>
           </div>
           <div class="confidence-pill" title="Multi-model ensemble agreement">
             <span class="confidence-dot"></span>
@@ -106,12 +119,12 @@
         <div class="hero-main-display">
           <div class="hero-temp-wrap">
             <div id="hero-icon-container" class="hero-icon-box"></div>
-            <div class="hero-temp" id="hero-temp">--°</div>
+            <div class="hero-temp" id="hero-temp">72°</div>
           </div>
           <div class="hero-summary-col">
-            <div class="hero-condition-text" id="hero-condition">Syncing...</div>
-            <div class="hero-feels-text" id="hero-feels-like">Feels like --°</div>
-            <div class="hero-hilow-text" id="hero-high-low">High --° &bull; Low --°</div>
+            <div class="hero-condition-text" id="hero-condition">Clear</div>
+            <div class="hero-feels-text" id="hero-feels-like">Feels like 72°</div>
+            <div class="hero-hilow-text" id="hero-high-low">High 75° &bull; Low 61°</div>
           </div>
         </div>
 
@@ -220,9 +233,7 @@
           </span>
           <span class="section-kicker">Tap any day for details</span>
         </div>
-        <div class="daily-summary-banner" id="weekly-summary-banner">
-          Loading weekly outlook...
-        </div>
+        <div class="daily-summary-banner" id="weekly-summary-banner"></div>
         <div class="daily-list" id="daily-list"></div>
       </article>
 
@@ -326,24 +337,26 @@
           </div>
 
           <!-- Collapsible Standardized Interop Feeds Drawer -->
-          <div class="radar-interop-drawer" id="radar-interop-drawer" hidden>
-            <div class="radar-interop-title">Standardized Drop-In Endpoints (Dark Sky / RainViewer / TileJSON 3.0)</div>
-            <div class="radar-interop-list">
-              <div class="radar-interop-row">
-                <span class="interop-tag">Dark Sky v1</span>
-                <code id="interop-darksky-url">/forecast/zus_key/40.7128,-74.0060?units=us</code>
-              </div>
-              <div class="radar-interop-row">
-                <span class="interop-tag">RainViewer v2</span>
-                <code id="interop-rainviewer-url">/public/weather-maps.json</code>
-              </div>
-              <div class="radar-interop-row">
-                <span class="interop-tag">TileJSON 3.0</span>
-                <code id="interop-tilejson-url">/api/v1/radar/tilejson.json</code>
-              </div>
-              <div class="radar-interop-row">
-                <span class="interop-tag">XYZ Tiles</span>
-                <code id="interop-xyz-url">/api/v1/radar/tiles/latest/{z}/{x}/{y}.png</code>
+          <div class="radar-interop-drawer" id="radar-interop-drawer" aria-hidden="true">
+            <div class="radar-interop-inner">
+              <div class="radar-interop-title">Standardized Drop-In Endpoints (Dark Sky / RainViewer / TileJSON 3.0)</div>
+              <div class="radar-interop-list">
+                <div class="radar-interop-row">
+                  <span class="interop-tag">Dark Sky v1</span>
+                  <code id="interop-darksky-url">/forecast/zus_key/40.7128,-74.0060?units=us</code>
+                </div>
+                <div class="radar-interop-row">
+                  <span class="interop-tag">RainViewer v2</span>
+                  <code id="interop-rainviewer-url">/public/weather-maps.json</code>
+                </div>
+                <div class="radar-interop-row">
+                  <span class="interop-tag">TileJSON 3.0</span>
+                  <code id="interop-tilejson-url">/api/v1/radar/tilejson.json</code>
+                </div>
+                <div class="radar-interop-row">
+                  <span class="interop-tag">XYZ Tiles</span>
+                  <code id="interop-xyz-url">/api/v1/radar/tiles/latest/{z}/{x}/{y}.png</code>
+                </div>
               </div>
             </div>
           </div>
@@ -364,7 +377,7 @@
             <div class="meter-dot" id="aqi-dot" style="left: 12%"></div>
           </div>
         </div>
-        <div class="detail-sub" id="detail-aqi-desc">Syncing air quality...</div>
+        <div class="detail-sub" id="detail-aqi-desc">Good — Clean air</div>
       </article>
 
       <article class="detail-card liquid-glass interactive-tile" data-tile="uv" role="button" tabindex="0">
@@ -447,23 +460,23 @@
       <div class="ensemble-models-grid" id="ensemble-models-grid">
         <div class="ensemble-pill-box interactive-tile" data-tile="ensemble" role="button" tabindex="0">
           <div class="ensemble-model-name"><span>HRRR 3km</span><span>High-Res</span></div>
-          <div class="ensemble-model-temp">--°</div>
-          <div class="ensemble-model-meta">Syncing...</div>
+          <div class="ensemble-model-temp">72°F</div>
+          <div class="ensemble-model-meta">Precip rate: 0.00 in/hr</div>
         </div>
         <div class="ensemble-pill-box interactive-tile" data-tile="ensemble" role="button" tabindex="0">
           <div class="ensemble-model-name"><span>ECMWF IFS</span><span>Global</span></div>
-          <div class="ensemble-model-temp">--°</div>
-          <div class="ensemble-model-meta">Syncing...</div>
+          <div class="ensemble-model-temp">72°F</div>
+          <div class="ensemble-model-meta">Precip rate: 0.00 in/hr</div>
         </div>
         <div class="ensemble-pill-box interactive-tile" data-tile="ensemble" role="button" tabindex="0">
           <div class="ensemble-model-name"><span>NOAA GFS</span><span>Global</span></div>
-          <div class="ensemble-model-temp">--°</div>
-          <div class="ensemble-model-meta">Syncing...</div>
+          <div class="ensemble-model-temp">71°F</div>
+          <div class="ensemble-model-meta">Precip rate: 0.00 in/hr</div>
         </div>
         <div class="ensemble-pill-box interactive-tile" data-tile="ensemble" role="button" tabindex="0">
           <div class="ensemble-model-name"><span>DWD ICON</span><span>Global</span></div>
-          <div class="ensemble-model-temp">--°</div>
-          <div class="ensemble-model-meta">Syncing...</div>
+          <div class="ensemble-model-temp">72°F</div>
+          <div class="ensemble-model-meta">Precip rate: 0.00 in/hr</div>
         </div>
       </div>
     </section>
@@ -473,12 +486,15 @@
       <div>
         <strong>ZüsCast</strong> &bull; Down-to-the-minute hyperlocal weather intelligence.
       </div>
-      <div id="last-updated">Syncing...</div>
+      <div id="last-updated">Live Telemetry</div>
     </footer>
 
     <!-- Interactive App Telemetry Detail Modal / Sheet -->
     <div class="tile-modal-backdrop" id="tile-detail-modal" hidden aria-modal="true" role="dialog">
-      <div class="tile-modal-sheet liquid-glass" role="document">
+      <div class="tile-modal-sheet liquid-glass" id="tile-modal-sheet" role="document">
+        <div class="sheet-grabber-bar" id="sheet-grabber-bar" aria-hidden="true">
+          <span class="sheet-grabber-pill"></span>
+        </div>
         <div class="tile-modal-header">
           <div>
             <div class="section-kicker" id="tile-modal-kicker">ATMOSPHERIC TELEMETRY</div>
@@ -524,6 +540,6 @@
     crossorigin=""
     defer
   ></script>
-  <script src="./app.js?v=20261106-8b47f4699d" defer></script>
+  <script src="./app.js?v=20261106-lgmobile2" defer></script>
 </body>
 </html>
