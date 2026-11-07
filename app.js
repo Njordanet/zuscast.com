@@ -758,6 +758,21 @@ const dopplerRadarMap = {
         this.clearProbe();
       });
     }
+    const hudFooterEl = document.getElementById("radar-modal-hud-footer");
+    if (hudFooterEl) {
+      const toggleHudExpanded = (e) => {
+        e.stopPropagation();
+        const expanded = hudFooterEl.classList.toggle("is-expanded");
+        hudFooterEl.setAttribute("aria-expanded", String(expanded));
+      };
+      hudFooterEl.addEventListener("click", toggleHudExpanded);
+      hudFooterEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggleHudExpanded(e);
+        }
+      });
+    }
   },
 
   initTrackpadGestures(mapEl) {
@@ -1280,6 +1295,11 @@ const dopplerRadarMap = {
 
     clearTimeout(this.modalCloseTimer);
     this.isModalOpen = true;
+    const hudFooterEl = document.getElementById("radar-modal-hud-footer");
+    if (hudFooterEl) {
+      hudFooterEl.classList.remove("is-expanded");
+      hudFooterEl.setAttribute("aria-expanded", "false");
+    }
     this.syncModalTitleAndKickers();
     this.renderTelemetryStrip(this.probedTelemetry || this.telemetry);
 
@@ -2181,31 +2201,33 @@ const dopplerRadarMap = {
     const dbzLabelEl = document.getElementById("radar-stat-dbz-label");
     const peakLabelEl = document.getElementById("radar-stat-peak-label");
     const echoLabelEl = document.getElementById("radar-stat-echo-label");
-    const vecLabelEl = document.getElementById("radar-stat-vector-label");
+    const vecRowEl = document.getElementById("radar-stat-vector-row");
     const dbzEl = document.getElementById("radar-stat-dbz");
     const peakEl = document.getElementById("radar-stat-peak");
     const echoEl = document.getElementById("radar-stat-echo");
-    const vecEl = document.getElementById("radar-stat-vector");
     const legBarEl = document.getElementById("radar-legend-bar");
     const legMinEl = document.getElementById("radar-legend-min");
     const legMaxEl = document.getElementById("radar-legend-max");
-    if (!dbzEl || !peakEl || !echoEl || !vecEl) return;
+    const minSummaryEl = document.getElementById("radar-hud-min-summary");
+    if (!dbzEl || !peakEl || !echoEl) return;
+
+    if (vecRowEl) vecRowEl.setAttribute("hidden", "");
 
     const isWindMode = this.layerMode === "wind" || this.layerMode === "both";
     if (legBarEl) legBarEl.classList.toggle("is-wind", isWindMode);
     if (legMinEl) {
       legMinEl.textContent = isWindMode
         ? state.useImperial
-          ? "Calm (0 mph)"
-          : "Calm (0 km/h)"
-        : "Light (10 dBZ)";
+          ? "0 mph"
+          : "0 km/h"
+        : "10 dBZ";
     }
     if (legMaxEl) {
       legMaxEl.textContent = isWindMode
         ? state.useImperial
-          ? "Gale (50+ mph)"
-          : "Gale (80+ km/h)"
-        : "Severe (55+ dBZ)";
+          ? "50+ mph"
+          : "80+ km/h"
+        : "55+ dBZ";
     }
 
     if (isWindMode) {
@@ -2218,56 +2240,55 @@ const dopplerRadarMap = {
         Number(frame.offsetMinutes || 0)
       );
 
-      if (dbzLabelEl) dbzLabelEl.textContent = this.probedCoords ? "Probed Wind" : "Sustained (10m)";
-      if (peakLabelEl) peakLabelEl.textContent = "Peak Gust";
-      if (echoLabelEl) echoLabelEl.textContent = "Flow Vector";
-      if (vecLabelEl) {
-        vecLabelEl.textContent = this.layerMode === "both" ? "Overhead Echo" : "Beaufort Scale";
+      if (dbzLabelEl) dbzLabelEl.textContent = this.probedCoords ? "Probed" : "Wind";
+      if (peakLabelEl) peakLabelEl.textContent = "Gust";
+      if (echoLabelEl) {
+        echoLabelEl.textContent = this.layerMode === "both" ? "Echo" : "Scale";
       }
 
-      dbzEl.textContent = formatWind(windSample.speedKmh);
-      peakEl.textContent = formatWind(windSample.gustKmh);
-      echoEl.textContent = `${windSample.windFromCompass} (${windSample.windFromDeg}°)`;
+      const windWithDir = `${formatWind(windSample.speedKmh)} ${windSample.windFromCompass}`;
+      const gustStr = formatWind(windSample.gustKmh);
+      dbzEl.textContent = windWithDir;
+      peakEl.textContent = gustStr;
+
       if (this.layerMode === "both") {
         const curDbz = tel?.inConusGrid ? tel.currentDbz : 0;
-        vecEl.textContent = curDbz > 0 ? `${curDbz.toFixed(0)} dBZ (${tel.intensityCategory})` : "0 dBZ (Clear)";
+        const echoShort = curDbz > 0 ? `${curDbz.toFixed(0)} dBZ` : "0 dBZ";
+        echoEl.textContent =
+          curDbz > 0 ? `${curDbz.toFixed(0)} dBZ (${tel.intensityCategory})` : "0 dBZ (Clear)";
+        if (minSummaryEl) minSummaryEl.textContent = `${windWithDir} · ${echoShort}`;
       } else {
-        vecEl.textContent = windSample.beaufort;
+        echoEl.textContent = windSample.beaufort;
+        if (minSummaryEl) minSummaryEl.textContent = `${windWithDir} · Gust ${gustStr}`;
       }
       return;
     }
 
-    if (dbzLabelEl) dbzLabelEl.textContent = this.probedCoords ? "Probed Point" : "Overhead";
-    if (peakLabelEl) peakLabelEl.textContent = "35km Peak";
-    if (echoLabelEl) echoLabelEl.textContent = "Nearest Echo";
-    if (vecLabelEl) vecLabelEl.textContent = "Storm Vector";
+    if (dbzLabelEl) dbzLabelEl.textContent = this.probedCoords ? "Probed" : "Echo";
+    if (peakLabelEl) peakLabelEl.textContent = "Peak";
+    if (echoLabelEl) echoLabelEl.textContent = "Storm";
 
     if (!tel || !tel.inConusGrid) {
       const precip = state.weather?.minuteRates?.[0] ?? 0;
-      dbzEl.textContent = precip > 0.1 ? "Active Echo" : "0 dBZ (Clear)";
+      const echoTxt = precip > 0.1 ? "Active Echo" : "0 dBZ (Clear)";
+      dbzEl.textContent = echoTxt;
       peakEl.textContent = `${Math.round(state.weather?.hourly?.[0]?.precipProb ?? 0)}% PoP`;
-      echoEl.textContent = precip > 0.1 ? "Overhead" : "Clear (35km)";
-      vecEl.textContent = `${formatWind(state.weather?.windSpeed ?? 15)} ${compassDirection(
+      echoEl.textContent = `${formatWind(state.weather?.windSpeed ?? 15)} ${compassDirection(
         state.weather?.windDirection ?? 240
       )}`;
+      if (minSummaryEl) minSummaryEl.textContent = precip > 0.1 ? "Active Echo" : "0 dBZ · Clear";
       return;
     }
 
+    const curDbz = tel.currentDbz;
     dbzEl.textContent =
-      tel.currentDbz > 0
-        ? `${tel.currentDbz.toFixed(0)} dBZ (${tel.intensityCategory})`
-        : "0 dBZ (Clear)";
-    peakEl.textContent = `${tel.maxDbzNearby.toFixed(0)} dBZ (${tel.echoCoveragePercent.toFixed(0)}%)`;
-    if (tel.nearestEchoKm !== null && tel.nearestEchoKm !== undefined) {
-      const distStr = state.useImperial
-        ? `${(tel.nearestEchoKm * 0.621371).toFixed(1)} mi`
-        : `${tel.nearestEchoKm.toFixed(1)} km`;
-      echoEl.textContent =
-        tel.nearestEchoKm < 2.0 ? "Overhead Now" : `${distStr} ${tel.nearestEchoCompass || ""}`;
-    } else {
-      echoEl.textContent = "Clear (35km)";
+      curDbz > 0 ? `${curDbz.toFixed(0)} dBZ (${tel.intensityCategory})` : "0 dBZ (Clear)";
+    peakEl.textContent = `${tel.maxDbzNearby.toFixed(0)} dBZ`;
+    echoEl.textContent = `${formatWind(tel.stormMotionKmh)} ${tel.stormMotionCompass}`;
+    if (minSummaryEl) {
+      minSummaryEl.textContent =
+        curDbz > 0 ? `${curDbz.toFixed(0)} dBZ · ${tel.intensityCategory}` : "0 dBZ · Clear";
     }
-    vecEl.textContent = `${formatWind(tel.stormMotionKmh)} ${tel.stormMotionCompass}`;
   },
 };
 
