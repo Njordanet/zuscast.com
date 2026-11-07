@@ -1268,6 +1268,10 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     dopplerTel && dopplerTel.inConusGrid && Array.isArray(dopplerTel.minuteRates60m)
       ? dopplerTel.minuteRates60m
       : [];
+  const exact61Rates =
+    dopplerTel && dopplerTel.inConusGrid && Array.isArray(dopplerTel.minuteByMinuteRates) && dopplerTel.minuteByMinuteRates.length >= 61
+      ? dopplerTel.minuteByMinuteRates
+      : null;
 
   // Build 13 5-minute trajectory steps (0..60m) blending 1km Züs Doppler with 15-min NWP model
   const fiveMinPoints = [];
@@ -1283,16 +1287,20 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     }
   }
 
-  // Interpolate 61 minute-by-minute points (0..60m) from 5-minute Doppler trajectory
+  // Use 61 1-minute sub-pixel Lagrangian Doppler rates (0..60m) directly when available, else cosine-interpolate
   const minuteRates = [];
   for (let min = 0; min <= 60; min++) {
-    const seg = Math.min(11, Math.floor(min / 5));
-    const frac = (min - seg * 5) / 5;
-    const v0 = fiveMinPoints[seg] ?? 0;
-    const v1 = fiveMinPoints[seg + 1] ?? v0;
-    // Cosine smooth interpolation
-    const mu = (1 - Math.cos(frac * Math.PI)) / 2;
-    minuteRates.push(Math.max(0, v0 * (1 - mu) + v1 * mu));
+    if (exact61Rates) {
+      minuteRates.push(Math.max(0, Number(exact61Rates[min] ?? 0)));
+    } else {
+      const seg = Math.min(11, Math.floor(min / 5));
+      const frac = (min - seg * 5) / 5;
+      const v0 = fiveMinPoints[seg] ?? 0;
+      const v1 = fiveMinPoints[seg + 1] ?? v0;
+      // Cosine smooth interpolation
+      const mu = (1 - Math.cos(frac * Math.PI)) / 2;
+      minuteRates.push(Math.max(0, v0 * (1 - mu) + v1 * mu));
+    }
   }
 
   // Next 24 hours (assimilate ZüsAPI MOS bias-corrected & ground-truth hourly stream + multi-model min/max envelope)
