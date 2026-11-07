@@ -1986,9 +1986,14 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   font-family: inherit !important;
 }
 
-/* Smooth Opacity Cross-Fade Between Doppler Radar Frames */
+/* Crisp Instant Frame Switching Between Doppler Radar Frames (Zero Ghosting/Smearing) */
 .leaflet-tile-pane .leaflet-layer {
-  transition: opacity 0.22s var(--spring-smooth);
+  transition: none !important;
+}
+
+.leaflet-tile-pane canvas.leaflet-tile,
+.leaflet-tile-pane img.leaflet-tile {
+  image-rendering: -webkit-optimize-contrast;
 }
 
 .leaflet-control-attribution {

@@ -1424,15 +1424,15 @@ const dopplerRadarMap = {
   },
 
   zusColorForDbz(dbz) {
-    if (dbz < 7.5) return [0, 0, 0, 0];
-    if (dbz < 15.0) return [56, 189, 248, 125]; // Soft cyan mist
-    if (dbz < 23.0) return [14, 165, 233, 168]; // Light rain sky blue
-    if (dbz < 30.0) return [37, 99, 235, 198]; // Moderate electric blue
-    if (dbz < 35.0) return [52, 211, 153, 215]; // Emerald-cyan transition
-    if (dbz < 41.0) return [250, 204, 21, 232]; // Züs Storm Gold (#FACC15)
-    if (dbz < 47.0) return [245, 158, 11, 240]; // Deep amber gold
-    if (dbz < 54.0) return [239, 68, 68, 246]; // Crimson storm core
-    return [217, 70, 239, 252]; // Electric violet hail core
+    if (dbz < 8.5) return [0, 0, 0, 0];
+    if (dbz < 15.0) return [56, 189, 248, 155]; // Crisp cyan mist
+    if (dbz < 23.0) return [14, 165, 233, 198]; // Light rain sky blue
+    if (dbz < 30.0) return [37, 99, 235, 224]; // Moderate electric blue
+    if (dbz < 35.0) return [52, 211, 153, 238]; // Emerald-cyan transition
+    if (dbz < 41.0) return [250, 204, 21, 248]; // Züs Storm Gold (#FACC15)
+    if (dbz < 47.0) return [245, 158, 11, 252]; // Deep amber gold
+    if (dbz < 54.0) return [239, 68, 68, 255]; // Crimson storm core
+    return [217, 70, 239, 255]; // Electric violet hail core
   },
 
   loadRawTileImage(url) {
@@ -1595,6 +1595,7 @@ const dopplerRadarMap = {
         tile.width = 256;
         tile.height = 256;
         const ctx = tile.getContext("2d");
+        ctx.imageSmoothingEnabled = false;
 
         (async () => {
           try {
@@ -1872,12 +1873,13 @@ const dopplerRadarMap = {
             const normalizedFrames = data.frames.map((f) => ({
               ...f,
               maxNativeZoom: 8,
-              tileUrlTemplate:
+              tileUrlTemplate: (
                 typeof f.tileUrlTemplate === "string" &&
                 window.location.protocol === "https:" &&
                 f.tileUrlTemplate.startsWith("http://")
                   ? "https://" + f.tileUrlTemplate.slice("http://".length)
-                  : f.tileUrlTemplate,
+                  : f.tileUrlTemplate
+              ).replace("?v=7", "?v=8"),
             }));
             this.frames = this.ensureTwoHourNowcastFrames(normalizedFrames, { maxNativeZoom: 8 });
             this.telemetry = data.localTelemetry || null;
@@ -2013,44 +2015,25 @@ const dopplerRadarMap = {
 
   applyRadarCrossfadeOpacity() {
     if (!this.frames.length) return;
-    const bounded = Math.max(
+    const activeIdx = Math.max(
       0,
-      Math.min(this.frames.length - 1, typeof this.floatIndex === "number" ? this.floatIndex : this.currentIndex)
+      Math.min(this.frames.length - 1, Math.round(Number(this.currentIndex) || 0))
     );
-    const i0 = Math.floor(bounded);
-    const i1 = Math.min(this.frames.length - 1, i0 + 1);
-    const alpha = bounded - i0;
-    const f0 = this.frames[i0];
-    const f1 = this.frames[i1] || f0;
+    const activeFrame = this.frames[activeIdx];
+    if (!activeFrame) return;
 
-    if (this.map) {
-      if (f0 && !this.tileLayers[f0.frameId]) {
-        this.tileLayers[f0.frameId] = this.createLayerForFrame(f0);
-      }
-      if (f1 && !this.tileLayers[f1.frameId]) {
-        this.tileLayers[f1.frameId] = this.createLayerForFrame(f1);
-      }
+    if (this.map && !this.tileLayers[activeFrame.frameId]) {
+      this.tileLayers[activeFrame.frameId] = this.createLayerForFrame(activeFrame);
     }
 
     const targetRadarOpacity =
-      this.layerMode === "wind" ? 0.0 : this.layerMode === "both" ? 0.72 : 0.86;
-
-    const sameFrame = !f1 || f0.frameId === f1.frameId || alpha < 0.005;
-    // Equal-power crossfade curve so radar echoes never dip in brightness mid-transition
-    const w0 = sameFrame ? 1.0 : Math.pow(1.0 - alpha, 0.78);
-    const w1 = sameFrame ? 0.0 : Math.pow(alpha, 0.78);
+      this.layerMode === "wind" ? 0.0 : this.layerMode === "both" ? 0.84 : 0.94;
 
     Object.entries(this.tileLayers).forEach(([id, layer]) => {
       if (targetRadarOpacity <= 0) {
         layer.setOpacity(0.0);
-      } else if (sameFrame) {
-        layer.setOpacity(id === f0.frameId ? targetRadarOpacity : 0.0);
-      } else if (id === f0.frameId) {
-        layer.setOpacity(targetRadarOpacity * w0);
-      } else if (id === f1.frameId) {
-        layer.setOpacity(targetRadarOpacity * w1);
       } else {
-        layer.setOpacity(0.0);
+        layer.setOpacity(id === activeFrame.frameId ? targetRadarOpacity : 0.0);
       }
     });
   },
@@ -2068,19 +2051,17 @@ const dopplerRadarMap = {
 
   setFrameIndex(idx) {
     if (!this.map || !this.frames.length) return;
-    const bounded = Math.max(0, Math.min(this.frames.length - 1, Number(idx) || 0));
-    this.floatIndex = bounded;
-    const i0 = Math.floor(bounded);
-    const i1 = Math.min(this.frames.length - 1, i0 + 1);
-    const alpha = bounded - i0;
-    const f0 = this.frames[i0];
-    const f1 = this.frames[i1] || f0;
+    const snappedIdx = Math.max(
+      0,
+      Math.min(this.frames.length - 1, Math.round(Number(idx) || 0))
+    );
+    this.floatIndex = snappedIdx;
+    this.currentIndex = snappedIdx;
+    const frame = this.frames[snappedIdx];
+    if (!frame) return;
 
-    this.currentIndex = Math.round(bounded);
-    const frame = this.frames[this.currentIndex] || f0;
-
-    // Pre-create next frame ahead for seamless crossfading
-    const iNext = Math.min(this.frames.length - 1, i1 + 1);
+    // Pre-create next frame in background (opacity 0) so discrete frame steps are instant
+    const iNext = Math.min(this.frames.length - 1, snappedIdx + 1);
     const fNext = this.frames[iNext];
     if (fNext && !this.tileLayers[fNext.frameId]) {
       this.tileLayers[fNext.frameId] = this.createLayerForFrame(fNext);
@@ -2089,47 +2070,42 @@ const dopplerRadarMap = {
     this.applyRadarCrossfadeOpacity();
     this.activeFrameId = frame.frameId;
 
-    const interpOffsetMin =
-      Number(f0.offsetMinutes || 0) * (1 - alpha) + Number(f1.offsetMinutes || 0) * alpha;
-    this.currentOffsetMinutes = interpOffsetMin;
-    const isFutureInterp = interpOffsetMin > 1.5;
+    const offsetMin = Number(frame.offsetMinutes || 0);
+    this.currentOffsetMinutes = offsetMin;
+    const isFutureFrame = Boolean(frame.isFuture || offsetMin > 0);
 
     const slider = document.getElementById("radar-frame-slider");
     if (slider) {
-      if (Math.abs(Number(slider.value) - bounded) > 0.005) {
-        slider.value = bounded.toFixed(2);
+      if (Number(slider.value) !== snappedIdx) {
+        slider.value = String(snappedIdx);
       }
       const maxIdx = Math.max(1, this.frames.length - 1);
-      const scrubPct = ((bounded / maxIdx) * 100).toFixed(2);
+      const scrubPct = ((snappedIdx / maxIdx) * 100).toFixed(2);
       slider.style.setProperty("--scrub-pct", `${scrubPct}%`);
-      slider.classList.toggle("is-future", isFutureInterp);
+      slider.classList.toggle("is-future", isFutureFrame);
     }
 
-    const interpTs =
-      f0.timestamp && f1.timestamp
-        ? f0.timestamp * (1 - alpha) + f1.timestamp * alpha
-        : frame.timestamp;
-    const frameClock = interpTs
-      ? new Date(interpTs * 1000).toLocaleTimeString([], {
+    const frameClock = frame.timestamp
+      ? new Date(frame.timestamp * 1000).toLocaleTimeString([], {
           hour: "numeric",
           minute: "2-digit",
         })
       : "";
-    const interpLabel = this.formatInterpolatedOffsetLabel(interpOffsetMin);
+    const frameLabel = frame.label || this.formatInterpolatedOffsetLabel(offsetMin);
 
     const pillEl = document.getElementById("radar-frame-label");
     const timeEl = document.getElementById("radar-time-readout");
     if (pillEl) {
-      pillEl.textContent = isFutureInterp
-        ? `${interpLabel} NOWCAST (${frameClock})`
-        : interpLabel === "LIVE"
+      pillEl.textContent = isFutureFrame
+        ? `${frameLabel} NOWCAST (${frameClock})`
+        : frameLabel === "LIVE"
         ? `LIVE (${frameClock})`
-        : `${interpLabel} (${frameClock})`;
-      pillEl.classList.toggle("future", isFutureInterp);
+        : `${frameLabel} (${frameClock})`;
+      pillEl.classList.toggle("future", isFutureFrame);
     }
     if (timeEl) {
-      timeEl.textContent = frameClock ? `${frameClock} (${interpLabel})` : interpLabel;
-      timeEl.classList.toggle("future", isFutureInterp);
+      timeEl.textContent = frameClock ? `${frameClock} (${frameLabel})` : frameLabel;
+      timeEl.classList.toggle("future", isFutureFrame);
     }
 
     if (this.layerMode === "wind" || this.layerMode === "both") {
@@ -2154,7 +2130,7 @@ const dopplerRadarMap = {
 
   startPlay() {
     if (!this.frames.length) return;
-    // Pre-warm all frame layers so continuous crossfade playback has zero lag
+    // Pre-warm all frame layers so discrete frame stepping has zero lag
     this.frames.forEach((f) => {
       if (this.map && !this.tileLayers[f.frameId]) {
         this.tileLayers[f.frameId] = this.createLayerForFrame(f);
@@ -2164,30 +2140,25 @@ const dopplerRadarMap = {
     const btn = document.getElementById("radar-play-btn");
     if (btn) btn.textContent = "❚❚";
 
-    let lastTs = performance.now();
-    let endHoldUntil = 0;
     const maxIdx = Math.max(1, this.frames.length - 1);
-    if (typeof this.floatIndex !== "number" || this.floatIndex >= maxIdx - 0.02) {
-      this.floatIndex = 0;
+    if (this.currentIndex >= maxIdx) {
+      this.setFrameIndex(0);
     }
+
+    const stepDelayMs = 540;
+    const endHoldMs = 950;
+    let nextStepAt = performance.now() + stepDelayMs;
 
     const tick = (now) => {
       if (!this.isPlaying) return;
-      const dtSec = Math.min(0.1, Math.max(0.0, (now - lastTs) / 1000));
-      lastTs = now;
-
-      if (endHoldUntil > 0) {
-        if (now >= endHoldUntil) {
-          endHoldUntil = 0;
+      if (now >= nextStepAt) {
+        if (this.currentIndex >= maxIdx) {
           this.setFrameIndex(0);
-        }
-      } else {
-        const nextFloat = (typeof this.floatIndex === "number" ? this.floatIndex : this.currentIndex) + dtSec * 1.15;
-        if (nextFloat >= maxIdx) {
-          this.setFrameIndex(maxIdx);
-          endHoldUntil = now + 850;
+          nextStepAt = now + stepDelayMs;
         } else {
-          this.setFrameIndex(nextFloat);
+          const nextIdx = this.currentIndex + 1;
+          this.setFrameIndex(nextIdx);
+          nextStepAt = now + (nextIdx >= maxIdx ? endHoldMs : stepDelayMs);
         }
       }
       this.playTimer = requestAnimationFrame(tick);
