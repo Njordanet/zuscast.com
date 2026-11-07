@@ -483,9 +483,9 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 7px;
-  flex: 1 1 360px;
-  max-width: 560px;
+  gap: 0;
+  flex: 0 1 310px;
+  max-width: 310px;
   margin-left: auto;
 }
 
@@ -559,37 +559,42 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   letter-spacing: 0.01em;
 }
 
-/* Search Bar */
+/* Search Bar (Compact Desktop Pill + Unified Recents/Results Dropdown) */
 .search-wrapper {
   position: relative;
-  flex: 1 1 280px;
-  max-width: 480px;
+  flex: 0 1 290px;
+  width: 290px;
+  max-width: 290px;
   min-width: 0;
 }
 
 .search-input-group {
   display: flex;
   align-items: center;
+  height: 35px;
   background: var(--glass-fill);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(185%);
+  -webkit-backdrop-filter: blur(28px) saturate(185%);
   border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-specular), 0 10px 28px -8px rgba(2, 6, 20, 0.55);
+  box-shadow: var(--glass-specular), 0 8px 22px -6px rgba(2, 6, 20, 0.48);
   border-radius: var(--radius-pill);
-  padding: 5px 6px 5px 14px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  padding: 3px 4px 3px 11px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
 .search-input-group:focus-within {
-  border-color: rgba(56, 189, 248, 0.6);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
+  border-color: rgba(125, 211, 252, 0.72);
+  box-shadow:
+    var(--glass-specular),
+    0 0 0 3px rgba(56, 189, 248, 0.18),
+    0 10px 26px -6px rgba(2, 6, 20, 0.58);
 }
 
 .search-icon {
-  width: 16px;
-  height: 16px;
+  width: 13.5px;
+  height: 13.5px;
   color: var(--text-muted);
-  margin-right: 9px;
+  margin-right: 7px;
   flex-shrink: 0;
 }
 
@@ -597,63 +602,68 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   flex: 1 1 auto;
   min-width: 0;
   width: 100%;
-  padding-right: 8px;
+  padding-right: 6px;
   background: transparent;
   border: none;
   color: var(--text-primary);
-  font-size: 0.88rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
   text-overflow: ellipsis;
   outline: none;
 }
 
 #city-search-input::placeholder {
   color: var(--text-muted);
+  font-weight: 400;
 }
 
 .locate-btn {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.11);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   color: #e0f2fe;
   border-radius: var(--radius-pill);
-  padding: 5px 11px;
-  font-size: 0.76rem;
+  padding: 3.5px 9px;
+  height: 25px;
+  font-size: 0.72rem;
   font-weight: 600;
+  line-height: 1;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   white-space: nowrap;
-  transition: all 0.18s ease;
+  transition: all 0.16s ease;
 }
 
 .locate-btn:hover {
-  background: rgba(56, 189, 248, 0.22);
-  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(56, 189, 248, 0.24);
+  border-color: rgba(125, 211, 252, 0.5);
+  color: #ffffff;
 }
 
 /* Search Dropdown — Symmetric Spring Entrance & Exit */
 .search-dropdown {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 7px);
   left: 0;
   right: 0;
-  background: rgba(12, 19, 36, 0.94);
+  background: rgba(11, 20, 40, 0.94);
   backdrop-filter: blur(38px) saturate(195%);
   -webkit-backdrop-filter: blur(38px) saturate(195%);
   border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-specular), 0 24px 48px rgba(0, 0, 0, 0.65);
-  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-specular), 0 20px 44px -8px rgba(2, 6, 20, 0.72);
+  border-radius: 14px;
   overflow: hidden;
   z-index: 60;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transform: translateY(-8px) scale(0.975);
+  transform: translateY(-6px) scale(0.975);
   transform-origin: top center;
   transition:
-    opacity 0.22s var(--spring-smooth),
-    transform 0.28s var(--spring-bounce),
-    visibility 0.22s;
+    opacity 0.18s var(--spring-smooth),
+    transform 0.22s var(--spring-bounce),
+    visibility 0.18s;
 }
 
 .search-dropdown.open {
@@ -663,37 +673,123 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   transform: translateY(0) scale(1);
 }
 
+.dropdown-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 11px 5px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  color: rgba(186, 230, 253, 0.62);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  user-select: none;
+}
+
+.kbd-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: rgba(186, 230, 253, 0.52);
+}
+
+.kbd-badge {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 0.66rem;
+  line-height: 1.35;
+  color: rgba(224, 242, 254, 0.82);
+}
+
 .search-result-item {
   width: 100%;
   text-align: left;
   background: transparent;
   border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 11px 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  padding: 8.5px 11px;
   color: var(--text-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  transition: background 0.15s ease;
+  gap: 8px;
+  transition: background 0.12s ease;
 }
 
 .search-result-item:last-child {
   border-bottom: none;
 }
 
-.search-result-item:hover {
-  background: rgba(56, 189, 248, 0.14);
+.search-result-item:hover,
+.search-result-item.is-active {
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.22) 0%, rgba(56, 189, 248, 0.1) 100%);
+}
+
+.result-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.result-kind-icon {
+  width: 13px;
+  height: 13px;
+  color: rgba(125, 211, 252, 0.72);
+  flex-shrink: 0;
+}
+
+.search-result-item.is-active .result-kind-icon,
+.search-result-item:hover .result-kind-icon {
+  color: #38bdf8;
 }
 
 .search-result-name {
   font-weight: 600;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .search-result-meta {
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.recent-remove-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(226, 232, 240, 0.5);
+  font-size: 0.85rem;
+  line-height: 1;
+  transition: all 0.14s ease;
+}
+
+.recent-remove-btn:hover {
+  background: rgba(251, 113, 133, 0.22);
+  color: #fda4af;
 }
 
 .nav-controls {
@@ -708,77 +804,9 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   display: none;
 }
 
-/* Compact Recent Searches Strip (Right-Aligned Under Search Box) */
+/* Legacy external recent strip hidden — recents now appear inside search dropdown on click */
 .locations-strip {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  overflow-x: auto;
-  padding: 0 2px;
-  min-height: 22px;
-  max-width: 100%;
-  scrollbar-width: none;
-}
-
-.locations-strip.empty {
-  display: none;
-}
-
-.locations-strip::-webkit-scrollbar {
-  display: none;
-}
-
-.recent-label {
-  font-size: 0.68rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  margin-right: 2px;
-  white-space: nowrap;
-}
-
-.location-chip {
-  background: rgba(255, 255, 255, 0.045);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  color: var(--text-muted);
-  padding: 3px 9px;
-  border-radius: var(--radius-pill);
-  font-size: 0.72rem;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  transition: all 0.15s ease;
-}
-
-.location-chip:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-  border-color: rgba(255, 255, 255, 0.18);
-}
-
-.location-chip.active {
-  background: rgba(56, 189, 248, 0.15);
-  border-color: rgba(56, 189, 248, 0.38);
-  color: #e0f2fe;
-}
-
-.chip-remove {
-  opacity: 0.55;
-  font-size: 0.78rem;
-  line-height: 1;
-  padding-left: 2px;
-}
-
-.chip-remove:hover {
-  opacity: 1;
-  color: var(--accent-danger);
+  display: none !important;
 }
 
 /* Hero + Next-Hour Nowcast Grid (Dark Sky Centerpiece) */

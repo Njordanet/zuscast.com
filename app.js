@@ -5425,17 +5425,232 @@ function setupMobileBottomSheetSwipe() {
   );
 }
 
-/* City Search */
+/* City Search (Compact Desktop Pill + On-Click Recents + Keyboard Navigation) */
 function setupCitySearch() {
   const input = document.getElementById("city-search-input");
   const dropdown = document.getElementById("search-dropdown");
+  if (!input || !dropdown) return;
+
   let debounceTimer = null;
+  let currentItems = [];
+  let activeIndex = -1;
+
+  const closeDropdown = () => {
+    dropdown.classList.remove("open");
+    input.setAttribute("aria-expanded", "false");
+    activeIndex = -1;
+  };
+
+  const updateHighlight = () => {
+    const rows = dropdown.querySelectorAll(".search-result-item[data-index]");
+    rows.forEach((row) => {
+      const idx = Number(row.dataset.index);
+      const isAct = idx === activeIndex;
+      row.classList.toggle("is-active", isAct);
+      row.setAttribute("aria-selected", isAct ? "true" : "false");
+    });
+  };
+
+  const selectLocationItem = (loc) => {
+    if (!loc) return;
+    state.location = {
+      name: loc.name,
+      region: loc.region || "",
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+    };
+    input.value = "";
+    closeDropdown();
+    toggleMobileSearch(false);
+    input.blur();
+    saveRecentSearch(state.location);
+    loadWeatherForCurrentLocation();
+  };
+
+  const getFilteredRecents = () =>
+    state.recentSearches
+      .filter((loc) => {
+        const sameCoords =
+          Math.abs(loc.latitude - state.location.latitude) < 0.05 &&
+          Math.abs(loc.longitude - state.location.longitude) < 0.05;
+        const sameName =
+          (loc.name || "").trim().toLowerCase() ===
+          (state.location.name || "").trim().toLowerCase();
+        return !sameCoords && !sameName;
+      })
+      .slice(0, 4);
+
+  const renderRecentsDropdown = () => {
+    currentItems = getFilteredRecents();
+    dropdown.innerHTML = "";
+    if (!currentItems.length) {
+      closeDropdown();
+      return;
+    }
+
+    if (activeIndex >= currentItems.length) activeIndex = currentItems.length - 1;
+    if (activeIndex < 0) activeIndex = 0;
+
+    const header = document.createElement("div");
+    header.className = "dropdown-section-header";
+    header.innerHTML = `
+      <span>Recent</span>
+      <span class="kbd-hint"><span class="kbd-badge">↑</span><span class="kbd-badge">↓</span> <span class="kbd-badge">↵</span></span>
+    `;
+    dropdown.appendChild(header);
+
+    currentItems.forEach((item, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "search-result-item" + (idx === activeIndex ? " is-active" : "");
+      btn.dataset.index = String(idx);
+      btn.setAttribute("role", "option");
+      btn.setAttribute("aria-selected", idx === activeIndex ? "true" : "false");
+
+      btn.innerHTML = `
+        <div class="result-left">
+          <svg class="result-kind-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"></circle>
+            <polyline points="12 7 12 12 15 15"></polyline>
+          </svg>
+          <span class="search-result-name">${item.name}</span>
+        </div>
+        <div class="result-right">
+          <span class="search-result-meta">${sanitizeRegionString(item.region)}</span>
+          <span class="recent-remove-btn" data-remove="1" title="Remove from recents" aria-label="Remove ${item.name} from recents">&times;</span>
+        </div>
+      `;
+
+      btn.addEventListener("mouseenter", () => {
+        activeIndex = idx;
+        updateHighlight();
+      });
+
+      btn.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+      });
+
+      btn.addEventListener("click", (e) => {
+        if (e.target.closest("[data-remove]")) {
+          e.stopPropagation();
+          removeRecentSearch(item.latitude, item.longitude);
+          renderRecentsDropdown();
+          return;
+        }
+        selectLocationItem(item);
+      });
+
+      dropdown.appendChild(btn);
+    });
+
+    dropdown.classList.add("open");
+    input.setAttribute("aria-expanded", "true");
+  };
+
+  const renderSearchResultsDropdown = (results) => {
+    dropdown.innerHTML = "";
+    if (!results.length) {
+      currentItems = [];
+      activeIndex = -1;
+      dropdown.innerHTML = `<div class="search-result-item"><span class="search-result-meta">No matching locations</span></div>`;
+      dropdown.classList.add("open");
+      input.setAttribute("aria-expanded", "true");
+      return;
+    }
+
+    currentItems = results.map((item) => {
+      const dropdownMeta = [item.admin1, item.country].filter(Boolean).join(", ");
+      const rawAdmin = normalizeStateLabel(item.admin1);
+      const countryLabel = cleanCountryName(item.country) || item.country_code || "";
+      const stateCode =
+        rawAdmin && rawAdmin.toLowerCase() !== String(item.name || "").trim().toLowerCase()
+          ? rawAdmin
+          : countryLabel || rawAdmin || "";
+      const firstZip =
+        Array.isArray(item.postcodes) && item.postcodes.length
+          ? String(item.postcodes[0]).trim()
+          : "";
+      const kickerRegion = [stateCode, firstZip].filter(Boolean).join(" • ");
+      return {
+        name: item.name,
+        region: kickerRegion || stateCode,
+        meta: dropdownMeta,
+        latitude: item.latitude,
+        longitude: item.longitude,
+      };
+    });
+
+    activeIndex = 0;
+
+    const header = document.createElement("div");
+    header.className = "dropdown-section-header";
+    header.innerHTML = `
+      <span>Locations</span>
+      <span class="kbd-hint"><span class="kbd-badge">↑</span><span class="kbd-badge">↓</span> <span class="kbd-badge">↵</span></span>
+    `;
+    dropdown.appendChild(header);
+
+    currentItems.forEach((loc, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "search-result-item" + (idx === activeIndex ? " is-active" : "");
+      btn.dataset.index = String(idx);
+      btn.setAttribute("role", "option");
+      btn.setAttribute("aria-selected", idx === activeIndex ? "true" : "false");
+
+      btn.innerHTML = `
+        <div class="result-left">
+          <svg class="result-kind-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+            <circle cx="12" cy="10" r="3"></circle>
+          </svg>
+          <span class="search-result-name">${loc.name}</span>
+        </div>
+        <div class="result-right">
+          <span class="search-result-meta">${loc.meta}</span>
+        </div>
+      `;
+
+      btn.addEventListener("mouseenter", () => {
+        activeIndex = idx;
+        updateHighlight();
+      });
+
+      btn.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+      });
+
+      btn.addEventListener("click", () => {
+        selectLocationItem(loc);
+      });
+
+      dropdown.appendChild(btn);
+    });
+
+    dropdown.classList.add("open");
+    input.setAttribute("aria-expanded", "true");
+  };
+
+  input.addEventListener("focus", () => {
+    if (input.value.trim().length < 2) {
+      renderRecentsDropdown();
+    }
+  });
+
+  input.addEventListener("click", () => {
+    if (!dropdown.classList.contains("open")) {
+      if (input.value.trim().length < 2) {
+        renderRecentsDropdown();
+      }
+    }
+  });
 
   input.addEventListener("input", () => {
     const q = input.value.trim();
     clearTimeout(debounceTimer);
     if (q.length < 2) {
-      dropdown.classList.remove("open");
+      activeIndex = 0;
+      renderRecentsDropdown();
       return;
     }
     debounceTimer = setTimeout(async () => {
@@ -5446,58 +5661,56 @@ function setupCitySearch() {
           )}&count=6&language=en&format=json`
         );
         const data = await resp.json();
-        const results = data.results || [];
-        if (!results.length) {
-          dropdown.innerHTML = `<div class="search-result-item"><span class="search-result-meta">No matching locations</span></div>`;
-          dropdown.classList.add("open");
-          return;
-        }
-        dropdown.innerHTML = "";
-        results.forEach((item) => {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "search-result-item";
-          const dropdownMeta = [item.admin1, item.country].filter(Boolean).join(", ");
-          const rawAdmin = normalizeStateLabel(item.admin1);
-          const countryLabel = cleanCountryName(item.country) || item.country_code || "";
-          const stateCode =
-            rawAdmin && rawAdmin.toLowerCase() !== String(item.name || "").trim().toLowerCase()
-              ? rawAdmin
-              : countryLabel || rawAdmin || "";
-          const firstZip =
-            Array.isArray(item.postcodes) && item.postcodes.length
-              ? String(item.postcodes[0]).trim()
-              : "";
-          const kickerRegion = [stateCode, firstZip].filter(Boolean).join(" • ");
-          btn.innerHTML = `
-            <span class="search-result-name">${item.name}</span>
-            <span class="search-result-meta">${dropdownMeta}</span>
-          `;
-          btn.addEventListener("click", () => {
-            state.location = {
-              name: item.name,
-              region: kickerRegion || stateCode,
-              latitude: item.latitude,
-              longitude: item.longitude,
-            };
-            input.value = "";
-            dropdown.classList.remove("open");
-            toggleMobileSearch(false);
-            saveRecentSearch(state.location);
-            loadWeatherForCurrentLocation();
-          });
-          dropdown.appendChild(btn);
-        });
-        dropdown.classList.add("open");
+        renderSearchResultsDropdown(data.results || []);
       } catch (_) {
-        dropdown.classList.remove("open");
+        closeDropdown();
       }
-    }, 220);
+    }, 200);
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!dropdown.classList.contains("open")) {
+        if (input.value.trim().length < 2) {
+          renderRecentsDropdown();
+        }
+        return;
+      }
+      if (currentItems.length > 0) {
+        activeIndex = (activeIndex + 1) % currentItems.length;
+        updateHighlight();
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!dropdown.classList.contains("open")) {
+        if (input.value.trim().length < 2) {
+          renderRecentsDropdown();
+        }
+        return;
+      }
+      if (currentItems.length > 0) {
+        activeIndex = (activeIndex - 1 + currentItems.length) % currentItems.length;
+        updateHighlight();
+      }
+    } else if (e.key === "Enter") {
+      if (dropdown.classList.contains("open") && currentItems.length > 0) {
+        e.preventDefault();
+        const chosen = currentItems[activeIndex >= 0 ? activeIndex : 0];
+        if (chosen) selectLocationItem(chosen);
+      }
+    } else if (e.key === "Escape") {
+      if (dropdown.classList.contains("open")) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeDropdown();
+      }
+    }
   });
 
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".search-wrapper")) {
-      dropdown.classList.remove("open");
+      closeDropdown();
     }
     if (
       window.innerWidth <= 640 &&
