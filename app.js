@@ -315,7 +315,7 @@ function renderLocationsStrip() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "location-chip";
-    btn.innerHTML = `<span>${loc.name}</span><span class="chip-remove" title="Remove">&times;</span>`;
+    btn.innerHTML = `<span>${loc.name}</span><span class="chip-remove">&times;</span>`;
 
     btn.addEventListener("click", (e) => {
       if (e.target.classList.contains("chip-remove")) {
@@ -2870,7 +2870,6 @@ function renderHourlyCurveIntoContainer(
 
     col.setAttribute("role", "button");
     col.setAttribute("tabindex", "0");
-    col.title = "Click or tap for full hourly breakdown across all 11 metrics";
 
     col.innerHTML = `
       <div class="hourly-col-time">${rawTime}</div>
