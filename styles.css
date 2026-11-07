@@ -98,31 +98,128 @@ body.modal-open {
   touch-action: none;
 }
 
+body.is-loading {
+  --sky-bg-top: #0c1426 !important;
+  --sky-bg-mid: #121e36 !important;
+  --sky-bg-bottom: #080d18 !important;
+}
+
 body.sky-clear {
-  --sky-bg-top: #0f2447;
-  --sky-bg-mid: #16325c;
-  --sky-bg-bottom: #091326;
+  --sky-bg-top: #1d63b8;
+  --sky-bg-mid: #2f7dd3;
+  --sky-bg-bottom: #1b4f91;
+  --glass-fill: linear-gradient(
+    155deg,
+    rgba(14, 42, 86, 0.44) 0%,
+    rgba(11, 34, 72, 0.34) 55%,
+    rgba(16, 48, 96, 0.4) 100%
+  );
+  --glass-fill-inset: rgba(8, 24, 54, 0.46);
+  --glass-border: rgba(255, 255, 255, 0.22);
+  --text-muted: rgba(224, 242, 254, 0.78);
+}
+
+body.sky-clear.sky-phase-twilight {
+  --sky-bg-top: #1b2854;
+  --sky-bg-mid: #3a3269;
+  --sky-bg-bottom: #1a1c3b;
+  --glass-fill: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.13) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0.08) 100%
+  );
+  --glass-fill-inset: rgba(8, 12, 28, 0.44);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --text-muted: rgba(203, 213, 225, 0.76);
+}
+
+body.sky-clear.sky-phase-night {
+  --sky-bg-top: #070e20;
+  --sky-bg-mid: #0e1d3a;
+  --sky-bg-bottom: #050914;
+  --glass-fill: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.125) 0%,
+    rgba(255, 255, 255, 0.045) 50%,
+    rgba(255, 255, 255, 0.075) 100%
+  );
+  --glass-fill-inset: rgba(6, 11, 24, 0.42);
+  --glass-border: rgba(255, 255, 255, 0.16);
+  --text-muted: rgba(148, 163, 184, 0.72);
 }
 
 body.sky-overcast {
-  --sky-bg-top: #151e30;
-  --sky-bg-mid: #1b2538;
-  --sky-bg-bottom: #0b101b;
+  --sky-bg-top: #334766;
+  --sky-bg-mid: #405678;
+  --sky-bg-bottom: #22314a;
+  --glass-fill: linear-gradient(
+    155deg,
+    rgba(15, 25, 45, 0.42) 0%,
+    rgba(12, 20, 38, 0.32) 55%,
+    rgba(18, 29, 52, 0.38) 100%
+  );
+  --glass-fill-inset: rgba(8, 14, 28, 0.45);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --text-muted: rgba(226, 232, 240, 0.75);
+}
+
+body.sky-overcast.sky-phase-twilight {
+  --sky-bg-top: #222b45;
+  --sky-bg-mid: #2f3856;
+  --sky-bg-bottom: #141a2b;
+}
+
+body.sky-overcast.sky-phase-night {
+  --sky-bg-top: #0e1526;
+  --sky-bg-mid: #162036;
+  --sky-bg-bottom: #080c17;
 }
 
 body.sky-rain {
-  --sky-bg-top: #0d1627;
-  --sky-bg-mid: #131f33;
-  --sky-bg-bottom: #070b14;
+  --sky-bg-top: #1f3352;
+  --sky-bg-mid: #294166;
+  --sky-bg-bottom: #132036;
+  --glass-fill: linear-gradient(
+    155deg,
+    rgba(11, 20, 38, 0.44) 0%,
+    rgba(9, 16, 32, 0.34) 55%,
+    rgba(14, 25, 46, 0.4) 100%
+  );
+  --glass-fill-inset: rgba(6, 12, 24, 0.46);
+}
+
+body.sky-rain.sky-phase-twilight {
+  --sky-bg-top: #172038;
+  --sky-bg-mid: #202c4a;
+  --sky-bg-bottom: #0c1222;
+}
+
+body.sky-rain.sky-phase-night {
+  --sky-bg-top: #09101f;
+  --sky-bg-mid: #101b30;
+  --sky-bg-bottom: #050811;
 }
 
 body.sky-storm {
-  --sky-bg-top: #111328;
-  --sky-bg-mid: #181b36;
-  --sky-bg-bottom: #060812;
+  --sky-bg-top: #1a203d;
+  --sky-bg-mid: #242c52;
+  --sky-bg-bottom: #0e1226;
 }
 
-/* Ambient Atmospheric Canvas */
+body.sky-storm.sky-phase-twilight {
+  --sky-bg-top: #151833;
+  --sky-bg-mid: #1e2245;
+  --sky-bg-bottom: #0a0c1c;
+}
+
+body.sky-storm.sky-phase-night {
+  --sky-bg-top: #090b1c;
+  --sky-bg-mid: #121530;
+  --sky-bg-bottom: #04060f;
+}
+
+/* Ambient Atmospheric Canvas — Slightly Blurred Optical Depth-of-Field for Effortless Readability */
 #atmosphere-canvas {
   position: fixed;
   inset: 0;
@@ -131,6 +228,9 @@ body.sky-storm {
   height: 100dvh;
   pointer-events: none;
   z-index: 0;
+  filter: blur(2.5px);
+  -webkit-filter: blur(2.5px);
+  transform: scale(1.02);
 }
 
 /* Core Liquid Glass Surface — Certified Optical Refraction & Dynamic Specular Sheen */
@@ -588,7 +688,8 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 .mobile-search-toggle-btn,
-.mobile-search-close-btn {
+.mobile-search-close-btn,
+.mobile-nav-location {
   display: none;
 }
 
@@ -673,15 +774,20 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   align-items: stretch;
 }
 
+/* Floating Open-Sky Hero Header (Apple Weather Style — No Outer Card Box) */
 .hero-card {
-  padding: clamp(18px, 2.2vw, 26px) clamp(18px, 2.4vw, 28px);
+  padding: clamp(10px, 1.4vw, 18px) clamp(8px, 1.2vw, 14px);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   gap: clamp(14px, 1.5vw, 18px);
   min-width: 0;
   height: 100%;
+  background: transparent;
+  border: none;
+  box-shadow: none;
   container-type: inline-size;
+  position: relative;
   z-index: 12;
 }
 
@@ -700,10 +806,11 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 
 .location-kicker {
   font-size: 0.73rem;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--accent-cyan);
+  color: #bae6fd;
+  text-shadow: 0 1px 10px rgba(4, 12, 28, 0.35);
   margin-bottom: 4px;
   display: flex;
   align-items: center;
@@ -711,10 +818,11 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 .hero-city {
-  font-size: clamp(1.75rem, 3vw, 2.35rem);
+  font-size: clamp(1.85rem, 3.2vw, 2.5rem);
   font-weight: 700;
   letter-spacing: -0.03em;
-  line-height: 1.1;
+  line-height: 1.08;
+  text-shadow: 0 2px 18px rgba(4, 12, 28, 0.32);
 }
 
 .hero-submeta {
@@ -792,18 +900,19 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   flex-shrink: 0;
 }
 
-/* Multi-Model Sources Alignment Tooltip Popover */
+/* Multi-Model Sources Alignment Tooltip Popover (Opens Upward From Ensemble Strip Header) */
 .confidence-tooltip {
   position: absolute;
-  top: calc(100% + 10px);
+  bottom: calc(100% + 10px);
+  top: auto;
   right: 0;
   width: min(334px, calc(100vw - 44px));
   padding: 14px 15px 12px;
   border-radius: 18px;
   background: linear-gradient(
     160deg,
-    rgba(13, 23, 44, 0.94) 0%,
-    rgba(9, 16, 32, 0.97) 100%
+    rgba(13, 23, 44, 0.96) 0%,
+    rgba(9, 16, 32, 0.98) 100%
   );
   backdrop-filter: blur(36px) saturate(195%);
   -webkit-backdrop-filter: blur(36px) saturate(195%);
@@ -814,7 +923,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     0 0 28px rgba(52, 211, 153, 0.12);
   color: var(--text-primary);
   z-index: 80;
-  transform-origin: top right;
+  transform-origin: bottom right;
   animation: confidenceTooltipIn 0.24s var(--spring-bounce);
 }
 
@@ -825,7 +934,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 @keyframes confidenceTooltipIn {
   from {
     opacity: 0;
-    transform: translateY(-6px) scale(0.95);
+    transform: translateY(6px) scale(0.95);
   }
   to {
     opacity: 1;
@@ -835,13 +944,14 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 
 .confidence-tooltip-caret {
   position: absolute;
-  top: -6px;
+  bottom: -6px;
+  top: auto;
   right: 22px;
   width: 11px;
   height: 11px;
-  background: rgba(13, 23, 44, 0.96);
-  border-top: 1px solid rgba(52, 211, 153, 0.38);
-  border-left: 1px solid rgba(52, 211, 153, 0.38);
+  background: rgba(9, 16, 32, 0.98);
+  border-bottom: 1px solid rgba(52, 211, 153, 0.38);
+  border-right: 1px solid rgba(52, 211, 153, 0.38);
   transform: rotate(45deg);
   pointer-events: none;
 }
@@ -1106,11 +1216,12 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 .hero-temp {
-  font-size: clamp(3.6rem, 5.5vw, 4.8rem);
-  font-weight: 300;
+  font-size: clamp(3.8rem, 5.8vw, 5.1rem);
+  font-weight: 260;
   letter-spacing: -0.045em;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 4px 24px rgba(4, 12, 28, 0.3);
 }
 
 .hero-summary-col {
@@ -1121,29 +1232,34 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 .hero-condition-text {
-  font-size: 1.2rem;
+  font-size: 1.22rem;
   font-weight: 600;
   color: var(--text-primary);
+  text-shadow: 0 2px 12px rgba(4, 12, 28, 0.32);
 }
 
 .hero-feels-text {
-  font-size: 0.88rem;
+  font-size: 0.9rem;
+  font-weight: 500;
   color: var(--text-secondary);
+  text-shadow: 0 1px 10px rgba(4, 12, 28, 0.28);
 }
 
 .hero-hilow-text {
-  font-size: 0.84rem;
-  color: var(--text-muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: rgba(241, 245, 249, 0.88);
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 10px rgba(4, 12, 28, 0.28);
 }
 
-/* Dark Sky Style Quick Stat Pills inside Hero */
+/* Floating Liquid Glass Micro-Stat Pills inside Open-Sky Hero (No Top Divider Bar) */
 .hero-micro-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 4px;
+  border-top: none;
 }
 
 .micro-item {
@@ -1169,10 +1285,111 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 /* Dark Sky Next-Hour Minute-by-Minute Precipitation Card */
 .nowcast-card {
   padding: 24px 26px;
+  min-height: 242px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   gap: 14px;
+}
+
+.nowcast-card.is-dry {
+  min-height: 0;
+  height: auto;
+  align-self: center;
+  padding: 16px 22px;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.nowcast-card.is-dry > div:nth-child(2) {
+  flex: 0 0 auto;
+  display: block;
+}
+
+.nowcast-card.is-dry .nowcast-chart-box,
+.nowcast-chart-box[hidden] {
+  display: none !important;
+}
+
+/* Desktop Centered Hero + Inline 5-Pill Strip (4 Micro-Pills + No-Precipitation Pill) When Dry */
+@media (min-width: 641px) {
+  .hero-nowcast-grid.is-dry {
+    display: grid;
+    grid-template-columns: minmax(0, 4fr) minmax(220px, 1.55fr);
+    column-gap: 8px;
+    row-gap: 14px;
+    align-items: stretch;
+    padding: clamp(14px, 1.8vw, 22px) clamp(8px, 1.2vw, 14px) 6px;
+  }
+
+  .hero-nowcast-grid.is-dry .hero-card {
+    display: contents;
+  }
+
+  .hero-nowcast-grid.is-dry .hero-top-row {
+    grid-column: 1 / -1;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .hero-nowcast-grid.is-dry .location-kicker {
+    justify-content: center;
+  }
+
+  .hero-nowcast-grid.is-dry .hero-city {
+    text-align: center;
+  }
+
+  .hero-nowcast-grid.is-dry .hero-main-display {
+    grid-column: 1 / -1;
+    justify-content: center;
+    align-items: center;
+    gap: 28px;
+    padding: 4px 0 8px;
+  }
+
+  .hero-nowcast-grid.is-dry .hero-summary-col {
+    text-align: left;
+  }
+
+  .hero-nowcast-grid.is-dry .hero-micro-strip {
+    grid-column: 1 / 2;
+    padding-top: 0;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .hero-nowcast-grid.is-dry .nowcast-card.is-dry {
+    grid-column: 2 / 3;
+    min-height: 0;
+    height: 100%;
+    align-self: stretch;
+    padding: 9px 12px;
+    border-radius: 14px;
+    gap: 2px;
+    justify-content: center;
+    box-shadow: var(--glass-specular), 0 8px 22px -8px rgba(2, 6, 20, 0.36);
+  }
+
+  .hero-nowcast-grid.is-dry .nowcast-card.is-dry .section-kicker {
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    gap: 5px;
+  }
+
+  .hero-nowcast-grid.is-dry .nowcast-card.is-dry .section-kicker svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .hero-nowcast-grid.is-dry .nowcast-card.is-dry .nowcast-headline {
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 .section-header {
@@ -2434,9 +2651,9 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   }
 
   .micro-item.interactive-tile:hover {
-    background: rgba(56, 189, 248, 0.1);
-    border-color: rgba(56, 189, 248, 0.32);
-    box-shadow: none;
+    background: var(--glass-fill-elevated);
+    border-color: rgba(125, 211, 252, 0.45);
+    box-shadow: var(--glass-specular), 0 12px 26px -8px rgba(2, 6, 20, 0.45);
   }
 }
 
@@ -2447,9 +2664,13 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 .micro-item.interactive-tile {
-  padding: 6px 8px;
-  border-radius: var(--radius-md);
-  border: 1px solid transparent;
+  padding: 9px 11px;
+  border-radius: 14px;
+  background: var(--glass-fill);
+  backdrop-filter: blur(26px) saturate(185%);
+  -webkit-backdrop-filter: blur(26px) saturate(185%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-specular), 0 8px 22px -8px rgba(2, 6, 20, 0.36);
 }
 
 .micro-item.interactive-tile:active {
@@ -2515,6 +2736,22 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+}
+
+.ensemble-card.tooltip-open {
+  z-index: 60;
+}
+
+.ensemble-section-header {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ensemble-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .ensemble-models-grid {
@@ -3210,11 +3447,27 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   color: var(--text-muted);
 }
 
+.footer-right-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.footer-unit-pill {
+  padding: 6px 13px;
+  font-size: 0.78rem;
+}
+
 /* Responsive Breakpoints across Ultrawide, Desktop, Tablet & Mobile */
 @media (max-width: 960px) {
   .hero-nowcast-grid,
   .main-split-grid {
     grid-template-columns: 1fr;
+  }
+
+  .hero-card {
+    height: auto;
   }
 
   .radar-map-card {
@@ -3271,18 +3524,14 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     overflow: hidden;
   }
 
-  /* Universal 100dvh First-Screen Viewport: Top Bar + Top 3 Tiles fill 100% of screen; 10-Day sits below fold */
+  /* Natural Open-Sky Flow on Mobile: No Forced Bottom Bar/Gap — 10-Day Forecast Can Naturally Peek In */
   .mobile-first-screen {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    gap: 10px;
-    min-height: calc(
-      100dvh - env(safe-area-inset-top, 0px) - 16px - max(8px, calc(env(safe-area-inset-bottom, 0px) * 0.45))
-    );
-    height: calc(
-      100dvh - env(safe-area-inset-top, 0px) - 16px - max(8px, calc(env(safe-area-inset-bottom, 0px) * 0.45))
-    );
+    justify-content: flex-start;
+    gap: 11px;
+    min-height: auto;
+    height: auto;
     flex-shrink: 0;
   }
 
@@ -3291,11 +3540,11 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   }
 
   .hero-nowcast-grid {
-    flex: 2.15 1 0%;
+    flex: 0 0 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 11px;
   }
 
   .main-split-grid {
@@ -3317,9 +3566,57 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   }
 
   .brand {
-    gap: 9px;
-    max-width: calc(100% - 134px);
+    gap: 8px;
+    max-width: 118px;
     min-height: 36px;
+  }
+
+  .mobile-nav-location {
+    position: absolute;
+    top: 0;
+    right: 46px;
+    left: auto;
+    transform: none;
+    height: 36px;
+    max-width: calc(100% - 172px);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    text-align: right;
+    background: transparent;
+    border: none;
+    padding: 0 2px;
+    cursor: pointer;
+    z-index: 4;
+  }
+
+  .mobile-nav-city {
+    font-size: 0.8rem;
+    font-weight: 650;
+    letter-spacing: -0.015em;
+    line-height: 1.12;
+    color: var(--text-primary);
+    text-shadow: 0 1px 10px rgba(4, 12, 28, 0.35);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .mobile-nav-kicker {
+    font-size: 0.52rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    line-height: 1.1;
+    color: #bae6fd;
+    text-shadow: 0 1px 8px rgba(4, 12, 28, 0.35);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    margin-top: 1px;
   }
 
   .brand-icon {
@@ -3498,79 +3795,125 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     border-radius: 22px;
   }
 
-  /* Tile 1: Large Apple Weather-Style Hero Card (Gets Majority of Extra Viewport Height) */
+  /* Tile 1: Apple Weather Centered Floating Open-Sky Header on Mobile (City/ZIP in Top Bar, +20% Floating Space) */
   .hero-card {
-    flex: 1.38 1 0%;
-    min-height: 204px;
-    padding: clamp(14px, 2.1dvh, 20px) 16px;
-    gap: clamp(8px, 1.3dvh, 14px);
-    border-radius: 24px;
+    flex: 0 0 auto;
+    height: auto;
+    min-height: 0;
+    padding: 28px 4px 16px;
+    gap: 18px;
+    border-radius: 0;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: center;
+  }
+
+  .hero-top-row {
+    display: none;
   }
 
   .location-kicker {
     font-size: 0.72rem;
-    margin-bottom: 3px;
+    margin-bottom: 2px;
+    justify-content: center;
   }
 
   .hero-city {
-    font-size: clamp(1.62rem, 6.6vw, 2.02rem);
+    font-size: clamp(1.85rem, 7.6vw, 2.25rem);
+    font-weight: 600;
     line-height: 1.08;
+    text-align: center;
   }
 
   .confidence-pill {
-    font-size: 0.68rem;
-    padding: 5px 10px;
+    font-size: 0.66rem;
+    padding: 4px 10px;
     gap: 5px;
+    backdrop-filter: blur(18px) saturate(180%);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    background: rgba(12, 32, 62, 0.42);
+  }
+
+  .ensemble-spread-kicker {
+    display: none;
+  }
+
+  .confidence-tooltip {
+    right: 0;
+    left: auto;
+    transform: none;
+    transform-origin: bottom right;
+  }
+
+  .confidence-tooltip-caret {
+    right: 22px;
+    left: auto;
   }
 
   .hero-main-display {
-    gap: 12px;
+    flex-direction: column;
+    justify-content: center;
     align-items: center;
-    flex-wrap: nowrap;
+    text-align: center;
+    gap: 6px;
+    padding: 6px 0 4px;
+    width: 100%;
   }
 
   .hero-temp-wrap {
-    gap: 12px;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
   }
 
   .hero-icon-box {
-    width: clamp(50px, 7dvh, 62px);
-    height: clamp(50px, 7dvh, 62px);
+    width: 54px;
+    height: 54px;
   }
 
   .hero-temp {
-    font-size: clamp(3.35rem, 7.2dvh, 4.35rem);
-    font-weight: 260;
+    font-size: clamp(4.15rem, 16vw, 5.1rem);
+    font-weight: 210;
+    letter-spacing: -0.05em;
   }
 
   .hero-summary-col {
+    align-items: center;
+    text-align: center;
     gap: 2px;
   }
 
   .hero-condition-text {
-    font-size: clamp(1rem, 2dvh, 1.15rem);
+    font-size: 1.12rem;
     line-height: 1.15;
   }
 
   .hero-feels-text,
   .hero-hilow-text {
-    font-size: clamp(0.76rem, 1.55dvh, 0.86rem);
-    line-height: 1.2;
+    font-size: 0.84rem;
+    line-height: 1.22;
   }
 
-  /* iOS 27 4-Across Micro Telemetry Strip inside Hero */
+  /* Floating 4-Across Glass Micro-Pills Under Centered Hero */
   .hero-micro-strip {
+    width: 100%;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
-    padding-top: clamp(9px, 1.5dvh, 14px);
+    padding-top: 8px;
+    border-top: none;
   }
 
   .micro-item.interactive-tile {
-    padding: clamp(7px, 1.1dvh, 10px) 7px;
-    border-radius: 12px;
+    padding: 8px 6px;
+    border-radius: 14px;
     gap: 2px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    align-items: center;
+    text-align: center;
+    background: var(--glass-fill);
+    backdrop-filter: blur(24px) saturate(185%);
+    -webkit-backdrop-filter: blur(24px) saturate(185%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-specular), 0 8px 18px -6px rgba(2, 6, 20, 0.32);
     min-width: 0;
   }
 
@@ -3587,13 +3930,21 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     text-overflow: ellipsis;
   }
 
-  /* Tile 2: Medium-Sized Next-Hour Precipitation Card */
+  /* Tile 2: Medium-Sized Next-Hour Precipitation Card (Shrinks to Compact Strip When Dry) */
   .nowcast-card {
-    flex: 0.77 1 0%;
+    flex: 0 0 auto;
     min-height: 140px;
-    padding: clamp(12px, 1.75dvh, 16px) 16px;
+    padding: 12px 15px;
     gap: 6px;
-    border-radius: 24px;
+    border-radius: 22px;
+  }
+
+  .nowcast-card.is-dry {
+    min-height: 0;
+    height: auto;
+    align-self: stretch;
+    padding: 10px 15px;
+    gap: 4px;
   }
 
   .nowcast-card .section-kicker,
@@ -3609,14 +3960,15 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   }
 
   .nowcast-headline {
-    font-size: clamp(0.95rem, 1.85dvh, 1.06rem);
+    font-size: clamp(0.94rem, 1.8dvh, 1.04rem);
     line-height: 1.2;
   }
 
   .nowcast-chart-box {
-    flex: 1 1 auto;
+    flex: 0 0 74px;
+    height: 74px;
     min-height: 74px;
-    height: auto;
+    max-height: 74px;
     padding: 8px 12px 20px;
     border-radius: 14px;
   }
@@ -3637,24 +3989,25 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 
   /* Tile 3: Medium-Sized 9-Hour Visible Timeline Card */
   .timeline-card {
-    flex: 0.95 1 0%;
-    min-height: 204px;
-    padding: clamp(12px, 1.75dvh, 16px) 14px;
+    flex: 0 0 auto;
+    min-height: 0;
+    padding: 12px 14px;
     gap: 8px;
-    border-radius: 24px;
+    border-radius: 22px;
   }
 
   .hourly-chart-scroll {
-    flex: 1 1 auto;
-    min-height: 116px;
+    flex: 0 0 auto;
+    height: 126px;
+    min-height: 126px;
     display: flex;
     align-items: center;
-    padding: 8px 6px 6px;
+    padding: 6px 6px 4px;
     border-radius: 14px;
   }
 
   .hourly-curve-stage {
-    height: 124px;
+    height: 114px;
   }
 
   .hourly-col {
@@ -3951,7 +4304,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   }
 }
 
-/* Ultra-Narrow Phones (<= 355px) */
+  /* Ultra-Narrow Phones (<= 355px) */
 @media (max-width: 355px) {
   .details-grid,
   .ensemble-models-grid,
@@ -3962,11 +4315,11 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 
   .hero-main-display {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
   }
 
   .hero-summary-col {
-    text-align: left;
+    text-align: center;
   }
 }
 

@@ -164,9 +164,23 @@ function conditionFromWMO(code) {
   }
 }
 
-function getWeatherSVG(type) {
+function getWeatherSVG(type, isNight = false) {
   switch (type) {
     case "clear":
+      if (isNight) {
+        return `<svg viewBox="0 0 64 64" fill="none">
+          <defs>
+            <linearGradient id="zus-moon-grad" x1="16" y1="12" x2="48" y2="52" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FEF9C3"/>
+              <stop offset="55%" stop-color="#FDE68A"/>
+              <stop offset="100%" stop-color="#F59E0B"/>
+            </linearGradient>
+          </defs>
+          <path d="M40.8 13.5C31.2 14.9 24.5 23.8 25.9 33.4C27.3 43 36.2 49.7 45.8 48.3C47.7 48 49.5 47.4 51.1 46.5C47.2 51.9 40.6 55.2 33.3 54.6C21.2 53.6 12.2 43 13.2 30.9C14.1 20.1 22.7 11.7 33.5 11C36.1 10.8 38.6 11.7 40.8 13.5Z" fill="url(#zus-moon-grad)"/>
+          <circle cx="48" cy="18" r="1.8" fill="#FEF08A" opacity="0.9"/>
+          <circle cx="53" cy="27" r="1.3" fill="#E0F2FE" opacity="0.8"/>
+        </svg>`;
+      }
       return `<svg viewBox="0 0 64 64" fill="none">
         <circle cx="32" cy="32" r="13.5" fill="#FBBF24"/>
         <g stroke="#FBBF24" stroke-width="3.2" stroke-linecap="round">
@@ -177,6 +191,12 @@ function getWeatherSVG(type) {
         </g>
       </svg>`;
     case "partlyCloudy":
+      if (isNight) {
+        return `<svg viewBox="0 0 64 64" fill="none">
+          <path d="M29.5 11.2C23.4 12.1 19.1 17.8 20 23.9C20.9 30 26.6 34.3 32.7 33.4C33.9 33.2 35 32.8 36 32.2C33.5 35.7 29.3 37.8 24.7 37.4C17 36.8 11.3 30 11.9 22.3C12.5 15.4 18 10.1 24.9 9.6C26.5 9.5 28.1 10.1 29.5 11.2Z" fill="#FDE68A"/>
+          <path d="M22 46H46C51.5 46 56 41.5 56 36C56 30.8 52.1 26.6 47 26.1C45.4 19.2 39.2 14 31.8 14C23.1 14 16 21.1 16 29.8C16 30.3 16 30.8 16.1 31.3C12.6 32.6 10 36 10 40C10 43.3 12.7 46 16 46H22Z" fill="#E2E8F0"/>
+        </svg>`;
+      }
       return `<svg viewBox="0 0 64 64" fill="none">
         <circle cx="24" cy="24" r="10" fill="#FBBF24"/>
         <path d="M22 46H46C51.5 46 56 41.5 56 36C56 30.8 52.1 26.6 47 26.1C45.4 19.2 39.2 14 31.8 14C23.1 14 16 21.1 16 29.8C16 30.3 16 30.8 16.1 31.3C12.6 32.6 10 36 10 40C10 43.3 12.7 46 16 46H22Z" fill="#E2E8F0"/>
@@ -1393,8 +1413,12 @@ async function loadWeatherForCurrentLocation() {
   }
   const { latitude, longitude, name, region } = state.location;
   document.getElementById("hero-city").textContent = name;
+  const mobileNavCityEl = document.getElementById("mobile-nav-city");
+  if (mobileNavCityEl) mobileNavCityEl.textContent = name;
   const cleanedRegion = sanitizeRegionString(region);
   document.getElementById("location-kicker").innerHTML = `<span>${cleanedRegion}</span>`;
+  const mobileNavKickerEl = document.getElementById("mobile-nav-kicker");
+  if (mobileNavKickerEl) mobileNavKickerEl.textContent = cleanedRegion;
 
   if (!/\b[A-Z0-9]{3,10}\b/i.test((cleanedRegion.split("•")[1] || "").trim())) {
     fetch(
@@ -1415,6 +1439,7 @@ async function loadWeatherForCurrentLocation() {
         ) {
           state.location.region = resolvedRegion;
           document.getElementById("location-kicker").innerHTML = `<span>${resolvedRegion}</span>`;
+          if (mobileNavKickerEl) mobileNavKickerEl.textContent = resolvedRegion;
           saveRecentSearch(state.location);
         }
       })
@@ -1439,10 +1464,10 @@ async function loadWeatherForCurrentLocation() {
       latitude: String(latitude),
       longitude: String(longitude),
       current:
-        "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation,uv_index,dew_point_2m,visibility,cape",
+        "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation,uv_index,dew_point_2m,visibility,cape,is_day",
       minutely_15: "precipitation,weather_code",
       hourly:
-        "temperature_2m,apparent_temperature,weather_code,precipitation_probability,precipitation,wind_speed_10m,wind_gusts_10m,uv_index,dew_point_2m,cloud_cover,visibility,pressure_msl,cape",
+        "temperature_2m,apparent_temperature,weather_code,precipitation_probability,precipitation,wind_speed_10m,wind_gusts_10m,uv_index,dew_point_2m,cloud_cover,visibility,pressure_msl,cape,is_day",
       daily:
         "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,uv_index_max,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset",
       timezone: "auto",
@@ -1727,10 +1752,50 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     };
   };
 
+  // Map daily sunrise/sunset local clock times (YYYY-MM-DDTHH:MM) to decimal hours for accurate day/night icons & sky phases
+  const parseIsoHourFrac = (isoStr, fallback) => {
+    if (!isoStr || typeof isoStr !== "string" || isoStr.length < 16) return fallback;
+    const hh = Number(isoStr.slice(11, 13));
+    const mm = Number(isoStr.slice(14, 16));
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return fallback;
+    return hh + mm / 60;
+  };
+
+  const solarMap = {};
+  if (Array.isArray(d.time)) {
+    for (let i = 0; i < d.time.length; i++) {
+      const dKey = String(d.time[i]);
+      solarMap[dKey] = {
+        rise: parseIsoHourFrac(d.sunrise?.[i], 6.25),
+        set: parseIsoHourFrac(d.sunset?.[i], 18.5),
+      };
+    }
+  }
+
+  const getSolarStateFor = (dateKey, hourFrac, rawIsDay) => {
+    const bounds = solarMap[dateKey] || { rise: 6.25, set: 18.5 };
+    const isNightByClock = hourFrac < bounds.rise || hourFrac >= bounds.set;
+    const isNight =
+      rawIsDay !== undefined && rawIsDay !== null
+        ? Number(rawIsDay) === 0
+        : isNightByClock;
+    const nearSunrise = Math.abs(hourFrac - bounds.rise) <= 0.75;
+    const nearSunset = Math.abs(hourFrac - bounds.set) <= 0.75;
+    const solarPhase =
+      nearSunrise || nearSunset ? "twilight" : isNight ? "night" : "day";
+    return { isNight, solarPhase, rise: bounds.rise, set: bounds.set };
+  };
+
   const buildHourPoint = (idx, zh = null) => {
     const tStr = String(h.time[idx] || "");
     const dateKey = tStr.slice(0, 10);
     const hourNum = Number(tStr.slice(11, 13)) || 0;
+    const minNum = Number(tStr.slice(14, 16)) || 0;
+    const hourSolar = getSolarStateFor(
+      dateKey,
+      hourNum + minNum / 60,
+      h.is_day?.[idx]
+    );
 
     const temperature = Number(zh?.temperature ?? h.temperature_2m?.[idx] ?? c.temperature_2m ?? 0);
     const feelsLike = Number(zh?.feelsLike ?? h.apparent_temperature?.[idx] ?? temperature);
@@ -1849,6 +1914,8 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       time: new Date(h.time[idx]),
       dateKey,
       hourNum,
+      isNight: hourSolar.isNight,
+      solarPhase: hourSolar.solarPhase,
       wmoCode,
       temperature,
       tempMin: tempB.min,
@@ -2019,6 +2086,15 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
   }
 
   const currentHourPt = hourly[0] || null;
+  const curTimeStr = String(c.time || h.time?.[startHourIdx] || "");
+  const curDateKey = curTimeStr.slice(0, 10) || daily[0]?.dateKey || "";
+  const curHourFrac = parseIsoHourFrac(curTimeStr, currentHourPt?.hourNum ?? 12);
+  const currentSolar = getSolarStateFor(
+    curDateKey,
+    curHourFrac,
+    c.is_day ?? h.is_day?.[startHourIdx]
+  );
+
   const currentUv =
     c.uv_index ??
     currentHourPt?.uvIndex ??
@@ -2053,6 +2129,9 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       (c.wind_speed_10m ?? 0) * 1.25,
     cloudCover: zCur?.cloudCover ?? c.cloud_cover ?? currentHourPt?.cloudCover ?? 0,
     wmoCode: effectiveWmo,
+    isNight: currentSolar.isNight,
+    solarPhase: currentSolar.solarPhase,
+    localHourFrac: curHourFrac,
     tempMax: zCur?.tempMax ?? daily[0]?.tempMax ?? c.temperature_2m,
     tempMin: zCur?.tempMin ?? daily[0]?.tempMin ?? c.temperature_2m,
     uvIndex: currentUv,
@@ -2076,22 +2155,51 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
   };
 }
 
-function playTilesAppearCascade(skyClass) {
+function playTilesAppearCascade(skyClass, solarPhase = "day") {
   const wasLoading = document.body.classList.contains("is-loading");
   document.body.classList.remove("is-loading");
-  document.body.classList.remove("sky-clear", "sky-overcast", "sky-rain", "sky-storm");
-  if (skyClass) document.body.classList.add(skyClass);
+  document.body.classList.remove(
+    "sky-clear",
+    "sky-overcast",
+    "sky-rain",
+    "sky-storm",
+    "sky-phase-day",
+    "sky-phase-twilight",
+    "sky-phase-night"
+  );
+  const activeSky = skyClass || "sky-clear";
+  const activePhase = ["day", "twilight", "night"].includes(solarPhase)
+    ? solarPhase
+    : "day";
+  document.body.classList.add(activeSky, `sky-phase-${activePhase}`);
 
   // Sync iOS status bar theme-color meta tag to exact top sky background color for zero-blur crispness
-  const themeMeta = document.getElementById("theme-color-meta") || document.querySelector('meta[name="theme-color"]');
+  const themeMeta =
+    document.getElementById("theme-color-meta") ||
+    document.querySelector('meta[name="theme-color"]');
   if (themeMeta) {
-    const skyThemeMap = {
-      "sky-clear": "#0f2447",
-      "sky-overcast": "#151e30",
-      "sky-rain": "#0d1627",
-      "sky-storm": "#111328",
+    const skyThemeByPhase = {
+      day: {
+        "sky-clear": "#1d63b8",
+        "sky-overcast": "#334766",
+        "sky-rain": "#1f3352",
+        "sky-storm": "#1a203d",
+      },
+      twilight: {
+        "sky-clear": "#1b2854",
+        "sky-overcast": "#222b45",
+        "sky-rain": "#172038",
+        "sky-storm": "#151833",
+      },
+      night: {
+        "sky-clear": "#070e20",
+        "sky-overcast": "#0e1526",
+        "sky-rain": "#09101f",
+        "sky-storm": "#090b1c",
+      },
     };
-    themeMeta.setAttribute("content", skyThemeMap[skyClass] || "#0f2447");
+    const phaseMap = skyThemeByPhase[activePhase] || skyThemeByPhase.day;
+    themeMeta.setAttribute("content", phaseMap[activeSky] || "#1d63b8");
   }
 
   if (wasLoading) {
@@ -2128,7 +2236,10 @@ function renderDashboard() {
     "confidence-badge-text"
   ).textContent = `${w.confidencePct}% Model Agreement`;
   renderConfidenceTooltip(w);
-  document.getElementById("hero-icon-container").innerHTML = getWeatherSVG(cond.icon);
+  document.getElementById("hero-icon-container").innerHTML = getWeatherSVG(
+    cond.icon,
+    Boolean(w.isNight)
+  );
   document.getElementById("hero-temp").textContent = formatTemp(w.temperature);
   document.getElementById("hero-condition").textContent = cond.label;
   document.getElementById("hero-feels-like").textContent = `Feels like ${formatTemp(
@@ -2240,7 +2351,7 @@ function renderDashboard() {
     { hour: "numeric", minute: "2-digit" }
   )}`;
 
-  playTilesAppearCascade(cond.bodyClass);
+  playTilesAppearCascade(cond.bodyClass, w.solarPhase);
 }
 
 /* Dark Sky Next-Hour Precipitation Curve & Headline */
@@ -2268,10 +2379,16 @@ function renderNextHourNowcast(
   const maxRate = Math.max(...minuteRates);
   const firstWetIdx = minuteRates.findIndex((r) => r >= threshold);
   const currentlyWet = minuteRates[0] >= threshold;
+  const nowcastCard = canvas.closest(".nowcast-card");
+  const heroNowcastGrid = canvas.closest(".hero-nowcast-grid");
+  const chartBox = canvas.closest(".nowcast-chart-box");
 
   if (maxRate < threshold) {
     const nextPrecipProb = currentHour?.precipProb ?? 0;
-    headlineEl.textContent = "Clear of precipitation for the hour.";
+    headlineEl.textContent = "No precipitation for the hour.";
+    if (nowcastCard) nowcastCard.classList.add("is-dry");
+    if (heroNowcastGrid) heroNowcastGrid.classList.add("is-dry");
+    if (chartBox) chartBox.setAttribute("hidden", "");
     if (subEl) {
       if (
         dopTel &&
@@ -2295,7 +2412,14 @@ function renderNextHourNowcast(
             : "No radar echoes detected within the 60-minute hyperlocal window.";
       }
     }
-  } else if (currentlyWet) {
+    return;
+  }
+
+  if (nowcastCard) nowcastCard.classList.remove("is-dry");
+  if (heroNowcastGrid) heroNowcastGrid.classList.remove("is-dry");
+  if (chartBox) chartBox.removeAttribute("hidden");
+
+  if (currentlyWet) {
     const stopIdx = minuteRates.findIndex((r, idx) => idx > 0 && r < threshold);
     const intensityLabel =
       maxRate >= 6.0 ? "Heavy rain" : maxRate >= 2.0 ? "Moderate rain" : "Light rain";
@@ -2327,8 +2451,13 @@ function renderNextHourNowcast(
 
   const ctx = canvas.getContext("2d");
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
-  const cssW = Math.max(220, canvas.clientWidth || 560);
-  const cssH = Math.max(36, canvas.clientHeight || (window.innerWidth <= 640 ? 44 : 94));
+  const boxEl = canvas.parentElement;
+  const cssW = Math.max(220, Math.min(1200, canvas.clientWidth || 560));
+  const rawBoxInnerH = boxEl ? boxEl.clientHeight - 28 : 0;
+  const cssH = Math.max(
+    36,
+    Math.min(120, rawBoxInnerH > 20 ? rawBoxInnerH : window.innerWidth <= 640 ? 46 : 94)
+  );
   const targetW = Math.round(cssW * dpr);
   const targetH = Math.round(cssH * dpr);
   if (canvas.width !== targetW || canvas.height !== targetH) {
@@ -2461,7 +2590,11 @@ function renderNextHourNowcast(
 
   if (!canvas._nowcastResizeBound && typeof ResizeObserver !== "undefined") {
     canvas._nowcastResizeBound = true;
-    const ro = new ResizeObserver(() => {
+    let lastObservedW = Math.round(cssW);
+    const ro = new ResizeObserver((entries) => {
+      const wNow = Math.round(entries[0]?.contentRect?.width || canvas.clientWidth || 0);
+      if (Math.abs(wNow - lastObservedW) < 2) return;
+      lastObservedW = wNow;
       if (state.weather?.minuteRates) {
         renderNextHourNowcast(
           state.weather.minuteRates,
@@ -2471,7 +2604,7 @@ function renderNextHourNowcast(
         );
       }
     });
-    ro.observe(canvas);
+    ro.observe(canvas.parentElement || canvas);
   }
 }
 
@@ -2972,7 +3105,7 @@ function renderHourlyCurveIntoContainer(
       <div class="hourly-col-time">${rawTime}</div>
       <div class="hourly-point-node" style="top: ${pt.y.toFixed(1)}px">
         ${showPopBadge}
-        <div class="hourly-node-icon">${getWeatherSVG(cond.icon)}</div>
+        <div class="hourly-node-icon">${getWeatherSVG(cond.icon, Boolean(item.isNight))}</div>
         <div class="hourly-node-val">${desc.formatNode(s.val)}</div>
         <div class="hourly-node-spread">${desc.formatSpread(hoverSpread)}</div>
       </div>
@@ -3371,6 +3504,7 @@ function renderConfidenceTooltip(w) {
 function toggleConfidenceTooltip(forceState) {
   const btn = document.getElementById("confidence-pill-btn");
   const tooltip = document.getElementById("confidence-tooltip");
+  const ensembleCard = document.querySelector(".ensemble-card");
   const heroCard = document.querySelector(".hero-card");
   if (!btn || !tooltip) return;
 
@@ -3381,10 +3515,12 @@ function toggleConfidenceTooltip(forceState) {
     if (state.weather) renderConfidenceTooltip(state.weather);
     tooltip.removeAttribute("hidden");
     btn.setAttribute("aria-expanded", "true");
+    if (ensembleCard) ensembleCard.classList.add("tooltip-open");
     if (heroCard) heroCard.classList.add("tooltip-open");
   } else {
     tooltip.setAttribute("hidden", "");
     btn.setAttribute("aria-expanded", "false");
+    if (ensembleCard) ensembleCard.classList.remove("tooltip-open");
     if (heroCard) heroCard.classList.remove("tooltip-open");
   }
 }
@@ -3397,7 +3533,9 @@ function renderEnsembleComparison(models, spreadC, confidencePct = 92) {
 
   const spreadVal = state.useImperial ? spreadC * 1.8 : spreadC;
   const unit = state.useImperial ? "°F" : "°C";
-  spreadLabel.textContent = `${confidencePct}% Agreement • Spread ±${(spreadVal / 2).toFixed(1)}${unit}`;
+  if (spreadLabel) {
+    spreadLabel.textContent = `Spread ±${(spreadVal / 2).toFixed(1)}${unit}`;
+  }
 
   grid.innerHTML = "";
   models.forEach((m, idx) => {
@@ -3608,7 +3746,7 @@ function renderHourDetailModalContent() {
       : `${dateStr} • ${clockStr}`;
   }
 
-  if (iconEl) iconEl.innerHTML = getWeatherSVG(cond.icon);
+  if (iconEl) iconEl.innerHTML = getWeatherSVG(cond.icon, Boolean(item.isNight));
   if (tempEl) tempEl.textContent = formatTemp(item.temperature, true);
   if (spreadEl) spreadEl.textContent = tempSpread;
   if (condBadgeEl) condBadgeEl.textContent = cond.label;
@@ -4066,12 +4204,17 @@ function openTileDetailModal(tileType) {
   modal.removeAttribute("hidden");
 }
 
-/* Certified Multi-Condition Liquid Glass Ambient Atmosphere Canvas */
+/* Certified High-Res Time-of-Day + Weather Ambient Atmosphere Engine */
 const atmosphereCanvas = {
   drops: [],
   flakes: [],
+  stars: [],
+  clouds: [],
+  sunRays: [],
+  bokehFlares: [],
   orbs: [],
   lightningAlpha: 0,
+  lightningBolt: null,
   nextLightningAt: 0,
   dpr: 1,
   w: 0,
@@ -4082,7 +4225,7 @@ const atmosphereCanvas = {
     if (!canvas) return;
 
     const resize = () => {
-      this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+      this.dpr = Math.min(window.devicePixelRatio || 1, 2.25);
       this.w = window.innerWidth;
       this.h = window.innerHeight;
       canvas.width = Math.round(this.w * this.dpr);
@@ -4091,28 +4234,88 @@ const atmosphereCanvas = {
     window.addEventListener("resize", resize, { passive: true });
     resize();
 
-    this.drops = Array.from({ length: 78 }, () => ({
-      x: Math.random() * this.w,
-      y: Math.random() * this.h,
-      len: 12 + Math.random() * 16,
-      speed: 7 + Math.random() * 7,
-    }));
+    // Dual-layer parallax raindrops (foreground + distant mist streaks)
+    this.drops = Array.from({ length: 120 }, (_, i) => {
+      const layer = i < 45 ? 1 : 0; // 1 = foreground, 0 = background
+      return {
+        x: Math.random() * (this.w + 120),
+        y: Math.random() * this.h,
+        len: layer ? 22 + Math.random() * 18 : 11 + Math.random() * 10,
+        speed: layer ? 13 + Math.random() * 6 : 7.5 + Math.random() * 4.5,
+        windX: layer ? -2.2 : -1.2,
+        alpha: layer ? 0.28 + Math.random() * 0.14 : 0.13 + Math.random() * 0.08,
+        width: layer ? 1.35 : 0.85,
+      };
+    });
 
-    this.flakes = Array.from({ length: 55 }, () => ({
-      x: Math.random() * this.w,
-      y: Math.random() * this.h,
-      r: 1.4 + Math.random() * 2.4,
-      speedY: 0.7 + Math.random() * 1.2,
+    // 3-layer depth-of-field snow flurries
+    this.flakes = Array.from({ length: 84 }, (_, i) => {
+      const depth = i < 20 ? 2 : i < 52 ? 1 : 0;
+      return {
+        x: Math.random() * this.w,
+        y: Math.random() * this.h,
+        r: depth === 2 ? 3.2 + Math.random() * 2.2 : depth === 1 ? 1.8 + Math.random() * 1.4 : 0.9 + Math.random() * 0.9,
+        speedY: depth === 2 ? 1.35 + Math.random() * 0.8 : depth === 1 ? 0.85 + Math.random() * 0.55 : 0.45 + Math.random() * 0.35,
+        swayAmp: depth === 2 ? 0.8 : depth === 1 ? 0.5 : 0.25,
+        alpha: depth === 2 ? 0.62 : depth === 1 ? 0.44 : 0.26,
+        phase: Math.random() * Math.PI * 2,
+      };
+    });
+
+    // High-res night stars with subtle color temperatures & twinkle cadence
+    const starWarmths = ["255, 255, 255", "224, 242, 254", "254, 249, 195", "199, 210, 254"];
+    this.stars = Array.from({ length: 115 }, () => ({
+      xFrac: Math.random(),
+      yFrac: Math.random() * 0.72,
+      r: 0.65 + Math.random() * 1.45,
+      baseAlpha: 0.22 + Math.random() * 0.62,
+      twinkleSpeed: 0.0008 + Math.random() * 0.0022,
       phase: Math.random() * Math.PI * 2,
+      rgb: starWarmths[Math.floor(Math.random() * starWarmths.length)],
     }));
 
-    this.orbs = [
-      { xFrac: 0.22, yFrac: 0.26, r: 220, speed: 0.00035, phase: 0.4, color: "56, 189, 248" },
-      { xFrac: 0.78, yFrac: 0.24, r: 260, speed: 0.00028, phase: 2.1, color: "251, 191, 36" },
-      { xFrac: 0.52, yFrac: 0.36, r: 240, speed: 0.00031, phase: 4.2, color: "129, 140, 248" },
+    // Volumetric multi-puff cloud banks that drift across the sky
+    this.clouds = Array.from({ length: 9 }, (_, idx) => ({
+      xFrac: (idx / 9) * 1.3 - 0.15,
+      yFrac: 0.05 + (idx % 4) * 0.095 + Math.random() * 0.03,
+      scale: 0.78 + (idx % 3) * 0.28,
+      speedFrac: 0.000011 + (idx % 3) * 0.000005,
+      layer: idx % 3,
+      puffs: [
+        { dx: -0.36, dy: 0.05, r: 0.48 },
+        { dx: -0.14, dy: -0.07, r: 0.62 },
+        { dx: 0.12, dy: -0.04, r: 0.58 },
+        { dx: 0.35, dy: 0.06, r: 0.44 },
+        { dx: 0.0, dy: 0.08, r: 0.52 },
+      ],
+    }));
+
+    // Volumetric sunbeams fanning from upper solar apex
+    this.sunRays = Array.from({ length: 9 }, (_, i) => ({
+      angle: Math.PI * 0.22 + (i / 8) * Math.PI * 0.56,
+      spread: 0.045 + (i % 3) * 0.018,
+      lenFrac: 0.62 + (i % 2) * 0.22,
+      speed: (i % 2 === 0 ? 1 : -1) * (0.00007 + (i % 3) * 0.000025),
+      phase: i * 0.9,
+      alpha: 0.038 + (i % 3) * 0.014,
+    }));
+
+    // Apple Weather Cupertino-style optical lens-flare bokeh discs along the sun axis
+    this.bokehFlares = [
+      { dist: 0.19, r: 22, rgb: "186, 230, 253", alpha: 0.12 },
+      { dist: 0.29, r: 14, rgb: "254, 240, 138", alpha: 0.1 },
+      { dist: 0.38, r: 28, rgb: "147, 197, 253", alpha: 0.11 },
+      { dist: 0.46, r: 19, rgb: "196, 181, 253", alpha: 0.085 },
+      { dist: 0.55, r: 34, rgb: "125, 211, 252", alpha: 0.09 },
     ];
 
-    this.nextLightningAt = performance.now() + 4500 + Math.random() * 6000;
+    this.orbs = [
+      { xFrac: 0.22, yFrac: 0.24, r: 260, speed: 0.00032, phase: 0.4, color: "56, 189, 248" },
+      { xFrac: 0.78, yFrac: 0.22, r: 290, speed: 0.00026, phase: 2.1, color: "251, 191, 36" },
+      { xFrac: 0.52, yFrac: 0.38, r: 270, speed: 0.00029, phase: 4.2, color: "129, 140, 248" },
+    ];
+
+    this.nextLightningAt = performance.now() + 3800 + Math.random() * 5500;
 
     const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -4125,6 +4328,21 @@ const atmosphereCanvas = {
     requestAnimationFrame(loop);
   },
 
+  buildLightningBolt(W, H) {
+    const startX = W * (0.22 + Math.random() * 0.56);
+    const pts = [{ x: startX, y: 0 }];
+    let cx = startX;
+    let cy = 0;
+    const steps = 8 + Math.floor(Math.random() * 5);
+    const maxH = H * (0.42 + Math.random() * 0.22);
+    for (let i = 1; i <= steps; i++) {
+      cx += (Math.random() - 0.5) * 64;
+      cy = (i / steps) * maxH;
+      pts.push({ x: cx, y: cy });
+    }
+    return pts;
+  },
+
   render(canvas, now = performance.now()) {
     const ctx = canvas.getContext("2d");
     const W = this.w || window.innerWidth;
@@ -4132,20 +4350,51 @@ const atmosphereCanvas = {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
+    // Keep loading screen calm and neutral (no sunlight, stars, or weather effects until telemetry arrives)
+    if (document.body.classList.contains("is-loading") || !state.weather) {
+      const cx = W * 0.5;
+      const cy = H * 0.38;
+      const rad = Math.min(W, H) * 0.45;
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
+      grad.addColorStop(0, "rgba(56, 189, 248, 0.045)");
+      grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+
     const wmo = state.weather?.wmoCode ?? 0;
+    const isNight = Boolean(state.weather?.isNight);
+    const solarPhase = state.weather?.solarPhase || (isNight ? "night" : "day");
+    const isTwilight = solarPhase === "twilight";
     const isThunder = [95, 96, 99].includes(wmo);
     const isRainy = [51, 53, 55, 61, 63, 65, 80, 81, 82].includes(wmo) || isThunder;
     const isSnowy = [71, 73, 75, 77, 85, 86].includes(wmo);
     const isOvercast = [3, 45, 48].includes(wmo);
+    const isPartlyCloudy = wmo === 1 || wmo === 2;
+    const isClear = wmo === 0;
+    const isMobile = W <= 640;
 
-    // 1. Subtle Liquid Caustic Refraction Orbs (All Conditions, Tuned by Sky State)
+    // 1. Ambient Atmospheric Caustic Glow Orbs
     this.orbs.forEach((orb, idx) => {
       const cx = W * orb.xFrac + Math.sin(now * orb.speed + orb.phase) * 55;
       const cy = H * orb.yFrac + Math.cos(now * orb.speed * 0.85 + orb.phase) * 28;
-      const rad = orb.r * (W < 640 ? 0.72 : 1);
+      const rad = orb.r * (isMobile ? 0.78 : 1.08);
       const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
-      const alpha = isOvercast ? 0.045 : isRainy ? 0.05 : idx === 1 && wmo <= 2 ? 0.085 : 0.065;
-      const col = isRainy && idx === 1 ? "56, 189, 248" : orb.color;
+      let col = orb.color;
+      let alpha = 0.06;
+      if (isTwilight) {
+        col = idx === 0 ? "251, 146, 60" : idx === 1 ? "244, 114, 182" : "129, 140, 248";
+        alpha = 0.11;
+      } else if (!isNight && (isClear || isPartlyCloudy)) {
+        col = idx === 1 ? "253, 224, 71" : "125, 211, 252";
+        alpha = idx === 1 ? 0.1 : 0.085;
+      } else if (isOvercast || isRainy) {
+        col = "148, 163, 184";
+        alpha = 0.05;
+      }
       grad.addColorStop(0, `rgba(${col}, ${alpha})`);
       grad.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = grad;
@@ -4154,53 +4403,216 @@ const atmosphereCanvas = {
       ctx.fill();
     });
 
-    // 2. Raindrops + Terminal Micro-Splash
+    // 2. Night & Twilight Starfield + Lunar Corona
+    if (isNight || isTwilight) {
+      const cloudAtten = isOvercast || isRainy || isSnowy ? 0.18 : isPartlyCloudy ? 0.68 : 1;
+      const twilightAtten = isTwilight ? 0.45 : 1;
+      const starVis = cloudAtten * twilightAtten;
+      if (starVis > 0.05) {
+        this.stars.forEach((s) => {
+          const twinkle = 0.55 + 0.45 * Math.sin(now * s.twinkleSpeed + s.phase);
+          const a = s.baseAlpha * twinkle * starVis;
+          if (a <= 0.03) return;
+          const sx = s.xFrac * W;
+          const sy = s.yFrac * H;
+          ctx.fillStyle = `rgba(${s.rgb}, ${a.toFixed(3)})`;
+          ctx.beginPath();
+          ctx.arc(sx, sy, s.r, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      // Soft Lunar Glow in upper sky on Clear / Partly Cloudy nights
+      if (isNight && (isClear || isPartlyCloudy)) {
+        const moonX = isMobile ? W * 0.76 : W * 0.78;
+        const moonY = isMobile ? H * 0.09 : H * 0.12;
+        const moonR = isMobile ? 175 : 250;
+        const moonGlow = ctx.createRadialGradient(moonX, moonY, 4, moonX, moonY, moonR);
+        moonGlow.addColorStop(0, "rgba(254, 249, 195, 0.34)");
+        moonGlow.addColorStop(0.22, "rgba(186, 230, 253, 0.16)");
+        moonGlow.addColorStop(0.55, "rgba(99, 102, 241, 0.06)");
+        moonGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = moonGlow;
+        ctx.beginPath();
+        ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // 3. Daytime Clear & Partly Cloudy: Apple Weather Sun Corona, Prismatic Halo, God-Rays & Bokeh Lens Flare
+    if (!isNight && (isClear || isPartlyCloudy)) {
+      const sunX = isMobile ? W * 0.5 : W * 0.32;
+      const sunY = isMobile ? -H * 0.015 : H * 0.02;
+      const haloR = Math.min(W, H) * (isMobile ? 0.56 : 0.46);
+      const sunIntensity = isPartlyCloudy ? 0.74 : 1.0;
+
+      // Rotating volumetric sunbeams fanning downward
+      ctx.save();
+      this.sunRays.forEach((ray) => {
+        const ang = ray.angle + Math.sin(now * ray.speed * 12 + ray.phase) * 0.08;
+        const rayLen = Math.max(W, H) * ray.lenFrac;
+        const x1 = sunX + Math.cos(ang - ray.spread) * rayLen;
+        const y1 = sunY + Math.sin(ang - ray.spread) * rayLen;
+        const x2 = sunX + Math.cos(ang + ray.spread) * rayLen;
+        const y2 = sunY + Math.sin(ang + ray.spread) * rayLen;
+        const rGrad = ctx.createRadialGradient(sunX, sunY, 8, sunX, sunY, rayLen);
+        rGrad.addColorStop(0, `rgba(255, 253, 240, ${(ray.alpha * 1.65 * sunIntensity).toFixed(3)})`);
+        rGrad.addColorStop(0.45, `rgba(224, 242, 254, ${(ray.alpha * 0.75 * sunIntensity).toFixed(3)})`);
+        rGrad.addColorStop(1, "rgba(255, 255, 255, 0)");
+        ctx.fillStyle = rGrad;
+        ctx.beginPath();
+        ctx.moveTo(sunX, sunY);
+        ctx.lineTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.closePath();
+        ctx.fill();
+      });
+      ctx.restore();
+
+      // Prismatic atmospheric rainbow halo + solar core (matching Cupertino Apple Weather reference)
+      const coronaGrad = ctx.createRadialGradient(sunX, sunY, 2, sunX, sunY, haloR);
+      coronaGrad.addColorStop(0, `rgba(255, 255, 255, ${(0.92 * sunIntensity).toFixed(3)})`);
+      coronaGrad.addColorStop(0.11, `rgba(254, 249, 195, ${(0.58 * sunIntensity).toFixed(3)})`);
+      coronaGrad.addColorStop(0.26, `rgba(253, 224, 71, ${(0.18 * sunIntensity).toFixed(3)})`);
+      coronaGrad.addColorStop(0.52, `rgba(251, 191, 36, ${(0.08 * sunIntensity).toFixed(3)})`);
+      coronaGrad.addColorStop(0.64, `rgba(165, 243, 252, ${(0.11 * sunIntensity).toFixed(3)})`);
+      coronaGrad.addColorStop(0.74, `rgba(196, 181, 253, ${(0.08 * sunIntensity).toFixed(3)})`);
+      coronaGrad.addColorStop(1, "rgba(255, 255, 255, 0)");
+      ctx.fillStyle = coronaGrad;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, haloR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Drifting optical lens-flare bokeh circles descending from the sun
+      const flareAngle = isMobile ? Math.PI * 0.44 : Math.PI * 0.39;
+      const flareDrift = Math.sin(now * 0.00055) * 14;
+      const maxAxis = Math.min(W, H) * 0.92;
+      this.bokehFlares.forEach((bf, bIdx) => {
+        const d = bf.dist * maxAxis + flareDrift * (bIdx * 0.35 + 0.5);
+        const bx = sunX + Math.cos(flareAngle) * d;
+        const by = sunY + Math.sin(flareAngle) * d;
+        const br = bf.r * (isMobile ? 0.85 : 1.1);
+        const bGrad = ctx.createRadialGradient(bx, by, br * 0.1, bx, by, br);
+        bGrad.addColorStop(0, `rgba(${bf.rgb}, ${(bf.alpha * 0.55 * sunIntensity).toFixed(3)})`);
+        bGrad.addColorStop(0.78, `rgba(${bf.rgb}, ${(bf.alpha * 1.15 * sunIntensity).toFixed(3)})`);
+        bGrad.addColorStop(1, `rgba(${bf.rgb}, 0)`);
+        ctx.fillStyle = bGrad;
+        ctx.beginPath();
+        ctx.arc(bx, by, br, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    // 4. Multi-Layer Volumetric Drifting Clouds (Partly Cloudy, Overcast, Fog, Rain, Snow, Storm)
+    if (!isClear) {
+      const activeCloudCount = isPartlyCloudy ? 5 : 9;
+      let cloudRgb = "255, 255, 255";
+      let baseCloudAlpha = 0.14;
+      if (isNight) {
+        cloudRgb = isThunder || isRainy ? "71, 85, 105" : "148, 163, 184";
+        baseCloudAlpha = isPartlyCloudy ? 0.11 : 0.16;
+      } else if (isTwilight) {
+        cloudRgb = "251, 207, 232";
+        baseCloudAlpha = 0.16;
+      } else if (isThunder) {
+        cloudRgb = "100, 116, 139";
+        baseCloudAlpha = 0.22;
+      } else if (isOvercast || isRainy) {
+        cloudRgb = "226, 232, 240";
+        baseCloudAlpha = 0.19;
+      } else if (isPartlyCloudy) {
+        cloudRgb = "255, 255, 255";
+        baseCloudAlpha = 0.22;
+      }
+
+      const cloudSpanW = W + 420;
+      for (let i = 0; i < activeCloudCount; i++) {
+        const c = this.clouds[i];
+        const travel = ((c.xFrac + now * c.speedFrac) % 1.45) - 0.22;
+        const cx = travel * cloudSpanW;
+        const cy = c.yFrac * H + Math.sin(now * 0.0003 + i) * 8;
+        const baseW = (isMobile ? 210 : 340) * c.scale;
+
+        c.puffs.forEach((p) => {
+          const px = cx + p.dx * baseW;
+          const py = cy + p.dy * baseW * 0.45;
+          const pr = p.r * baseW * 0.52;
+          const pGrad = ctx.createRadialGradient(px, py - pr * 0.2, pr * 0.08, px, py, pr);
+          pGrad.addColorStop(0, `rgba(${cloudRgb}, ${baseCloudAlpha.toFixed(3)})`);
+          pGrad.addColorStop(0.55, `rgba(${cloudRgb}, ${(baseCloudAlpha * 0.52).toFixed(3)})`);
+          pGrad.addColorStop(1, `rgba(${cloudRgb}, 0)`);
+          ctx.fillStyle = pGrad;
+          ctx.beginPath();
+          ctx.arc(px, py, pr, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+    }
+
+    // 5. Dual-Layer Parallax Rain Streaks + Ambient Mist
     if (isRainy) {
-      ctx.strokeStyle = "rgba(125, 211, 252, 0.21)";
-      ctx.lineWidth = 1.15;
       ctx.lineCap = "round";
       this.drops.forEach((d) => {
+        ctx.strokeStyle = `rgba(186, 230, 253, ${d.alpha})`;
+        ctx.lineWidth = d.width;
         ctx.beginPath();
         ctx.moveTo(d.x, d.y);
-        ctx.lineTo(d.x - 1.8, d.y + d.len);
+        ctx.lineTo(d.x + d.windX, d.y + d.len);
         ctx.stroke();
 
         d.y += d.speed;
-        d.x -= 0.9;
-        if (d.y > H) {
-          d.y = -20;
-          d.x = Math.random() * (W + 60);
+        d.x += d.windX * 0.48;
+        if (d.y > H + 25) {
+          d.y = -30;
+          d.x = Math.random() * (W + 120);
         }
       });
     }
 
-    // 3. Zeus Sheet Lightning Flash in Thunderstorms
+    // 6. Zeus Sheet Lightning + Branching Cloud-to-Sky Bolt in Thunderstorms
     if (isThunder) {
       if (now >= this.nextLightningAt) {
-        this.lightningAlpha = 0.22;
-        this.nextLightningAt = now + 5000 + Math.random() * 8500;
+        this.lightningAlpha = 0.32;
+        this.lightningBolt = this.buildLightningBolt(W, H);
+        this.nextLightningAt = now + 4200 + Math.random() * 7200;
       }
-      if (this.lightningAlpha > 0.005) {
-        const flashGrad = ctx.createRadialGradient(W * 0.5, 0, 10, W * 0.5, 0, H * 0.85);
-        flashGrad.addColorStop(0, `rgba(250, 204, 21, ${this.lightningAlpha})`);
-        flashGrad.addColorStop(0.45, `rgba(56, 189, 248, ${this.lightningAlpha * 0.65})`);
+      if (this.lightningAlpha > 0.006) {
+        const boltX = this.lightningBolt?.[0]?.x ?? W * 0.5;
+        const flashGrad = ctx.createRadialGradient(boltX, 0, 10, boltX, 0, H * 0.9);
+        flashGrad.addColorStop(0, `rgba(254, 240, 138, ${this.lightningAlpha})`);
+        flashGrad.addColorStop(0.42, `rgba(125, 211, 252, ${this.lightningAlpha * 0.7})`);
         flashGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = flashGrad;
         ctx.fillRect(0, 0, W, H);
-        this.lightningAlpha *= 0.88;
+
+        if (this.lightningBolt && this.lightningAlpha > 0.08) {
+          ctx.save();
+          ctx.strokeStyle = `rgba(254, 249, 195, ${Math.min(1, this.lightningAlpha * 2.4)})`;
+          ctx.lineWidth = 2.2;
+          ctx.shadowColor = "rgba(56, 189, 248, 0.9)";
+          ctx.shadowBlur = 14;
+          ctx.beginPath();
+          this.lightningBolt.forEach((pt, idx) => {
+            if (idx === 0) ctx.moveTo(pt.x, pt.y);
+            else ctx.lineTo(pt.x, pt.y);
+          });
+          ctx.stroke();
+          ctx.restore();
+        }
+        this.lightningAlpha *= 0.86;
       }
     }
 
-    // 4. Crystalline Snowflakes
+    // 7. 3-Layer Depth-of-Field Crystalline Snowflakes
     if (isSnowy) {
-      ctx.fillStyle = "rgba(224, 242, 254, 0.45)";
       this.flakes.forEach((f) => {
         f.y += f.speedY;
-        f.x += Math.sin(now * 0.0012 + f.phase) * 0.45;
-        if (f.y > H + 10) {
-          f.y = -10;
+        f.x += Math.sin(now * 0.0013 + f.phase) * f.swayAmp;
+        if (f.y > H + 12) {
+          f.y = -12;
           f.x = Math.random() * W;
         }
+        ctx.fillStyle = `rgba(240, 249, 255, ${f.alpha})`;
         ctx.beginPath();
         ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
         ctx.fill();
@@ -4486,6 +4898,13 @@ function setupControls() {
   const mobileSearchCloseBtn = document.getElementById("mobile-search-close-btn");
   if (mobileSearchToggleBtn) {
     mobileSearchToggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleMobileSearch();
+    });
+  }
+  const mobileNavLocBtn = document.getElementById("mobile-nav-location");
+  if (mobileNavLocBtn) {
+    mobileNavLocBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       toggleMobileSearch();
     });

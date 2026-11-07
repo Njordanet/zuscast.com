@@ -11,7 +11,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <meta name="zus-build-version" content="20261107-ios27-logo-v2" />
+  <meta name="zus-build-version" content="20261107-floating-sky-v6" />
   <title>ZüsCast — Hyperlocal Weather &amp; Down-to-the-Minute Nowcast</title>
   <meta name="description" content="ZüsCast (zuscast.com) — Hyperlocal, down-to-the-minute weather intelligence with Liquid Glass aesthetics." />
   <meta name="theme-color" content="#0f2447" id="theme-color-meta" />
@@ -38,9 +38,9 @@
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
     crossorigin=""
   />
-  <link rel="stylesheet" href="./styles.css?v=20261107-ios27-logo-v2" />
+  <link rel="stylesheet" href="./styles.css?v=20261107-floating-sky-v8" />
 </head>
-<body class="sky-clear is-loading">
+<body class="is-loading">
   <!-- Ambient Atmospheric Canvas -->
   <canvas id="atmosphere-canvas" aria-hidden="true"></canvas>
 
@@ -162,13 +162,21 @@
         </div>
       </a>
 
-      <!-- Top-Right Controls: Unit Toggle to the Left of Search Box + Recent Cities Underneath -->
+      <!-- Mobile Centered Location Title (City + State/ZIP in Top Bar) -->
+      <button
+        type="button"
+        class="mobile-nav-location"
+        id="mobile-nav-location"
+        aria-label="Current location — tap to search city"
+      >
+        <span class="mobile-nav-city" id="mobile-nav-city">New York</span>
+        <span class="mobile-nav-kicker" id="mobile-nav-kicker">NY • 10007</span>
+      </button>
+
+      <!-- Top-Right Controls: Search Box + Recent Cities Underneath -->
       <div class="top-nav-right" id="top-nav-right">
         <div class="top-nav-controls-row">
           <div class="nav-controls">
-            <button type="button" id="unit-toggle-btn" class="liquid-glass-pill" aria-label="Toggle Imperial / Metric units">
-              °F, mph
-            </button>
             <button
               type="button"
               id="mobile-search-toggle-btn"
@@ -218,67 +226,15 @@
     </header>
 
     <!-- Centerpiece: Current Conditions + Next-Hour Minute-by-Minute Nowcast -->
-    <section class="hero-nowcast-grid">
-      <!-- Current Weather Hero Card -->
-      <article class="hero-card liquid-glass">
+    <section class="hero-nowcast-grid is-dry">
+      <!-- Current Weather Floating Hero Header (Apple Weather Open-Sky Style) -->
+      <article class="hero-card hero-floating">
         <div class="hero-top-row">
           <div>
             <div class="location-kicker" id="location-kicker">
               <span>NY • 10007</span>
             </div>
             <h1 class="hero-city" id="hero-city">New York</h1>
-          </div>
-          <div class="confidence-pill-wrap" id="confidence-pill-wrap">
-            <button
-              type="button"
-              class="confidence-pill"
-              id="confidence-pill-btn"
-              aria-expanded="false"
-              aria-controls="confidence-tooltip"
-            >
-              <span class="confidence-dot"></span>
-              <span id="confidence-badge-text">98% Model Agreement</span>
-              <svg class="confidence-chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </button>
-
-            <!-- Multi-Model Sources Alignment Tooltip -->
-            <div
-              class="confidence-tooltip"
-              id="confidence-tooltip"
-              role="dialog"
-              aria-label="Forecast Sources Alignment"
-              hidden
-            >
-              <div class="confidence-tooltip-caret" aria-hidden="true"></div>
-              <div class="confidence-tooltip-header">
-                <div class="confidence-tooltip-title-row">
-                  <span class="confidence-tooltip-kicker">
-                    <span class="confidence-dot"></span>
-                    Sources Alignment
-                  </span>
-                  <span class="confidence-tooltip-spread" id="confidence-tooltip-spread">Spread ±0.5°</span>
-                </div>
-                <div class="confidence-tooltip-summary" id="confidence-tooltip-summary">
-                  High consensus across 4 NWP models
-                </div>
-                <div class="confidence-meter-track" aria-hidden="true">
-                  <div class="confidence-meter-fill" id="confidence-meter-fill" style="width: 92%"></div>
-                </div>
-              </div>
-
-              <div class="confidence-sources-list" id="confidence-sources-list"></div>
-
-              <div class="confidence-tooltip-footer">
-                <span class="confidence-tooltip-ground" id="confidence-tooltip-ground">
-                  Assimilating NEXRAD + METAR
-                </span>
-                <button type="button" class="confidence-tooltip-action" id="confidence-tooltip-more-btn">
-                  24h Envelope ↗
-                </button>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -316,7 +272,7 @@
       </article>
 
       <!-- Dark Sky Signature: Next-Hour Minute-by-Minute Precipitation -->
-      <article class="nowcast-card liquid-glass interactive-tile" data-tile="precip" role="button" tabindex="0">
+      <article class="nowcast-card liquid-glass interactive-tile is-dry" data-tile="precip" role="button" tabindex="0">
         <div class="section-header">
           <span class="section-kicker">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
@@ -330,7 +286,7 @@
           <div class="nowcast-headline" id="nowcast-headline">No precipitation for the hour.</div>
         </div>
 
-        <div class="nowcast-chart-box">
+        <div class="nowcast-chart-box" hidden>
           <div class="nowcast-y-labels">
             <span>HEAVY</span>
             <span>MED</span>
@@ -545,9 +501,63 @@
 
     <!-- Multi-Model Ensemble Agreement Strip -->
     <section class="ensemble-card liquid-glass" aria-label="Forecast Models">
-      <div class="section-header">
+      <div class="section-header ensemble-section-header">
         <span class="section-kicker">🔬 Forecast Models</span>
-        <span class="section-kicker" id="ensemble-spread-label">Spread: --</span>
+        <div class="ensemble-header-actions">
+          <span class="section-kicker ensemble-spread-kicker" id="ensemble-spread-label">Spread: --</span>
+          <div class="confidence-pill-wrap" id="confidence-pill-wrap">
+            <button
+              type="button"
+              class="confidence-pill"
+              id="confidence-pill-btn"
+              aria-expanded="false"
+              aria-controls="confidence-tooltip"
+            >
+              <span class="confidence-dot"></span>
+              <span id="confidence-badge-text">98% Model Agreement</span>
+              <svg class="confidence-chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+
+            <!-- Multi-Model Sources Alignment Tooltip -->
+            <div
+              class="confidence-tooltip"
+              id="confidence-tooltip"
+              role="dialog"
+              aria-label="Forecast Sources Alignment"
+              hidden
+            >
+              <div class="confidence-tooltip-caret" aria-hidden="true"></div>
+              <div class="confidence-tooltip-header">
+                <div class="confidence-tooltip-title-row">
+                  <span class="confidence-tooltip-kicker">
+                    <span class="confidence-dot"></span>
+                    Sources Alignment
+                  </span>
+                  <span class="confidence-tooltip-spread" id="confidence-tooltip-spread">Spread ±0.5°</span>
+                </div>
+                <div class="confidence-tooltip-summary" id="confidence-tooltip-summary">
+                  High consensus across 4 NWP models
+                </div>
+                <div class="confidence-meter-track" aria-hidden="true">
+                  <div class="confidence-meter-fill" id="confidence-meter-fill" style="width: 92%"></div>
+                </div>
+              </div>
+
+              <div class="confidence-sources-list" id="confidence-sources-list"></div>
+
+              <div class="confidence-tooltip-footer">
+                <span class="confidence-tooltip-ground" id="confidence-tooltip-ground">
+                  Assimilating NEXRAD + METAR
+                </span>
+                <button type="button" class="confidence-tooltip-action" id="confidence-tooltip-more-btn">
+                  24h Envelope ↗
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="ensemble-models-grid" id="ensemble-models-grid">
         <div class="ensemble-pill-box interactive-tile" data-tile="ensemble" role="button" tabindex="0">
@@ -657,7 +667,12 @@
         </span>
         <span><strong>ZüsCast</strong> &bull; Down-to-the-minute hyperlocal weather intelligence.</span>
       </div>
-      <div id="last-updated">Live Telemetry</div>
+      <div class="footer-right-controls">
+        <div id="last-updated">Live Telemetry</div>
+        <button type="button" id="unit-toggle-btn" class="liquid-glass-pill footer-unit-pill" aria-label="Toggle Imperial / Metric units">
+          °F, mph
+        </button>
+      </div>
     </footer>
 
     <!-- Interactive App Telemetry Detail Modal / Sheet -->
@@ -823,6 +838,6 @@
     crossorigin=""
     defer
   ></script>
-  <script src="./app.js?v=20261107-ios27-logo-v2" defer></script>
+  <script src="./app.js?v=20261107-floating-sky-v8" defer></script>
 </body>
 </html>
