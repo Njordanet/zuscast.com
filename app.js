@@ -528,6 +528,9 @@ const dopplerRadarMap = {
   showWindHeatmap: true,
   windCanvas: null,
   windCtx: null,
+  _windHeatCanvas: null,
+  _windHeatCtx: null,
+  _windHeatImgData: null,
   windRafId: null,
   windParticles: [],
 
@@ -649,7 +652,12 @@ const dopplerRadarMap = {
     }
 
     this.initWindCanvas();
-    this.map.on("move zoom resize", () => this.resizeWindCanvas());
+    this.map.on("move zoom viewreset resize", () => {
+      this.resizeWindCanvas();
+      if (this.layerMode === "wind" || this.layerMode === "both") {
+        this.drawWindCanvasFrame(false);
+      }
+    });
     this.setLayerMode("both");
 
     if (frameEl) {
@@ -710,6 +718,15 @@ const dopplerRadarMap = {
         e.stopPropagation();
         this.stopPlay();
         this.setFrameIndex(Number(e.target.value));
+      });
+    }
+    const tickLive = document.getElementById("radar-tick-live");
+    if (tickLive) {
+      tickLive.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.stopPlay();
+        const liveIdx = this.frames.findIndex((f) => f.offsetMinutes === 0);
+        if (liveIdx >= 0) this.setFrameIndex(liveIdx);
       });
     }
     if (zoomInBtn) {
@@ -916,18 +933,16 @@ const dopplerRadarMap = {
       }
     }
 
-    // Adjust active Doppler radar tile opacity based on mode
-    const targetRadarOpacity = valid === "wind" ? 0.0 : valid === "both" ? 0.72 : 0.86;
-    Object.entries(this.tileLayers).forEach(([id, layer]) => {
-      layer.setOpacity(id === this.activeFrameId ? targetRadarOpacity : 0.0);
-    });
+    // Adjust active Doppler radar tile opacity based on mode (smooth crossfade between adjacent frames)
+    this.applyRadarCrossfadeOpacity();
 
-    // Toggle Wind Streamline & Color Field Canvas
+    // Toggle Wind Streamline & Color Field Canvas (locked to map coordinates)
     if (this.windCanvas) {
       const showWind = valid === "wind" || valid === "both";
       this.windCanvas.classList.toggle("is-active", showWind);
       if (showWind) {
         this.resizeWindCanvas();
+        this.drawWindCanvasFrame(false);
         this.startWindLoop();
       } else {
         this.stopWindLoop();
@@ -959,15 +974,26 @@ const dopplerRadarMap = {
       this.windCanvas.width = targetW;
       this.windCanvas.height = targetH;
       this.windCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      this.resetWindParticles(rect.width, rect.height);
+      if (!this.windParticles.length) {
+        this.resetWindParticles(rect.width, rect.height);
+      }
     }
   },
 
   spawnWindParticle(w, h, randomAge = false) {
     const maxAge = 55 + Math.random() * 45;
+    const sx = Math.random() * (w || 600);
+    const sy = Math.random() * (h || 450);
+    let lat = state.location?.latitude ?? 40.7128;
+    let lon = state.location?.longitude ?? -74.006;
+    if (this.map) {
+      const ll = this.map.containerPointToLatLng([sx, sy]);
+      lat = ll.lat;
+      lon = ll.lng;
+    }
     return {
-      x: Math.random() * w,
-      y: Math.random() * h,
+      lat,
+      lon,
       age: randomAge ? Math.floor(Math.random() * maxAge) : 0,
       maxAge,
       trail: [],
@@ -975,20 +1001,38 @@ const dopplerRadarMap = {
   },
 
   resetWindParticles(w, h) {
+    const rect = this.windCanvas?.getBoundingClientRect();
+    const width = w || rect?.width || 600;
+    const height = h || rect?.height || 450;
     const count = window.innerWidth <= 640 ? 125 : 175;
     this.windParticles = [];
     for (let i = 0; i < count; i++) {
-      this.windParticles.push(this.spawnWindParticle(w, h, true));
+      this.windParticles.push(this.spawnWindParticle(width, height, true));
     }
   },
 
   windColorRgb(kmh) {
-    const mph = kmh * 0.621371;
-    if (mph < 10) return [56, 189, 248];   // Calm / Light Sky Cyan
-    if (mph < 18) return [52, 211, 153];   // Breeze Emerald
-    if (mph < 27) return [250, 204, 21];   // Strong Breeze Züs Gold
-    if (mph < 38) return [249, 115, 22];   // Near Gale Amber Orange
-    return [232, 121, 249];                // Gale / Storm Magenta
+    const mph = Math.max(0, kmh * 0.621371);
+    const stops = [
+      [0, 56, 189, 248],    // Calm / Light Sky Cyan
+      [12, 52, 211, 153],   // Breeze Emerald
+      [22, 250, 204, 21],   // Strong Breeze Züs Gold
+      [33, 249, 115, 22],   // Near Gale Amber Orange
+      [46, 232, 121, 249],  // Gale / Storm Magenta
+    ];
+    for (let i = 0; i < stops.length - 1; i++) {
+      const s0 = stops[i];
+      const s1 = stops[i + 1];
+      if (mph <= s1[0]) {
+        const t = Math.max(0, Math.min(1, (mph - s0[0]) / Math.max(0.001, s1[0] - s0[0])));
+        return [
+          Math.round(s0[1] + (s1[1] - s0[1]) * t),
+          Math.round(s0[2] + (s1[2] - s0[2]) * t),
+          Math.round(s0[3] + (s1[3] - s0[3]) * t),
+        ];
+      }
+    }
+    return [232, 121, 249];
   },
 
   beaufortLabel(kmh) {
@@ -1010,22 +1054,34 @@ const dopplerRadarMap = {
 
     let baseSpeedKmh = w?.windSpeed ?? 24;
     let baseGustKmh = w?.windGusts ?? Math.max(baseSpeedKmh * 1.38, baseSpeedKmh + 9);
-    const baseFromDeg = w?.windDirection ?? 245;
+    let baseFromDeg = w?.windDirection ?? 245;
 
-    // Blend with hourly forecast when scrubbing forward (+15m .. +120m)
+    // Blend speed, gusts, and wind direction with hourly forecast when scrubbing forward
     if (offsetMinutes > 0 && Array.isArray(w?.hourly) && w.hourly.length > 1) {
       const hrFloat = Math.min(w.hourly.length - 1, offsetMinutes / 60);
-      const h0 = w.hourly[Math.floor(hrFloat)] || w.hourly[0];
-      const h1 = w.hourly[Math.min(w.hourly.length - 1, Math.ceil(hrFloat))] || h0;
-      const frac = hrFloat - Math.floor(hrFloat);
-      baseSpeedKmh = (h0.windSpeed ?? baseSpeedKmh) * (1 - frac) + (h1.windSpeed ?? baseSpeedKmh) * frac;
-      baseGustKmh = (h0.windGusts ?? baseGustKmh) * (1 - frac) + (h1.windGusts ?? baseGustKmh) * frac;
+      const idx0 = Math.floor(hrFloat);
+      const idx1 = Math.min(w.hourly.length - 1, idx0 + 1);
+      const h0 = w.hourly[idx0] || w.hourly[0];
+      const h1 = w.hourly[idx1] || h0;
+      const frac = hrFloat - idx0;
+      baseSpeedKmh =
+        (h0.windSpeed ?? baseSpeedKmh) * (1 - frac) + (h1.windSpeed ?? baseSpeedKmh) * frac;
+      baseGustKmh =
+        (h0.windGusts ?? baseGustKmh) * (1 - frac) + (h1.windGusts ?? baseGustKmh) * frac;
+
+      if (typeof h0.windDirection === "number" && typeof h1.windDirection === "number") {
+        const d0 = (h0.windDirection * Math.PI) / 180;
+        const d1 = (h1.windDirection * Math.PI) / 180;
+        const sinMix = Math.sin(d0) * (1 - frac) + Math.sin(d1) * frac;
+        const cosMix = Math.cos(d0) * (1 - frac) + Math.cos(d1) * frac;
+        baseFromDeg = ((Math.atan2(sinMix, cosMix) * 180) / Math.PI + 360) % 360;
+      }
     }
 
     // Geographic offset in degrees from station center, advected by time offset
     const advShift = (offsetMinutes / 60) * 0.18;
-    const dLon = (lon - baseLon) - advShift;
-    const dLat = (lat - baseLat) + advShift * 0.45;
+    const dLon = lon - baseLon - advShift;
+    const dLat = lat - baseLat + advShift * 0.45;
 
     // Synoptic wave & localized jet streak modulation across the sector
     const waveRad =
@@ -1042,7 +1098,7 @@ const dopplerRadarMap = {
     const moveTowardsDeg = (localFromDeg + 180) % 360;
     const moveRad = (moveTowardsDeg * Math.PI) / 180;
 
-    // Screen-space velocity (east = +x, north = -y)
+    // Screen-space velocity at base zoom (east = +x, north = -y)
     const speedPx = Math.max(0.85, Math.min(4.2, speedKmh / 16.5));
     const vx = Math.sin(moveRad) * speedPx;
     const vy = -Math.cos(moveRad) * speedPx;
@@ -1065,7 +1121,7 @@ const dopplerRadarMap = {
         this.windRafId = null;
         return;
       }
-      this.drawWindCanvasFrame();
+      this.drawWindCanvasFrame(true);
       this.windRafId = requestAnimationFrame(step);
     };
     this.windRafId = requestAnimationFrame(step);
@@ -1082,7 +1138,7 @@ const dopplerRadarMap = {
     }
   },
 
-  drawWindCanvasFrame() {
+  drawWindCanvasFrame(advance = true) {
     if (!this.windCanvas || !this.windCtx || !this.map) return;
     const rect = this.windCanvas.getBoundingClientRect();
     const w = rect.width;
@@ -1097,69 +1153,118 @@ const dopplerRadarMap = {
     ctx.clearRect(0, 0, w, h);
 
     const frame = this.frames[this.currentIndex] || { offsetMinutes: 0 };
-    const offsetMin = Number(frame.offsetMinutes || 0);
-    const bounds = this.map.getBounds();
-    const north = bounds.getNorth();
-    const south = bounds.getSouth();
-    const west = bounds.getWest();
-    const east = bounds.getEast();
-    const latSpan = north - south || 0.5;
-    const lonSpan = east - west || 0.5;
+    const offsetMin =
+      typeof this.currentOffsetMinutes === "number"
+        ? this.currentOffsetMinutes
+        : Number(frame.offsetMinutes || 0);
 
-    // 1. Subtle Wind-Speed Color Field (when enabled)
+    // 1. Geographically-Anchored Smooth Bilinear Wind-Speed Color Field (when enabled)
     if (this.showWindHeatmap) {
-      const cols = 34;
-      const rows = 20;
-      const cellW = w / cols;
-      const cellH = h / rows;
+      const cols = 36;
+      const rows = 22;
+      if (!this._windHeatCanvas) {
+        this._windHeatCanvas = document.createElement("canvas");
+        this._windHeatCanvas.width = cols;
+        this._windHeatCanvas.height = rows;
+        this._windHeatCtx = this._windHeatCanvas.getContext("2d");
+        this._windHeatImgData = this._windHeatCtx.createImageData(cols, rows);
+      }
+      const imgData = this._windHeatImgData.data;
       const alphaScale = this.layerMode === "both" ? 0.72 : 1.0;
 
+      let ptr = 0;
       for (let r = 0; r < rows; r++) {
-        const lat = north - ((r + 0.5) / rows) * latSpan;
+        const sy = (r / (rows - 1)) * h;
+        const latRow = this.map.containerPointToLatLng([0, sy]).lat;
         for (let c = 0; c < cols; c++) {
-          const lon = west + ((c + 0.5) / cols) * lonSpan;
-          const { speedKmh } = this.sampleWindField(lat, lon, offsetMin);
+          const sx = (c / (cols - 1)) * w;
+          const lonCol = this.map.containerPointToLatLng([sx, sy]).lng;
+          const { speedKmh } = this.sampleWindField(latRow, lonCol, offsetMin);
           const [cr, cg, cb] = this.windColorRgb(speedKmh);
-          const rawAlpha = Math.min(0.26, Math.max(0.045, (speedKmh - 6) / 210)) * alphaScale;
-          ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${rawAlpha.toFixed(3)})`;
-          ctx.fillRect(c * cellW, r * cellH, cellW + 0.8, cellH + 0.8);
+          const rawAlpha = Math.min(0.27, Math.max(0.045, (speedKmh - 6) / 205)) * alphaScale;
+          imgData[ptr++] = cr;
+          imgData[ptr++] = cg;
+          imgData[ptr++] = cb;
+          imgData[ptr++] = Math.round(rawAlpha * 255);
         }
       }
+      this._windHeatCtx.putImageData(this._windHeatImgData, 0, 0);
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(this._windHeatCanvas, 0, 0, w, h);
+      ctx.restore();
     }
 
-    // 2. Animated Wind Streamline Particles
+    // 2. Geographically-Anchored Animated Wind Streamline Particles (locked 1:1 to map coordinates)
+    const zoomScale = Math.max(
+      0.55,
+      Math.min(2.15, Math.pow(1.18, this.map.getZoom() - this.baseZoom))
+    );
+
     ctx.save();
     ctx.lineCap = "round";
     for (let i = 0; i < this.windParticles.length; i++) {
-      const p = this.windParticles[i];
-      const lat = north - (p.y / h) * latSpan;
-      const lon = west + (p.x / w) * lonSpan;
-      const { vx, vy, speedKmh } = this.sampleWindField(lat, lon, offsetMin);
+      let p = this.windParticles[i];
+      if (typeof p.lat !== "number" || typeof p.lon !== "number") {
+        p = this.spawnWindParticle(w, h, true);
+        this.windParticles[i] = p;
+      }
 
-      p.trail.push({ x: p.x, y: p.y, speedKmh });
-      if (p.trail.length > 15) p.trail.shift();
+      let pt = this.map.latLngToContainerPoint([p.lat, p.lon]);
 
-      p.x += vx;
-      p.y += vy;
-      p.age++;
+      // If map panning/zooming pushed particle outside viewport, wrap it into the newly exposed edge
+      if (pt.x < -24 || pt.x > w + 24 || pt.y < -24 || pt.y > h + 24) {
+        const wx = ((pt.x % w) + w) % w;
+        const wy = ((pt.y % h) + h) % h;
+        const wrappedLl = this.map.containerPointToLatLng([wx, wy]);
+        p.lat = wrappedLl.lat;
+        p.lon = wrappedLl.lng;
+        p.trail = [];
+        pt = L.point(wx, wy);
+      }
 
-      if (p.age >= p.maxAge || p.x < -12 || p.x > w + 12 || p.y < -12 || p.y > h + 12) {
-        this.windParticles[i] = this.spawnWindParticle(w, h, false);
-        continue;
+      const { vx, vy, speedKmh } = this.sampleWindField(p.lat, p.lon, offsetMin);
+
+      if (advance) {
+        p.trail.push({ lat: p.lat, lon: p.lon, speedKmh });
+        if (p.trail.length > 15) p.trail.shift();
+
+        const nextX = pt.x + vx * zoomScale;
+        const nextY = pt.y + vy * zoomScale;
+        p.age++;
+
+        if (
+          p.age >= p.maxAge ||
+          nextX < -18 ||
+          nextX > w + 18 ||
+          nextY < -18 ||
+          nextY > h + 18
+        ) {
+          this.windParticles[i] = this.spawnWindParticle(w, h, false);
+          continue;
+        }
+
+        const nextLl = this.map.containerPointToLatLng([nextX, nextY]);
+        p.lat = nextLl.lat;
+        p.lon = nextLl.lng;
       }
 
       if (p.trail.length > 2) {
         const [r, g, b] = this.windColorRgb(speedKmh);
-        const lifeFade = Math.sin((p.age / p.maxAge) * Math.PI);
+        const lifeFade = Math.sin((Math.min(p.age, p.maxAge) / p.maxAge) * Math.PI);
+        let prevScreenPt = this.map.latLngToContainerPoint([p.trail[0].lat, p.trail[0].lon]);
         for (let t = 1; t < p.trail.length; t++) {
+          const curScreenPt = this.map.latLngToContainerPoint([p.trail[t].lat, p.trail[t].lon]);
           const segFrac = t / p.trail.length;
           const alpha = segFrac * lifeFade * 0.9;
           ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
           ctx.lineWidth = 1.05 + segFrac * 1.4;
           ctx.beginPath();
-          ctx.moveTo(p.trail[t - 1].x, p.trail[t - 1].y);
-          ctx.lineTo(p.trail[t].x, p.trail[t].y);
+          ctx.moveTo(prevScreenPt.x, prevScreenPt.y);
+          ctx.lineTo(curScreenPt.x, curScreenPt.y);
           ctx.stroke();
+          prevScreenPt = curScreenPt;
         }
       }
     }
@@ -1191,18 +1296,17 @@ const dopplerRadarMap = {
     modal.removeAttribute("hidden");
     document.body.classList.add("modal-open");
 
-    requestAnimationFrame(() => {
+    const syncCanvases = () => {
       if (this.map) this.map.invalidateSize();
       this.resizeWindCanvas();
-    });
-    setTimeout(() => {
-      if (this.map) this.map.invalidateSize();
-      this.resizeWindCanvas();
-    }, 120);
-    setTimeout(() => {
-      if (this.map) this.map.invalidateSize();
-      this.resizeWindCanvas();
-    }, 340);
+      this.resetWindParticles();
+      if (this.layerMode === "wind" || this.layerMode === "both") {
+        this.drawWindCanvasFrame(false);
+      }
+    };
+    requestAnimationFrame(syncCanvases);
+    setTimeout(syncCanvases, 120);
+    setTimeout(syncCanvases, 340);
   },
 
   closeModal() {
@@ -1227,9 +1331,17 @@ const dopplerRadarMap = {
       });
       this.map.invalidateSize();
       this.resizeWindCanvas();
+      this.resetWindParticles();
+      if (this.layerMode === "wind" || this.layerMode === "both") {
+        this.drawWindCanvasFrame(false);
+      }
       setTimeout(() => {
         if (this.map) this.map.invalidateSize();
         this.resizeWindCanvas();
+        this.resetWindParticles();
+        if (this.layerMode === "wind" || this.layerMode === "both") {
+          this.drawWindCanvasFrame(false);
+        }
       }, 120);
     }
 
@@ -1738,6 +1850,7 @@ const dopplerRadarMap = {
       this.map.setView([lat, lon], this.baseZoom, { animate: true });
       if (this.marker) this.marker.setLatLng([lat, lon]);
       if (this.scanCircle) this.scanCircle.setLatLng([lat, lon]);
+      this.resetWindParticles();
     }
 
     const inConus = this.isConusLocation(lat, lon);
@@ -1898,51 +2011,125 @@ const dopplerRadarMap = {
     }).addTo(this.map);
   },
 
-  setFrameIndex(idx) {
-    if (!this.map || !this.frames.length) return;
-    const bounded = Math.max(0, Math.min(this.frames.length - 1, idx));
-    this.currentIndex = bounded;
-    const frame = this.frames[bounded];
+  applyRadarCrossfadeOpacity() {
+    if (!this.frames.length) return;
+    const bounded = Math.max(
+      0,
+      Math.min(this.frames.length - 1, typeof this.floatIndex === "number" ? this.floatIndex : this.currentIndex)
+    );
+    const i0 = Math.floor(bounded);
+    const i1 = Math.min(this.frames.length - 1, i0 + 1);
+    const alpha = bounded - i0;
+    const f0 = this.frames[i0];
+    const f1 = this.frames[i1] || f0;
 
-    const slider = document.getElementById("radar-frame-slider");
-    if (slider) {
-      if (Number(slider.value) !== bounded) {
-        slider.value = String(bounded);
+    if (this.map) {
+      if (f0 && !this.tileLayers[f0.frameId]) {
+        this.tileLayers[f0.frameId] = this.createLayerForFrame(f0);
       }
-      slider.classList.toggle("is-future", Boolean(frame.isFuture));
-    }
-
-    if (!this.tileLayers[frame.frameId]) {
-      this.tileLayers[frame.frameId] = this.createLayerForFrame(frame);
+      if (f1 && !this.tileLayers[f1.frameId]) {
+        this.tileLayers[f1.frameId] = this.createLayerForFrame(f1);
+      }
     }
 
     const targetRadarOpacity =
       this.layerMode === "wind" ? 0.0 : this.layerMode === "both" ? 0.72 : 0.86;
+
+    const sameFrame = !f1 || f0.frameId === f1.frameId || alpha < 0.005;
+    // Equal-power crossfade curve so radar echoes never dip in brightness mid-transition
+    const w0 = sameFrame ? 1.0 : Math.pow(1.0 - alpha, 0.78);
+    const w1 = sameFrame ? 0.0 : Math.pow(alpha, 0.78);
+
     Object.entries(this.tileLayers).forEach(([id, layer]) => {
-      layer.setOpacity(id === frame.frameId ? targetRadarOpacity : 0.0);
+      if (targetRadarOpacity <= 0) {
+        layer.setOpacity(0.0);
+      } else if (sameFrame) {
+        layer.setOpacity(id === f0.frameId ? targetRadarOpacity : 0.0);
+      } else if (id === f0.frameId) {
+        layer.setOpacity(targetRadarOpacity * w0);
+      } else if (id === f1.frameId) {
+        layer.setOpacity(targetRadarOpacity * w1);
+      } else {
+        layer.setOpacity(0.0);
+      }
     });
+  },
+
+  formatInterpolatedOffsetLabel(offsetMin) {
+    const rounded = Math.round(offsetMin);
+    if (Math.abs(rounded) <= 1) return "LIVE";
+    const sign = rounded > 0 ? "+" : "-";
+    const absMin = Math.abs(rounded);
+    if (absMin < 60) return `${sign}${absMin}m`;
+    const hrs = Math.floor(absMin / 60);
+    const mins = absMin % 60;
+    return mins === 0 ? `${sign}${hrs}h` : `${sign}${hrs}h ${mins}m`;
+  },
+
+  setFrameIndex(idx) {
+    if (!this.map || !this.frames.length) return;
+    const bounded = Math.max(0, Math.min(this.frames.length - 1, Number(idx) || 0));
+    this.floatIndex = bounded;
+    const i0 = Math.floor(bounded);
+    const i1 = Math.min(this.frames.length - 1, i0 + 1);
+    const alpha = bounded - i0;
+    const f0 = this.frames[i0];
+    const f1 = this.frames[i1] || f0;
+
+    this.currentIndex = Math.round(bounded);
+    const frame = this.frames[this.currentIndex] || f0;
+
+    // Pre-create next frame ahead for seamless crossfading
+    const iNext = Math.min(this.frames.length - 1, i1 + 1);
+    const fNext = this.frames[iNext];
+    if (fNext && !this.tileLayers[fNext.frameId]) {
+      this.tileLayers[fNext.frameId] = this.createLayerForFrame(fNext);
+    }
+
+    this.applyRadarCrossfadeOpacity();
     this.activeFrameId = frame.frameId;
 
-    const frameClock = frame.timestamp
-      ? new Date(frame.timestamp * 1000).toLocaleTimeString([], {
+    const interpOffsetMin =
+      Number(f0.offsetMinutes || 0) * (1 - alpha) + Number(f1.offsetMinutes || 0) * alpha;
+    this.currentOffsetMinutes = interpOffsetMin;
+    const isFutureInterp = interpOffsetMin > 1.5;
+
+    const slider = document.getElementById("radar-frame-slider");
+    if (slider) {
+      if (Math.abs(Number(slider.value) - bounded) > 0.005) {
+        slider.value = bounded.toFixed(2);
+      }
+      const maxIdx = Math.max(1, this.frames.length - 1);
+      const scrubPct = ((bounded / maxIdx) * 100).toFixed(2);
+      slider.style.setProperty("--scrub-pct", `${scrubPct}%`);
+      slider.classList.toggle("is-future", isFutureInterp);
+    }
+
+    const interpTs =
+      f0.timestamp && f1.timestamp
+        ? f0.timestamp * (1 - alpha) + f1.timestamp * alpha
+        : frame.timestamp;
+    const frameClock = interpTs
+      ? new Date(interpTs * 1000).toLocaleTimeString([], {
           hour: "numeric",
           minute: "2-digit",
         })
       : "";
+    const interpLabel = this.formatInterpolatedOffsetLabel(interpOffsetMin);
 
     const pillEl = document.getElementById("radar-frame-label");
     const timeEl = document.getElementById("radar-time-readout");
     if (pillEl) {
-      pillEl.textContent = frame.isFuture
-        ? `${frame.label} NOWCAST (${frameClock})`
-        : frame.offsetMinutes === 0
+      pillEl.textContent = isFutureInterp
+        ? `${interpLabel} NOWCAST (${frameClock})`
+        : interpLabel === "LIVE"
         ? `LIVE (${frameClock})`
-        : `${frame.label} (${frameClock})`;
-      pillEl.classList.toggle("future", Boolean(frame.isFuture));
+        : `${interpLabel} (${frameClock})`;
+      pillEl.classList.toggle("future", isFutureInterp);
     }
     if (timeEl) {
-      timeEl.textContent = frameClock ? `${frameClock} (${frame.label})` : frame.label;
-      timeEl.classList.toggle("future", Boolean(frame.isFuture));
+      timeEl.textContent = frameClock ? `${frameClock} (${interpLabel})` : interpLabel;
+      timeEl.classList.toggle("future", isFutureInterp);
     }
 
     if (this.layerMode === "wind" || this.layerMode === "both") {
@@ -1967,7 +2154,7 @@ const dopplerRadarMap = {
 
   startPlay() {
     if (!this.frames.length) return;
-    // Pre-warm all frame layers so loop animation has zero lag
+    // Pre-warm all frame layers so continuous crossfade playback has zero lag
     this.frames.forEach((f) => {
       if (this.map && !this.tileLayers[f.frameId]) {
         this.tileLayers[f.frameId] = this.createLayerForFrame(f);
@@ -1976,10 +2163,36 @@ const dopplerRadarMap = {
     this.isPlaying = true;
     const btn = document.getElementById("radar-play-btn");
     if (btn) btn.textContent = "❚❚";
-    this.playTimer = setInterval(() => {
-      const next = (this.currentIndex + 1) % this.frames.length;
-      this.setFrameIndex(next);
-    }, 620);
+
+    let lastTs = performance.now();
+    let endHoldUntil = 0;
+    const maxIdx = Math.max(1, this.frames.length - 1);
+    if (typeof this.floatIndex !== "number" || this.floatIndex >= maxIdx - 0.02) {
+      this.floatIndex = 0;
+    }
+
+    const tick = (now) => {
+      if (!this.isPlaying) return;
+      const dtSec = Math.min(0.1, Math.max(0.0, (now - lastTs) / 1000));
+      lastTs = now;
+
+      if (endHoldUntil > 0) {
+        if (now >= endHoldUntil) {
+          endHoldUntil = 0;
+          this.setFrameIndex(0);
+        }
+      } else {
+        const nextFloat = (typeof this.floatIndex === "number" ? this.floatIndex : this.currentIndex) + dtSec * 1.15;
+        if (nextFloat >= maxIdx) {
+          this.setFrameIndex(maxIdx);
+          endHoldUntil = now + 850;
+        } else {
+          this.setFrameIndex(nextFloat);
+        }
+      }
+      this.playTimer = requestAnimationFrame(tick);
+    };
+    this.playTimer = requestAnimationFrame(tick);
   },
 
   stopPlay() {
@@ -1987,6 +2200,7 @@ const dopplerRadarMap = {
     const btn = document.getElementById("radar-play-btn");
     if (btn) btn.textContent = "▶";
     if (this.playTimer) {
+      cancelAnimationFrame(this.playTimer);
       clearInterval(this.playTimer);
       this.playTimer = null;
     }
@@ -2144,7 +2358,7 @@ async function loadWeatherForCurrentLocation() {
         "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation,uv_index,dew_point_2m,visibility,cape,is_day",
       minutely_15: "precipitation,weather_code",
       hourly:
-        "temperature_2m,apparent_temperature,weather_code,precipitation_probability,precipitation,wind_speed_10m,wind_gusts_10m,uv_index,dew_point_2m,cloud_cover,visibility,pressure_msl,cape,is_day",
+        "temperature_2m,apparent_temperature,weather_code,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,dew_point_2m,cloud_cover,visibility,pressure_msl,cape,is_day",
       daily:
         "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,uv_index_max,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset",
       timezone: "auto",
@@ -2480,6 +2694,9 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     const precipProb = Number(zh?.precipitationChance ?? h.precipitation_probability?.[idx] ?? 0);
     const precipMm = Number(zh?.precipMm ?? h.precipitation?.[idx] ?? 0);
     const windSpeed = Number(zh?.windSpeed ?? h.wind_speed_10m?.[idx] ?? 0);
+    const windDirection = Number(
+      zh?.windDirection ?? h.wind_direction_10m?.[idx] ?? c.wind_direction_10m ?? 245
+    );
     const windGusts = Number(
       zh?.windGusts ?? h.wind_gusts_10m?.[idx] ?? Math.max(windSpeed * 1.3, windSpeed + 4)
     );
@@ -2607,6 +2824,7 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       precipMmMin: prMmB.min,
       precipMmMax: prMmB.max,
       windSpeed,
+      windDirection,
       windMin: windB.min,
       windMax: windB.max,
       windGusts,
