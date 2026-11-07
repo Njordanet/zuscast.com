@@ -2219,15 +2219,24 @@ function attachHourlyTouchScrubber(colsLayer) {
   };
 
   let isPointerScrubbing = false;
+  let downX = 0;
+  let downY = 0;
+
   colsLayer.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
     isPointerScrubbing = true;
+    downX = e.clientX;
+    downY = e.clientY;
+    colsLayer._didDrag = false;
     activateColAtClientX(e.clientX);
   });
 
   colsLayer.addEventListener("pointermove", (e) => {
     if (!isPointerScrubbing) return;
-    activateColAtClientX(e.clientX);
+    if (Math.hypot(e.clientX - downX, e.clientY - downY) > 7) {
+      colsLayer._didDrag = true;
+      activateColAtClientX(e.clientX);
+    }
   });
 
   const endScrub = () => {
@@ -2248,6 +2257,10 @@ function renderHourlyCurveIntoContainer(
     scrollEl.innerHTML = "";
     return;
   }
+
+  scrollEl._hourlyData = hourly;
+  scrollEl._hourlyMode = mode;
+  scrollEl._hourlyOptions = options;
 
   const {
     showNowOnFirst = true,
@@ -2465,6 +2478,10 @@ function renderHourlyCurveIntoContainer(
 
     const hoverSpread = Math.max(0, s.max - s.min);
 
+    col.setAttribute("role", "button");
+    col.setAttribute("tabindex", "0");
+    col.title = "Click or tap for full hourly breakdown across all 11 metrics";
+
     col.innerHTML = `
       <div class="hourly-col-time">${rawTime}</div>
       <div class="hourly-point-node" style="top: ${pt.y.toFixed(1)}px">
@@ -2476,8 +2493,22 @@ function renderHourlyCurveIntoContainer(
     `;
 
     col.addEventListener("click", () => {
+      if (colsLayer._didDrag) {
+        colsLayer._didDrag = false;
+        return;
+      }
       colsLayer.querySelectorAll(".hourly-col").forEach((c) => c.classList.remove("active"));
       col.classList.add("active");
+      openHourDetailModal(scrollEl, idx);
+    });
+
+    col.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        colsLayer.querySelectorAll(".hourly-col").forEach((c) => c.classList.remove("active"));
+        col.classList.add("active");
+        openHourDetailModal(scrollEl, idx);
+      }
     });
 
     colsLayer.appendChild(col);
@@ -2510,6 +2541,24 @@ function renderHourlyTimeline(hourly) {
     showDayDividers: true,
     colW,
     H: 196,
+    contextLabel: "24-Hour & 10-Day Timeline",
+    onSelectMode: (newMode) => {
+      state.hourlyMode = newMode;
+      const topPillBar = document.getElementById("timeline-pill-bar");
+      if (topPillBar) {
+        topPillBar.querySelectorAll(".mode-tab").forEach((t) => {
+          const isMatch = t.dataset.mode === newMode;
+          t.classList.toggle("active", isMatch);
+          if (isMatch && typeof t.scrollIntoView === "function") {
+            t.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+          }
+        });
+        syncLiquidPillGlider(topPillBar);
+      }
+      if (state.weather?.hourly) {
+        renderHourlyTimeline(state.weather.hourly);
+      }
+    },
   });
 
   scroll.scrollLeft = prevScrollLeft;
@@ -2607,6 +2656,14 @@ function renderDailyForecast(daily) {
     const dayScrollEl = wrapper.querySelector(".day-hourly-scroll");
     const dayPillBarEl = wrapper.querySelector(".day-pill-bar");
     const dayHours = Array.isArray(dItem.hours) ? dItem.hours : [];
+    const fullDayLabel =
+      idx === 0
+        ? "Today"
+        : dItem.date.toLocaleDateString([], {
+            weekday: "long",
+            month: "short",
+            day: "numeric",
+          });
 
     // Compact 24-hour chart inside each day drawer (constrained to card width with internal scroll)
     const dayChartOpts = {
@@ -2614,6 +2671,26 @@ function renderDailyForecast(daily) {
       showDayDividers: idx === 0,
       colW: 54,
       H: 154,
+      contextLabel: `10-Day Forecast • ${fullDayLabel}`,
+      onSelectMode: (newMode) => {
+        state.dailyModes[idx] = newMode;
+        wrapper.querySelectorAll(".day-mode-tab").forEach((t) => {
+          const isMatch = t.dataset.mode === newMode;
+          t.classList.toggle("active", isMatch);
+          if (isMatch && typeof t.scrollIntoView === "function") {
+            t.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+          }
+        });
+        syncLiquidPillGlider(dayPillBarEl);
+        const prevLeft = dayScrollEl.scrollLeft;
+        renderHourlyCurveIntoContainer(
+          dayScrollEl,
+          dayHours,
+          newMode,
+          dayChartOpts
+        );
+        dayScrollEl.scrollLeft = prevLeft;
+      },
     };
 
     renderHourlyCurveIntoContainer(
@@ -2853,6 +2930,256 @@ function jumpToTimelineMetric(mode) {
 }
 
 let modalCloseTimer = null;
+let hourModalCloseTimer = null;
+const hourModalState = {
+  scrollEl: null,
+  index: 0,
+};
+
+function formatHourShortLabel(item, isNow = false) {
+  if (!item || !item.time) return "--";
+  if (isNow) return "NOW";
+  return item.time
+    .toLocaleTimeString([], { hour: "numeric", hour12: true })
+    .replace(/\s+/g, "")
+    .toUpperCase();
+}
+
+function getHourlyMetricIconSVG(mode) {
+  switch (mode) {
+    case "temp":
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/><line x1="11.5" y1="9" x2="11.5" y2="15"/></svg>`;
+    case "feels":
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/><path d="M17 6h3"/><path d="M17 10h4"/><path d="M17 14h2"/></svg>`;
+    case "precip":
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>`;
+    case "precipAmount":
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>`;
+    case "wind":
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></svg>`;
+    case "gusts":
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12.8 19.6A2 2 0 1 0 14 16H2"/><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2"/><path d="M9.8 4.4A2 2 0 1 1 11 8H2"/><polyline points="19 4 22 6 19 8"/></svg>`;
+    case "uv":
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`;
+    case "dew":
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/><path d="M9.5 14.5a3.5 3.5 0 0 0 3.5 3"/></svg>`;
+    case "clouds":
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
+    case "visibility":
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`;
+    case "pressure":
+    default:
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>`;
+  }
+}
+
+function closeHourDetailModal() {
+  const modal = document.getElementById("hour-detail-modal");
+  const sheet = document.getElementById("hour-modal-sheet");
+  if (!modal || modal.hasAttribute("hidden")) return;
+
+  const tileModal = document.getElementById("tile-detail-modal");
+  if (!tileModal || tileModal.hasAttribute("hidden")) {
+    document.body.classList.remove("modal-open");
+  }
+  if (sheet) {
+    sheet.style.transform = "";
+    sheet.style.transition = "";
+  }
+  modal.classList.add("closing");
+  clearTimeout(hourModalCloseTimer);
+  hourModalCloseTimer = setTimeout(() => {
+    modal.classList.remove("closing");
+    modal.setAttribute("hidden", "");
+  }, 230);
+}
+
+function renderHourDetailModalContent() {
+  const { scrollEl, index } = hourModalState;
+  const hourly = scrollEl?._hourlyData;
+  if (!hourly || !hourly.length) return;
+
+  const boundedIdx = Math.max(0, Math.min(hourly.length - 1, index));
+  hourModalState.index = boundedIdx;
+  const item = hourly[boundedIdx];
+  const opts = scrollEl._hourlyOptions || {};
+  const activeMode = scrollEl._hourlyMode || "temp";
+  const isNow = Boolean(opts.showNowOnFirst && boundedIdx === 0);
+
+  // Sync active column highlight & scroll into view on the underlying chart
+  const cols = scrollEl.querySelectorAll(".hourly-col");
+  if (cols.length) {
+    cols.forEach((c, i) => c.classList.toggle("active", i === boundedIdx));
+    const activeCol = cols[boundedIdx];
+    if (activeCol) {
+      const targetLeft =
+        activeCol.offsetLeft -
+        scrollEl.clientWidth / 2 +
+        activeCol.offsetWidth / 2;
+      scrollEl.scrollTo({
+        left: Math.max(0, targetLeft),
+        behavior: "smooth",
+      });
+    }
+  }
+
+  const cond = conditionFromWMO(item.wmoCode);
+  const tempDesc = getHourlyMetricDescriptor("temp");
+  const tempSpread = tempDesc.formatSpread(
+    Math.max(0, item.tempMax - item.tempMin)
+  );
+
+  const kickerEl = document.getElementById("hour-modal-kicker");
+  const titleEl = document.getElementById("hour-modal-title");
+  const iconEl = document.getElementById("hour-modal-icon");
+  const tempEl = document.getElementById("hour-modal-temp");
+  const spreadEl = document.getElementById("hour-modal-spread");
+  const condBadgeEl = document.getElementById("hour-modal-cond-badge");
+  const submetaEl = document.getElementById("hour-modal-submeta");
+  const prevBtn = document.getElementById("hour-modal-prev");
+  const nextBtn = document.getElementById("hour-modal-next");
+  const prevLabel = document.getElementById("hour-modal-prev-label");
+  const nextLabel = document.getElementById("hour-modal-next-label");
+  const gridEl = document.getElementById("hour-modal-metrics-grid");
+
+  if (kickerEl) {
+    kickerEl.textContent = `⏱️ ${
+      opts.contextLabel || "HOURLY TELEMETRY BREAKDOWN"
+    }`;
+  }
+
+  const dateStr = item.time.toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const clockStr = item.time.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  if (titleEl) {
+    titleEl.textContent = isNow
+      ? `${dateStr} • ${clockStr} (Now)`
+      : `${dateStr} • ${clockStr}`;
+  }
+
+  if (iconEl) iconEl.innerHTML = getWeatherSVG(cond.icon);
+  if (tempEl) tempEl.textContent = formatTemp(item.temperature, true);
+  if (spreadEl) spreadEl.textContent = tempSpread;
+  if (condBadgeEl) condBadgeEl.textContent = cond.label;
+  if (submetaEl) {
+    submetaEl.innerHTML = `Feels like ${formatTemp(
+      item.feelsLike,
+      true
+    )} &bull; PoP ${Math.round(item.precipProb)}% &bull; Wind ${formatWind(
+      item.windSpeed
+    )}`;
+  }
+
+  if (prevBtn) {
+    prevBtn.disabled = boundedIdx <= 0;
+    if (prevLabel) {
+      prevLabel.textContent =
+        boundedIdx > 0
+          ? formatHourShortLabel(
+              hourly[boundedIdx - 1],
+              Boolean(opts.showNowOnFirst && boundedIdx - 1 === 0)
+            )
+          : "Start";
+    }
+  }
+
+  if (nextBtn) {
+    nextBtn.disabled = boundedIdx >= hourly.length - 1;
+    if (nextLabel) {
+      nextLabel.textContent =
+        boundedIdx < hourly.length - 1
+          ? formatHourShortLabel(hourly[boundedIdx + 1], false)
+          : "End";
+    }
+  }
+
+  if (gridEl) {
+    gridEl.innerHTML = "";
+    HOURLY_METRIC_PILLS.forEach((pill) => {
+      const desc = getHourlyMetricDescriptor(pill.mode);
+      const s = desc.extract(item);
+      const spreadStr = desc.formatSpread(Math.max(0, s.max - s.min));
+      const isCurrentMode = pill.mode === activeMode;
+      const iconSvg = getHourlyMetricIconSVG(pill.mode);
+
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = `hour-metric-card ${
+        isCurrentMode ? "active-metric" : ""
+      }`;
+      card.style.setProperty("--metric-accent", desc.lineColor);
+      card.innerHTML = `
+        <div class="hour-metric-top">
+          <span class="hour-metric-label-wrap">
+            <span class="hour-metric-icon" style="color: ${desc.lineColor}">${iconSvg}</span>
+            <span class="hour-metric-label">${pill.label}</span>
+          </span>
+          ${
+            isCurrentMode
+              ? '<span class="hour-metric-active-tag">Active</span>'
+              : ""
+          }
+        </div>
+        <div class="hour-metric-mid">
+          <span class="hour-metric-val">${desc.formatFull(s.val)}</span>
+          <span class="hour-metric-spread">${spreadStr}</span>
+        </div>
+      `;
+
+      card.addEventListener("click", () => {
+        if (typeof opts.onSelectMode === "function") {
+          opts.onSelectMode(pill.mode);
+        } else {
+          scrollEl._hourlyMode = pill.mode;
+        }
+        renderHourDetailModalContent();
+      });
+
+      gridEl.appendChild(card);
+    });
+  }
+}
+
+function openHourDetailModal(scrollEl, index) {
+  const modal = document.getElementById("hour-detail-modal");
+  const sheet = document.getElementById("hour-modal-sheet");
+  if (!modal || !scrollEl || !scrollEl._hourlyData?.length) return;
+
+  hourModalState.scrollEl = scrollEl;
+  hourModalState.index = index;
+
+  clearTimeout(hourModalCloseTimer);
+  modal.classList.remove("closing");
+  if (sheet) {
+    sheet.style.transform = "";
+    sheet.style.transition = "";
+  }
+
+  renderHourDetailModalContent();
+  document.body.classList.add("modal-open");
+  modal.removeAttribute("hidden");
+}
+
+function stepHourDetailModal(delta) {
+  const modal = document.getElementById("hour-detail-modal");
+  if (!modal || modal.hasAttribute("hidden")) return;
+  const hourly = hourModalState.scrollEl?._hourlyData;
+  if (!hourly || !hourly.length) return;
+  const nextIdx = Math.max(
+    0,
+    Math.min(hourly.length - 1, hourModalState.index + delta)
+  );
+  if (nextIdx === hourModalState.index) return;
+  hourModalState.index = nextIdx;
+  renderHourDetailModalContent();
+}
 
 function closeTileDetailModal() {
   const modal = document.getElementById("tile-detail-modal");
@@ -3401,9 +3728,9 @@ function setupLiquidGlassSheen() {
 }
 
 /* Native Mobile Bottom-Sheet Swipe-to-Dismiss Controller (M6) */
-function setupMobileBottomSheetSwipe() {
-  const sheet = document.getElementById("tile-modal-sheet");
-  const grabber = document.getElementById("sheet-grabber-bar");
+function bindSheetSwipeDismiss(sheetId, grabberId, closeFn) {
+  const sheet = document.getElementById(sheetId);
+  const grabber = document.getElementById(grabberId);
   if (!sheet) return;
 
   let startY = 0;
@@ -3442,7 +3769,7 @@ function setupMobileBottomSheetSwipe() {
     if (!dragging) return;
     dragging = false;
     if (currentDY > 82) {
-      closeTileDetailModal();
+      closeFn();
     } else {
       sheet.style.transition = "transform 0.32s cubic-bezier(0.22, 1.25, 0.36, 1)";
       sheet.style.transform = "translate3d(0, 0, 0)";
@@ -3454,6 +3781,11 @@ function setupMobileBottomSheetSwipe() {
   sheet.addEventListener("touchmove", onTouchMove, { passive: false });
   sheet.addEventListener("touchend", onTouchEnd, { passive: true });
   sheet.addEventListener("touchcancel", onTouchEnd, { passive: true });
+}
+
+function setupMobileBottomSheetSwipe() {
+  bindSheetSwipeDismiss("tile-modal-sheet", "sheet-grabber-bar", closeTileDetailModal);
+  bindSheetSwipeDismiss("hour-modal-sheet", "hour-sheet-grabber-bar", closeHourDetailModal);
 }
 
 /* City Search */
@@ -3594,6 +3926,10 @@ function setupControls() {
     localStorage.setItem("zus_unit_imp", String(state.useImperial));
     updateUnitLabel();
     if (state.weather) renderDashboard();
+    const hourModal = document.getElementById("hour-detail-modal");
+    if (hourModal && !hourModal.hasAttribute("hidden")) {
+      renderHourDetailModalContent();
+    }
     dopplerRadarMap.renderTelemetryStrip(dopplerRadarMap.telemetry);
     dopplerRadarMap.updateInteropLinks(state.location.latitude, state.location.longitude);
   });
@@ -3675,10 +4011,44 @@ function setupControls() {
       if (e.target === modalBackdrop) closeTileDetailModal();
     });
   }
+
+  // Hourly All-Pills Detail Modal Controls (Prev / Next / Close / Keyboard)
+  const hourModalBackdrop = document.getElementById("hour-detail-modal");
+  const hourModalCloseBtn = document.getElementById("hour-modal-close");
+  const hourModalDoneBtn = document.getElementById("hour-modal-done-btn");
+  const hourPrevBtn = document.getElementById("hour-modal-prev");
+  const hourNextBtn = document.getElementById("hour-modal-next");
+
+  if (hourModalCloseBtn) hourModalCloseBtn.addEventListener("click", closeHourDetailModal);
+  if (hourModalDoneBtn) hourModalDoneBtn.addEventListener("click", closeHourDetailModal);
+  if (hourPrevBtn) hourPrevBtn.addEventListener("click", () => stepHourDetailModal(-1));
+  if (hourNextBtn) hourNextBtn.addEventListener("click", () => stepHourDetailModal(1));
+  if (hourModalBackdrop) {
+    hourModalBackdrop.addEventListener("click", (e) => {
+      if (e.target === hourModalBackdrop) closeHourDetailModal();
+    });
+  }
+
   document.addEventListener("keydown", (e) => {
+    const hourModalOpen =
+      hourModalBackdrop && !hourModalBackdrop.hasAttribute("hidden");
     if (e.key === "Escape") {
       toggleConfidenceTooltip(false);
-      closeTileDetailModal();
+      if (hourModalOpen) {
+        closeHourDetailModal();
+      } else {
+        closeTileDetailModal();
+      }
+      return;
+    }
+    if (hourModalOpen) {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        stepHourDetailModal(-1);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        stepHourDetailModal(1);
+      }
     }
   });
 }
