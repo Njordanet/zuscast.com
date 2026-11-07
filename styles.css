@@ -1940,6 +1940,14 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   font-variant-numeric: tabular-nums;
 }
 
+.radar-coords-chip[hidden] {
+  display: none !important;
+}
+
+.radar-frame-pill {
+  margin-left: auto;
+}
+
 .radar-frame-pill.future {
   background: rgba(251, 191, 36, 0.24);
   border-color: rgba(251, 191, 36, 0.6);

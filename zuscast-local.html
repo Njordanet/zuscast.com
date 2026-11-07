@@ -9,7 +9,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <meta name="zus-build-version" content="20261106-radar-modal1" />
+  <meta name="zus-build-version" content="20261106-clean-tiles2" />
   <title>ZüsCast — Hyperlocal Weather &amp; Down-to-the-Minute Nowcast</title>
   <meta name="description" content="ZüsCast (zuscast.com) — Hyperlocal, down-to-the-minute weather intelligence with Liquid Glass aesthetics." />
   <meta name="theme-color" content="#0b0f1a" />
@@ -27,7 +27,7 @@
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
     crossorigin=""
   />
-  <link rel="stylesheet" href="./styles.css?v=20261106-radar-modal1" />
+  <link rel="stylesheet" href="./styles.css?v=20261106-clean-tiles2" />
 </head>
 <body class="sky-clear is-loading">
   <!-- Ambient Atmospheric Canvas -->
@@ -108,7 +108,6 @@
               <span>📍 Hyperlocal Forecast</span>
             </div>
             <h1 class="hero-city" id="hero-city">New York</h1>
-            <div class="hero-submeta" id="hero-coords">40.7128° N, 74.0060° W</div>
           </div>
           <div class="confidence-pill-wrap" id="confidence-pill-wrap">
             <button
@@ -180,19 +179,19 @@
         <!-- Dark Sky 4-Column Micro Telemetry Strip -->
         <div class="hero-micro-strip">
           <div class="micro-item interactive-tile" data-tile="wind" role="button" tabindex="0" title="Tap for Wind &amp; Gusts breakdown">
-            <span class="micro-label">Wind ↗</span>
+            <span class="micro-label">Wind</span>
             <span class="micro-val" id="micro-wind">--</span>
           </div>
           <div class="micro-item interactive-tile" data-tile="humidity" role="button" tabindex="0" title="Tap for Humidity &amp; Dew Point breakdown">
-            <span class="micro-label">Humidity ↗</span>
+            <span class="micro-label">Humidity</span>
             <span class="micro-val" id="micro-humidity">--%</span>
           </div>
           <div class="micro-item interactive-tile" data-tile="humidity" role="button" tabindex="0" title="Tap for Dew Point comfort scale">
-            <span class="micro-label">Dew Pt ↗</span>
+            <span class="micro-label">Dew Pt</span>
             <span class="micro-val" id="micro-dew">--°</span>
           </div>
           <div class="micro-item interactive-tile" data-tile="uv" role="button" tabindex="0" title="Tap for UV Index &amp; solar protection curve">
-            <span class="micro-label">UV Index ↗</span>
+            <span class="micro-label">UV Index</span>
             <span class="micro-val" id="micro-uv">--</span>
           </div>
         </div>
@@ -207,14 +206,10 @@
             </svg>
             Next-Hour Precipitation
           </span>
-          <span class="section-kicker" id="nowcast-updated-label">Down to the Minute</span>
         </div>
 
         <div>
           <div class="nowcast-headline" id="nowcast-headline">No precipitation for the hour.</div>
-          <div class="nowcast-subheadline" id="nowcast-subheadline">
-            High-resolution 60-minute radar &amp; short-range model assimilation.
-          </div>
         </div>
 
         <div class="nowcast-chart-box">
@@ -236,14 +231,14 @@
     </section>
 
     <!-- 24-Hour & 10-Day Interactive Connected Curve & Model Envelope Timeline -->
-    <section class="timeline-card liquid-glass" aria-label="24-Hour Timeline" id="timeline-card-section">
+    <section class="timeline-card liquid-glass" aria-label="Hourly Forecast" id="timeline-card-section">
       <div class="section-header">
         <span class="section-kicker">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
             <polyline points="12 6 12 12 16 14"></polyline>
           </svg>
-          24-Hour &amp; 10-Day Forecast
+          Hourly Forecast
         </span>
       </div>
 
@@ -280,7 +275,6 @@
             </svg>
             10-Day Forecast
           </span>
-          <span class="section-kicker">Tap any day for details</span>
         </div>
         <div class="daily-summary-banner" id="weekly-summary-banner"></div>
         <div class="daily-list" id="daily-list"></div>
@@ -293,16 +287,15 @@
           <div class="section-header radar-card-header" id="radar-card-header" role="button" tabindex="0" aria-label="Expand Doppler radar map">
             <span class="section-kicker">
               <span class="radar-live-dot"></span>
-              📡 Live Radar &amp; 2h Nowcast
+              📡 Radar
             </span>
-            <span class="section-kicker radar-expand-kicker">Tap map to expand ↗</span>
           </div>
 
           <div class="radar-inline-slot" id="radar-inline-slot">
             <div class="radar-map-frame" id="radar-map-frame">
               <div id="zus-doppler-map" aria-label="Interactive Züs Doppler Radar Map"></div>
               <div class="radar-hud-overlay">
-                <span class="radar-coords-chip" id="radar-coords-label">40.71°, -74.01° • Tap to expand</span>
+                <span class="radar-coords-chip" id="radar-coords-label" hidden>40.71°, -74.01°</span>
                 <span class="radar-frame-pill" id="radar-frame-label">LIVE</span>
               </div>
 
@@ -354,8 +347,7 @@
     <section class="details-grid" aria-label="Atmospheric Telemetry">
       <article class="detail-card liquid-glass interactive-tile" data-tile="aqi" role="button" tabindex="0">
         <div class="detail-card-top">
-          <div class="section-kicker">🌿 Air Quality (AQI)</div>
-          <span class="tile-action-pill">Details ↗</span>
+          <div class="section-kicker">🌿 Air Quality</div>
         </div>
         <div class="detail-card-mid">
           <div class="detail-value" id="detail-aqi">--</div>
@@ -369,7 +361,6 @@
       <article class="detail-card liquid-glass interactive-tile" data-tile="uv" role="button" tabindex="0">
         <div class="detail-card-top">
           <div class="section-kicker">☀️ UV Index</div>
-          <span class="tile-action-pill">Curve ↗</span>
         </div>
         <div class="detail-card-mid">
           <div class="detail-value" id="detail-uv">--</div>
@@ -382,8 +373,7 @@
 
       <article class="detail-card liquid-glass interactive-tile" data-tile="wind" role="button" tabindex="0">
         <div class="detail-card-top">
-          <div class="section-kicker">💨 Wind &amp; Gusts</div>
-          <span class="tile-action-pill">Curve ↗</span>
+          <div class="section-kicker">💨 Wind</div>
         </div>
         <div class="detail-card-mid">
           <div class="detail-value" id="detail-wind">--</div>
@@ -396,8 +386,7 @@
 
       <article class="detail-card liquid-glass interactive-tile" data-tile="humidity" role="button" tabindex="0">
         <div class="detail-card-top">
-          <div class="section-kicker">💧 Humidity &amp; Dew Pt</div>
-          <span class="tile-action-pill">Curve ↗</span>
+          <div class="section-kicker">💧 Humidity</div>
         </div>
         <div class="detail-card-mid">
           <div class="detail-value" id="detail-humidity">--%</div>
@@ -410,8 +399,7 @@
 
       <article class="detail-card liquid-glass interactive-tile" data-tile="visibility" role="button" tabindex="0">
         <div class="detail-card-top">
-          <div class="section-kicker">👁️ Visibility &amp; Ceiling</div>
-          <span class="tile-action-pill">Curve ↗</span>
+          <div class="section-kicker">👁️ Visibility</div>
         </div>
         <div class="detail-card-mid">
           <div class="detail-value" id="detail-visibility">--</div>
@@ -424,8 +412,7 @@
 
       <article class="detail-card liquid-glass interactive-tile" data-tile="solar" role="button" tabindex="0">
         <div class="detail-card-top">
-          <div class="section-kicker">🌅 Solar &amp; CAPE</div>
-          <span class="tile-action-pill">Details ↗</span>
+          <div class="section-kicker">🌅 Sunrise</div>
         </div>
         <div class="detail-card-mid">
           <div class="detail-value" id="detail-sunrise">--:--</div>
@@ -438,14 +425,14 @@
     </section>
 
     <!-- Multi-Model Ensemble Agreement Strip -->
-    <section class="ensemble-card liquid-glass" aria-label="Multi-Model Ensemble">
+    <section class="ensemble-card liquid-glass" aria-label="Forecast Models">
       <div class="section-header">
-        <span class="section-kicker">🔬 Multi-Model NWP Ensemble Comparison</span>
+        <span class="section-kicker">🔬 Forecast Models</span>
         <span class="section-kicker" id="ensemble-spread-label">Spread: --</span>
       </div>
       <div class="ensemble-models-grid" id="ensemble-models-grid">
         <div class="ensemble-pill-box interactive-tile" data-tile="ensemble" role="button" tabindex="0">
-          <div class="ensemble-model-name"><span>HRRR / Best Match</span><span>High-Res ↗</span></div>
+          <div class="ensemble-model-name"><span>HRRR / Best Match</span></div>
           <div class="ensemble-model-temp-row">
             <span class="ensemble-model-temp">72.0°F</span>
             <span class="confidence-source-delta aligned">Consensus</span>
@@ -457,7 +444,7 @@
           <div class="ensemble-model-meta">PoP 0% &bull; 0.00 in/hr</div>
         </div>
         <div class="ensemble-pill-box interactive-tile" data-tile="ensemble" role="button" tabindex="0">
-          <div class="ensemble-model-name"><span>ECMWF IFS 0.25°</span><span>European ↗</span></div>
+          <div class="ensemble-model-name"><span>ECMWF IFS 0.25°</span></div>
           <div class="ensemble-model-temp-row">
             <span class="ensemble-model-temp">72.0°F</span>
             <span class="confidence-source-delta aligned">Consensus</span>
@@ -469,7 +456,7 @@
           <div class="ensemble-model-meta">PoP 0% &bull; 0.00 in/hr</div>
         </div>
         <div class="ensemble-pill-box interactive-tile" data-tile="ensemble" role="button" tabindex="0">
-          <div class="ensemble-model-name"><span>NOAA GFS</span><span>US Global ↗</span></div>
+          <div class="ensemble-model-name"><span>NOAA GFS</span></div>
           <div class="ensemble-model-temp-row">
             <span class="ensemble-model-temp">71.5°F</span>
             <span class="confidence-source-delta aligned">Δ -0.5°F</span>
@@ -481,7 +468,7 @@
           <div class="ensemble-model-meta">PoP 0% &bull; 0.00 in/hr</div>
         </div>
         <div class="ensemble-pill-box interactive-tile" data-tile="ensemble" role="button" tabindex="0">
-          <div class="ensemble-model-name"><span>DWD ICON</span><span>German Global ↗</span></div>
+          <div class="ensemble-model-name"><span>DWD ICON</span></div>
           <div class="ensemble-model-temp-row">
             <span class="ensemble-model-temp">72.1°F</span>
             <span class="confidence-source-delta aligned">Consensus</span>
@@ -666,6 +653,6 @@
     crossorigin=""
     defer
   ></script>
-  <script src="./app.js?v=20261106-radar-modal1" defer></script>
+  <script src="./app.js?v=20261106-clean-tiles2" defer></script>
 </body>
 </html>

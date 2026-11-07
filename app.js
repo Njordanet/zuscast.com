@@ -545,9 +545,12 @@ const dopplerRadarMap = {
     const labelEl = document.getElementById("radar-coords-label");
     if (!labelEl || !state.location) return;
     const { latitude, longitude } = state.location;
-    labelEl.textContent = this.isModalOpen
-      ? `${latitude.toFixed(2)}°, ${longitude.toFixed(2)}° • Tap map to probe`
-      : `${latitude.toFixed(2)}°, ${longitude.toFixed(2)}° • Tap to expand`;
+    if (this.isModalOpen) {
+      labelEl.removeAttribute("hidden");
+      labelEl.textContent = `${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`;
+    } else {
+      labelEl.setAttribute("hidden", "");
+    }
   },
 
   openModal() {
@@ -1319,11 +1322,14 @@ async function loadWeatherForCurrentLocation() {
   document.getElementById("location-kicker").innerHTML = `<span>📍 ${
     region || "Hyperlocal Telemetry"
   }</span>`;
-  const latDir = latitude >= 0 ? "N" : "S";
-  const lonDir = longitude >= 0 ? "E" : "W";
-  document.getElementById("hero-coords").textContent = `${Math.abs(latitude).toFixed(
-    4
-  )}° ${latDir}, ${Math.abs(longitude).toFixed(4)}° ${lonDir}`;
+  const coordsEl = document.getElementById("hero-coords");
+  if (coordsEl) {
+    const latDir = latitude >= 0 ? "N" : "S";
+    const lonDir = longitude >= 0 ? "E" : "W";
+    coordsEl.textContent = `${Math.abs(latitude).toFixed(4)}° ${latDir}, ${Math.abs(
+      longitude
+    ).toFixed(4)}° ${lonDir}`;
+  }
 
   dopplerRadarMap.updateCoordsHudLabel();
 
@@ -1361,32 +1367,50 @@ async function loadWeatherForCurrentLocation() {
       timezone: "auto",
     });
 
-    const zusWeatherPromise = fetch(
+    const fetchWithTimeout = (url, ms = 2200) => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), ms);
+      return fetch(url, { signal: ctrl.signal })
+        .then((r) => {
+          clearTimeout(timer);
+          return r.ok ? r.json() : null;
+        })
+        .catch(() => {
+          clearTimeout(timer);
+          return null;
+        });
+    };
+
+    const zusWeatherPromise = fetchWithTimeout(
       `${ZUS_API_BASE}/weather?lat=${latitude.toFixed(4)}&lon=${longitude.toFixed(
         4
-      )}&city=${encodeURIComponent(name)}`
-    )
-      .then((r) => (r.ok ? r.json() : null))
-      .catch(() => null);
+      )}&city=${encodeURIComponent(name)}`,
+      2200
+    );
+
+    const raceTimeout = (p, ms = 1600) =>
+      Promise.race([p, new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
 
     const [fResp, aqiResp, ensResp, dopplerTel, zusWeather] = await Promise.all([
-      fetch(`https://api.open-meteo.com/v1/forecast?${forecastParams.toString()}`),
+      fetch(`https://api.open-meteo.com/v1/forecast?${forecastParams.toString()}`).catch(
+        () => null
+      ),
       fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?${aqiParams.toString()}`).catch(
         () => null
       ),
       fetch(`https://api.open-meteo.com/v1/forecast?${ensembleParams.toString()}`).catch(
         () => null
       ),
-      dopplerPromise,
-      zusWeatherPromise,
+      raceTimeout(dopplerPromise, 1600),
+      raceTimeout(zusWeatherPromise, 1600),
     ]);
 
-    if (!fResp.ok) throw new Error(`HTTP ${fResp.status}`);
+    if (!fResp || !fResp.ok) throw new Error(`HTTP ${fResp ? fResp.status : "ERR"}`);
     const rawForecast = await fResp.json();
     const rawAqi = aqiResp && aqiResp.ok ? await aqiResp.json() : null;
     const rawEnsemble = ensResp && ensResp.ok ? await ensResp.json() : null;
 
-    const mergedDoppler = zusWeather?.dopplerTelemetry || dopplerTel;
+    const mergedDoppler = zusWeather?.dopplerTelemetry || dopplerTel || dopplerRadarMap.telemetry;
     if (mergedDoppler) {
       dopplerRadarMap.telemetry = mergedDoppler;
     }
@@ -1400,8 +1424,24 @@ async function loadWeatherForCurrentLocation() {
     );
     renderDashboard();
     dopplerRadarMap.renderTelemetryStrip(mergedDoppler);
-  } catch (_) {
+
+    // If dopplerPromise or zusWeatherPromise finished after the 1.6s fast-render budget, enrich seamlessly
+    Promise.all([dopplerPromise.catch(() => null), zusWeatherPromise]).then(
+      ([lateDoppler, lateZus]) => {
+        const latestTel = lateZus?.dopplerTelemetry || lateDoppler;
+        if (latestTel && latestTel !== mergedDoppler) {
+          dopplerRadarMap.telemetry = latestTel;
+          dopplerRadarMap.renderTelemetryStrip(latestTel);
+          if (state.weather) {
+            renderNextHourNowcast(state.weather.minuteRates, state.weather.hourly?.[0]);
+          }
+        }
+      }
+    );
+  } catch (err) {
+    console.warn("Weather fetch error:", err);
     document.getElementById("last-updated").textContent = "Connection interrupted";
+    playTilesAppearCascade("sky-clear");
   }
 }
 
@@ -2019,26 +2059,28 @@ function renderNextHourNowcast(minuteRates, currentHour) {
   if (maxRate < threshold) {
     const nextPrecipProb = currentHour?.precipProb ?? 0;
     headlineEl.textContent = "Clear of precipitation for the hour.";
-    if (
-      dopTel &&
-      dopTel.inConusGrid &&
-      dopTel.nearestEchoKm !== null &&
-      dopTel.nearestEchoKm !== undefined &&
-      dopTel.nearestEchoKm > 0
-    ) {
-      const distStr = state.useImperial
-        ? `${(dopTel.nearestEchoKm * 0.621371).toFixed(1)} mi`
-        : `${dopTel.nearestEchoKm.toFixed(1)} km`;
-      subEl.textContent = `Nearest 1km Doppler echo ${distStr} ${
-        dopTel.nearestEchoCompass || ""
-      } (35km peak ${dopTel.maxDbzNearby.toFixed(0)} dBZ, tracking ${
-        dopTel.stormMotionCompass
-      } at ${formatWind(dopTel.stormMotionKmh)}).`;
-    } else {
-      subEl.textContent =
-        nextPrecipProb > 25
-          ? `${nextPrecipProb}% chance of scattered moisture in the broader vicinity.`
-          : "No radar echoes detected within the 60-minute hyperlocal window.";
+    if (subEl) {
+      if (
+        dopTel &&
+        dopTel.inConusGrid &&
+        dopTel.nearestEchoKm !== null &&
+        dopTel.nearestEchoKm !== undefined &&
+        dopTel.nearestEchoKm > 0
+      ) {
+        const distStr = state.useImperial
+          ? `${(dopTel.nearestEchoKm * 0.621371).toFixed(1)} mi`
+          : `${dopTel.nearestEchoKm.toFixed(1)} km`;
+        subEl.textContent = `Nearest 1km Doppler echo ${distStr} ${
+          dopTel.nearestEchoCompass || ""
+        } (35km peak ${dopTel.maxDbzNearby.toFixed(0)} dBZ, tracking ${
+          dopTel.stormMotionCompass
+        } at ${formatWind(dopTel.stormMotionKmh)}).`;
+      } else {
+        subEl.textContent =
+          nextPrecipProb > 25
+            ? `${nextPrecipProb}% chance of scattered moisture in the broader vicinity.`
+            : "No radar echoes detected within the 60-minute hyperlocal window.";
+      }
     }
   } else if (currentlyWet) {
     const stopIdx = minuteRates.findIndex((r, idx) => idx > 0 && r < threshold);
@@ -2049,21 +2091,25 @@ function renderNextHourNowcast(minuteRates, currentHour) {
     } else {
       headlineEl.textContent = `${intensityLabel} continuing for the hour.`;
     }
-    const dbzNote =
-      dopTel && dopTel.inConusGrid ? ` (${dopTel.currentDbz.toFixed(0)} dBZ overhead)` : "";
-    subEl.textContent = `Peak intensity ${maxRate.toFixed(
-      1
-    )} mm/hr${dbzNote} during the next 60 minutes.`;
+    if (subEl) {
+      const dbzNote =
+        dopTel && dopTel.inConusGrid ? ` (${dopTel.currentDbz.toFixed(0)} dBZ overhead)` : "";
+      subEl.textContent = `Peak intensity ${maxRate.toFixed(
+        1
+      )} mm/hr${dbzNote} during the next 60 minutes.`;
+    }
   } else {
     const intensityLabel =
       maxRate >= 6.0 ? "Heavy rain" : maxRate >= 2.0 ? "Rain" : "Light rain";
     headlineEl.textContent = `${intensityLabel} starting in ${firstWetIdx} min.`;
-    subEl.textContent =
-      dopTel && dopTel.inConusGrid
-        ? `1km Doppler trajectory (${dopTel.stormMotionCompass} at ${formatWind(
-            dopTel.stormMotionKmh
-          )}) indicates approaching precipitation.`
-        : `60-minute radar trajectory indicates approaching precipitation.`;
+    if (subEl) {
+      subEl.textContent =
+        dopTel && dopTel.inConusGrid
+          ? `1km Doppler trajectory (${dopTel.stormMotionCompass} at ${formatWind(
+              dopTel.stormMotionKmh
+            )}) indicates approaching precipitation.`
+          : `60-minute radar trajectory indicates approaching precipitation.`;
+    }
   }
 
   const ctx = canvas.getContext("2d");
@@ -3056,7 +3102,6 @@ function renderEnsembleComparison(models, spreadC, confidencePct = 92) {
     box.innerHTML = `
       <div class="ensemble-model-name">
         <span>${m.name}</span>
-        <span>${m.tag} ↗</span>
       </div>
       <div class="ensemble-model-temp-row">
         <span class="ensemble-model-temp">${formatTemp(m.temp, true)}</span>
@@ -4232,15 +4277,15 @@ function setupControls() {
     if (radarModalOpen) {
       if (e.key === "ArrowLeft") {
         e.preventDefault();
-        dopplerRadarMap.stopAnimation();
+        dopplerRadarMap.stopPlay();
         dopplerRadarMap.stepFrame(-1);
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        dopplerRadarMap.stopAnimation();
+        dopplerRadarMap.stopPlay();
         dopplerRadarMap.stepFrame(1);
       } else if (e.key === " ") {
         e.preventDefault();
-        dopplerRadarMap.toggleAnimation();
+        dopplerRadarMap.togglePlay();
       }
       return;
     }
