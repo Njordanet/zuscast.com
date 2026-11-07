@@ -2410,11 +2410,43 @@ function renderDashboard() {
   document.getElementById("detail-aqi-desc").textContent = `${aqiCategoryLabel(
     aqi
   )} (PM2.5: ${Number(w.pm25 || 0).toFixed(1)} µg/m³)`;
+  const aqiBadgeEl = document.getElementById("detail-aqi-badge");
+  if (aqiBadgeEl) {
+    aqiBadgeEl.textContent =
+      aqi <= 50
+        ? "Good"
+        : aqi <= 100
+        ? "Moderate"
+        : aqi <= 150
+        ? "Sensitive"
+        : aqi <= 200
+        ? "Unhealthy"
+        : "Hazardous";
+    aqiBadgeEl.className = `detail-status-pill ${
+      aqi <= 50 ? "pill-emerald" : aqi <= 100 ? "pill-amber" : "pill-rose"
+    }`;
+  }
 
   const uv = Math.round(w.uvIndex * 10) / 10;
   document.getElementById("detail-uv").textContent = String(uv);
   document.getElementById("uv-dot").style.left = `${Math.min(100, (uv / 11) * 100)}%`;
   document.getElementById("detail-uv-advice").textContent = uvAdvice(uv);
+  const uvBadgeEl = document.getElementById("detail-uv-badge");
+  if (uvBadgeEl) {
+    uvBadgeEl.textContent =
+      uv < 3
+        ? "Low"
+        : uv < 6
+        ? "Moderate"
+        : uv < 8
+        ? "High"
+        : uv < 11
+        ? "Very High"
+        : "Extreme";
+    uvBadgeEl.className = `detail-status-pill ${
+      uv < 3 ? "pill-amber" : uv < 6 ? "pill-orange" : "pill-rose"
+    }`;
+  }
 
   document.getElementById("detail-wind").textContent = formatWind(w.windSpeed);
   const windDotEl = document.getElementById("wind-dot");
@@ -2424,6 +2456,12 @@ function renderDashboard() {
   document.getElementById("detail-wind-dir").textContent = `Gusts to ${formatWind(
     w.windGusts
   )} from ${compassDirection(w.windDirection)} (${w.windDirection}°)`;
+  const windBadgeEl = document.getElementById("detail-wind-badge");
+  if (windBadgeEl) {
+    windBadgeEl.textContent = `${compassDirection(w.windDirection)} ${Math.round(
+      w.windDirection ?? 0
+    )}°`;
+  }
 
   document.getElementById("detail-humidity").textContent = `${Math.round(w.humidity)}%`;
   const humDotEl = document.getElementById("humidity-dot");
@@ -2433,6 +2471,10 @@ function renderDashboard() {
   document.getElementById("detail-dewpoint").textContent = `Dew point ${formatTemp(
     w.dewPoint
   )} — ${muggyDescription(w.dewPoint)}`;
+  const humBadgeEl = document.getElementById("detail-humidity-badge");
+  if (humBadgeEl) {
+    humBadgeEl.textContent = `Dew ${formatTemp(w.dewPoint)}`;
+  }
 
   const visVal = state.useImperial
     ? `${(w.visibilityKm * 0.621371).toFixed(1)} mi`
@@ -2445,6 +2487,17 @@ function renderDashboard() {
   document.getElementById("detail-clouds").textContent = `Cloud cover: ${Math.round(
     w.cloudCover
   )}% • Elev: ${Math.round(w.elevation)}m`;
+  const visBadgeEl = document.getElementById("detail-visibility-badge");
+  if (visBadgeEl) {
+    visBadgeEl.textContent =
+      w.visibilityKm >= 14
+        ? "Clear"
+        : w.visibilityKm >= 7
+        ? "Moderate"
+        : w.visibilityKm >= 3
+        ? "Hazy"
+        : "Low";
+  }
 
   if (w.sunrise && w.sunset) {
     const srDate = new Date(w.sunrise);
@@ -2461,6 +2514,13 @@ function renderDashboard() {
     document.getElementById(
       "detail-sunset"
     ).textContent = `Sunset ${ss} • CAPE ${Math.round(w.cape)} J/kg`;
+    const solarBadgeEl = document.getElementById("detail-solar-badge");
+    if (solarBadgeEl) {
+      const ssCompact = ss
+        .replace(/\s*AM$/i, "A")
+        .replace(/\s*PM$/i, "P");
+      solarBadgeEl.textContent = `Set ${ssCompact}`;
+    }
 
     const solarDotEl = document.getElementById("solar-dot");
     if (solarDotEl) {

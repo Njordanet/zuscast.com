@@ -11,7 +11,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <meta name="zus-build-version" content="20261107-floating-sky-v13" />
+  <meta name="zus-build-version" content="20261107-floating-sky-v14" />
   <title>ZüsCast — Hyperlocal Weather &amp; Down-to-the-Minute Nowcast</title>
   <meta name="description" content="ZüsCast (zuscast.com) — Hyperlocal, down-to-the-minute weather intelligence with Liquid Glass aesthetics." />
   <meta name="theme-color" content="#1d63b8" id="theme-color-meta" />
@@ -57,7 +57,7 @@
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
     crossorigin=""
   />
-  <link rel="stylesheet" href="./styles.css?v=20261107-floating-sky-v13" />
+  <link rel="stylesheet" href="./styles.css?v=20261107-floating-sky-v14" />
 </head>
 <body class="is-loading">
   <!-- Ambient Atmospheric Canvas -->
@@ -441,7 +441,16 @@
     <section class="details-grid" aria-label="Atmospheric Telemetry">
       <article class="detail-card liquid-glass interactive-tile" data-tile="aqi" role="button" tabindex="0">
         <div class="detail-card-top">
-          <div class="section-kicker">🌿 Air Quality</div>
+          <div class="detail-kicker-group">
+            <span class="detail-icon-badge badge-aqi" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" fill="currentColor" fill-opacity="0.22"></path>
+                <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"></path>
+              </svg>
+            </span>
+            <span class="detail-title">Air Quality</span>
+          </div>
+          <span class="detail-status-pill pill-emerald" id="detail-aqi-badge">Good</span>
         </div>
         <div class="detail-card-mid">
           <div class="detail-value" id="detail-aqi">--</div>
@@ -454,7 +463,16 @@
 
       <article class="detail-card liquid-glass interactive-tile" data-tile="uv" role="button" tabindex="0">
         <div class="detail-card-top">
-          <div class="section-kicker">☀️ UV Index</div>
+          <div class="detail-kicker-group">
+            <span class="detail-icon-badge badge-uv" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="4.5" fill="currentColor" fill-opacity="0.28"></circle>
+                <path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77"></path>
+              </svg>
+            </span>
+            <span class="detail-title">UV Index</span>
+          </div>
+          <span class="detail-status-pill pill-amber" id="detail-uv-badge">Low</span>
         </div>
         <div class="detail-card-mid">
           <div class="detail-value" id="detail-uv">--</div>
@@ -467,7 +485,17 @@
 
       <article class="detail-card liquid-glass interactive-tile" data-tile="wind" role="button" tabindex="0">
         <div class="detail-card-top">
-          <div class="section-kicker">💨 Wind</div>
+          <div class="detail-kicker-group">
+            <span class="detail-icon-badge badge-wind" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"></path>
+                <path d="M9.6 4.6A2 2 0 1 1 11 8H2"></path>
+                <path d="M12.6 19.4A2 2 0 1 0 14 16H2"></path>
+              </svg>
+            </span>
+            <span class="detail-title">Wind</span>
+          </div>
+          <span class="detail-status-pill pill-sky" id="detail-wind-badge">--</span>
         </div>
         <div class="detail-card-mid">
           <div class="detail-value" id="detail-wind">--</div>
@@ -480,7 +508,16 @@
 
       <article class="detail-card liquid-glass interactive-tile" data-tile="humidity" role="button" tabindex="0">
         <div class="detail-card-top">
-          <div class="section-kicker">💧 Humidity</div>
+          <div class="detail-kicker-group">
+            <span class="detail-icon-badge badge-humidity" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" fill="currentColor" fill-opacity="0.25"></path>
+                <path d="M9.5 14.5a3.5 3.5 0 0 0 3.5 3"></path>
+              </svg>
+            </span>
+            <span class="detail-title">Humidity</span>
+          </div>
+          <span class="detail-status-pill pill-cyan" id="detail-humidity-badge">Dew --°</span>
         </div>
         <div class="detail-card-mid">
           <div class="detail-value" id="detail-humidity">--%</div>
@@ -493,7 +530,16 @@
 
       <article class="detail-card liquid-glass interactive-tile" data-tile="visibility" role="button" tabindex="0">
         <div class="detail-card-top">
-          <div class="section-kicker">👁️ Visibility</div>
+          <div class="detail-kicker-group">
+            <span class="detail-icon-badge badge-visibility" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path>
+                <circle cx="12" cy="12" r="3.2" fill="currentColor" fill-opacity="0.3"></circle>
+              </svg>
+            </span>
+            <span class="detail-title">Visibility</span>
+          </div>
+          <span class="detail-status-pill pill-violet" id="detail-visibility-badge">Clear</span>
         </div>
         <div class="detail-card-mid">
           <div class="detail-value" id="detail-visibility">--</div>
@@ -506,7 +552,17 @@
 
       <article class="detail-card liquid-glass interactive-tile" data-tile="solar" role="button" tabindex="0">
         <div class="detail-card-top">
-          <div class="section-kicker">🌅 Sunrise</div>
+          <div class="detail-kicker-group">
+            <span class="detail-icon-badge badge-solar" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v4M4.93 10.93l1.41 1.41M2 18h20M19.07 10.93l-1.41 1.41"></path>
+                <path d="M16 18a4 4 0 0 0-8 0" fill="currentColor" fill-opacity="0.32"></path>
+                <path d="M8 6l4-4 4 4"></path>
+              </svg>
+            </span>
+            <span class="detail-title">Sunrise</span>
+          </div>
+          <span class="detail-status-pill pill-orange" id="detail-solar-badge">Set --:--</span>
         </div>
         <div class="detail-card-mid">
           <div class="detail-value" id="detail-sunrise">--:--</div>
@@ -809,6 +865,6 @@
     crossorigin=""
     defer
   ></script>
-  <script src="./app.js?v=20261107-floating-sky-v13" defer></script>
+  <script src="./app.js?v=20261107-floating-sky-v14" defer></script>
 </body>
 </html>
