@@ -340,13 +340,14 @@ const ZUS_API_HOST =
     : ZUS_API_LAN_HOST;
 const ZUS_API_BASE = `${ZUS_API_HOST}/api/v1`;
 
-/* Interactive Züs 1km Doppler Radar & Nowcast Map Controller */
+/* Interactive Züs 1km Doppler Radar & 2-Hour Nowcast Map Controller */
 const dopplerRadarMap = {
   map: null,
   marker: null,
   scanCircle: null,
   probeMarker: null,
   tileLayers: {},
+  _rawTilePromises: new Map(),
   activeFrameId: null,
   frames: [],
   currentIndex: 0,
@@ -354,6 +355,8 @@ const dopplerRadarMap = {
   playTimer: null,
   telemetry: null,
   cacheStats: null,
+  isModalOpen: false,
+  modalCloseTimer: null,
 
   init() {
     const mapEl = document.getElementById("zus-doppler-map");
@@ -367,6 +370,11 @@ const dopplerRadarMap = {
       zoomControl: false,
       attributionControl: false,
       scrollWheelZoom: false,
+      dragging: false,
+      touchZoom: false,
+      doubleClickZoom: false,
+      boxZoom: false,
+      keyboard: false,
     });
 
     // Keyless Esri World Dark Gray Base (works on localhost, file://, and production without API keys)
@@ -408,38 +416,96 @@ const dopplerRadarMap = {
       fillOpacity: 0.95,
     }).addTo(this.map);
 
-    // Click-anywhere 1km Doppler point probe
+    // In expanded modal: click anywhere to probe 1km Doppler grid. In inline card: click opens expanded modal.
     this.map.on("click", (e) => {
-      this.probePoint(e.latlng.lat, e.latlng.lng);
+      if (!this.isModalOpen) {
+        this.openModal();
+      } else {
+        this.probePoint(e.latlng.lat, e.latlng.lng);
+      }
     });
 
+    const frameEl = document.getElementById("radar-map-frame");
+    const cardHeaderEl = document.getElementById("radar-card-header");
+    const controlsBar = document.getElementById("radar-controls-bar");
+    const mapControls = document.getElementById("radar-map-controls");
+    const probeToast = document.getElementById("radar-probe-toast");
     const playBtn = document.getElementById("radar-play-btn");
     const slider = document.getElementById("radar-frame-slider");
     const zoomInBtn = document.getElementById("radar-zoom-in");
     const zoomOutBtn = document.getElementById("radar-zoom-out");
     const recenterBtn = document.getElementById("radar-recenter-btn");
-    const expandBtn = document.getElementById("radar-expand-btn");
-    const interopBtn = document.getElementById("radar-interop-btn");
-    const backfillBtn = document.getElementById("radar-backfill-btn");
     const probeCloseBtn = document.getElementById("radar-probe-close");
+    const modalBackdrop = document.getElementById("radar-detail-modal");
+    const modalCloseBtn = document.getElementById("radar-modal-close");
+
+    // Prevent clicks/drags on floating controls from bubbling to map click or inline expand
+    [controlsBar, mapControls, probeToast].forEach((el) => {
+      if (!el) return;
+      L.DomEvent.disableClickPropagation(el);
+      L.DomEvent.disableScrollPropagation(el);
+      ["click", "pointerdown", "mousedown", "touchstart"].forEach((evt) => {
+        el.addEventListener(evt, (e) => e.stopPropagation(), { passive: true });
+      });
+    });
+
+    if (frameEl) {
+      frameEl.addEventListener("click", (e) => {
+        if (this.isModalOpen) return;
+        if (e.target.closest("#radar-controls-bar") || e.target.closest("#radar-map-controls")) {
+          return;
+        }
+        this.openModal();
+      });
+    }
+
+    if (cardHeaderEl) {
+      cardHeaderEl.addEventListener("click", () => this.openModal());
+      cardHeaderEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          this.openModal();
+        }
+      });
+    }
+
+    if (modalCloseBtn) {
+      modalCloseBtn.addEventListener("click", () => this.closeModal());
+    }
+    if (modalBackdrop) {
+      modalBackdrop.addEventListener("click", (e) => {
+        if (e.target === modalBackdrop) this.closeModal();
+      });
+    }
 
     if (playBtn) {
-      playBtn.addEventListener("click", () => this.togglePlay());
+      playBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.togglePlay();
+      });
     }
     if (slider) {
       slider.addEventListener("input", (e) => {
+        e.stopPropagation();
         this.stopPlay();
         this.setFrameIndex(Number(e.target.value));
       });
     }
     if (zoomInBtn) {
-      zoomInBtn.addEventListener("click", () => this.map && this.map.zoomIn());
+      zoomInBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (this.map) this.map.zoomIn();
+      });
     }
     if (zoomOutBtn) {
-      zoomOutBtn.addEventListener("click", () => this.map && this.map.zoomOut());
+      zoomOutBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (this.map) this.map.zoomOut();
+      });
     }
     if (recenterBtn) {
-      recenterBtn.addEventListener("click", () => {
+      recenterBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
         this.clearProbe();
         if (this.map) {
           this.map.setView([state.location.latitude, state.location.longitude], 6, {
@@ -448,41 +514,130 @@ const dopplerRadarMap = {
         }
       });
     }
-    if (expandBtn) {
-      expandBtn.addEventListener("click", () => {
-        const frameEl = document.getElementById("radar-map-frame");
-        if (!frameEl) return;
-        const isExp = frameEl.classList.toggle("expanded");
-        expandBtn.classList.toggle("active", isExp);
-        expandBtn.textContent = isExp ? "⤡ Compact" : "⤢ Expand";
-        if (this.map && this.map.scrollWheelZoom) {
-          if (isExp) this.map.scrollWheelZoom.enable();
-          else this.map.scrollWheelZoom.disable();
-        }
-        if (isExp && window.innerWidth <= 640) {
-          frameEl.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-        setTimeout(() => this.map && this.map.invalidateSize(), 120);
-        setTimeout(() => this.map && this.map.invalidateSize(), 320);
-      });
-    }
-    if (interopBtn) {
-      interopBtn.addEventListener("click", () => {
-        const drawer = document.getElementById("radar-interop-drawer");
-        if (!drawer) return;
-        drawer.removeAttribute("hidden");
-        const willOpen = !drawer.classList.contains("open");
-        drawer.classList.toggle("open", willOpen);
-        drawer.setAttribute("aria-hidden", String(!willOpen));
-        interopBtn.classList.toggle("active", willOpen);
-      });
-    }
-    if (backfillBtn) {
-      backfillBtn.addEventListener("click", () => this.triggerBackfillCheck());
-    }
     if (probeCloseBtn) {
-      probeCloseBtn.addEventListener("click", () => this.clearProbe());
+      probeCloseBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.clearProbe();
+      });
     }
+  },
+
+  setMapInteractive(interactive) {
+    if (!this.map) return;
+    const handlers = [
+      "dragging",
+      "touchZoom",
+      "doubleClickZoom",
+      "scrollWheelZoom",
+      "boxZoom",
+      "keyboard",
+    ];
+    handlers.forEach((h) => {
+      if (this.map[h]) {
+        if (interactive) this.map[h].enable();
+        else this.map[h].disable();
+      }
+    });
+    this.updateCoordsHudLabel();
+  },
+
+  updateCoordsHudLabel() {
+    const labelEl = document.getElementById("radar-coords-label");
+    if (!labelEl || !state.location) return;
+    const { latitude, longitude } = state.location;
+    labelEl.textContent = this.isModalOpen
+      ? `${latitude.toFixed(2)}°, ${longitude.toFixed(2)}° • Tap map to probe`
+      : `${latitude.toFixed(2)}°, ${longitude.toFixed(2)}° • Tap to expand`;
+  },
+
+  openModal() {
+    const modal = document.getElementById("radar-detail-modal");
+    const sheet = document.getElementById("radar-modal-sheet");
+    const modalSlot = document.getElementById("radar-modal-map-slot");
+    const frameEl = document.getElementById("radar-map-frame");
+    const titleEl = document.getElementById("radar-modal-title");
+    if (!modal || !modalSlot || !frameEl) return;
+
+    clearTimeout(this.modalCloseTimer);
+    this.isModalOpen = true;
+
+    if (titleEl && state.location) {
+      titleEl.textContent = `${state.location.name} • Live Radar & 2h Nowcast`;
+    }
+    if (sheet) {
+      sheet.style.transform = "";
+      sheet.style.transition = "";
+    }
+
+    modalSlot.appendChild(frameEl);
+    frameEl.classList.add("is-modal");
+    this.setMapInteractive(true);
+
+    modal.classList.remove("closing");
+    modal.removeAttribute("hidden");
+    document.body.classList.add("modal-open");
+
+    requestAnimationFrame(() => {
+      if (this.map) this.map.invalidateSize();
+    });
+    setTimeout(() => {
+      if (this.map) this.map.invalidateSize();
+    }, 120);
+    setTimeout(() => {
+      if (this.map) this.map.invalidateSize();
+    }, 340);
+  },
+
+  closeModal() {
+    const modal = document.getElementById("radar-detail-modal");
+    const sheet = document.getElementById("radar-modal-sheet");
+    const inlineSlot = document.getElementById("radar-inline-slot");
+    const frameEl = document.getElementById("radar-map-frame");
+    if (!modal || modal.hasAttribute("hidden")) return;
+
+    this.isModalOpen = false;
+    this.clearProbe();
+    this.setMapInteractive(false);
+
+    if (inlineSlot && frameEl) {
+      frameEl.classList.remove("is-modal");
+      inlineSlot.appendChild(frameEl);
+    }
+
+    if (this.map && state.location) {
+      this.map.setView([state.location.latitude, state.location.longitude], 6, {
+        animate: false,
+      });
+      this.map.invalidateSize();
+      setTimeout(() => this.map && this.map.invalidateSize(), 120);
+    }
+
+    const tileModal = document.getElementById("tile-detail-modal");
+    const hourModal = document.getElementById("hour-detail-modal");
+    if (
+      (!tileModal || tileModal.hasAttribute("hidden")) &&
+      (!hourModal || hourModal.hasAttribute("hidden"))
+    ) {
+      document.body.classList.remove("modal-open");
+    }
+
+    if (sheet) {
+      sheet.style.transform = "";
+      sheet.style.transition = "";
+    }
+    modal.classList.add("closing");
+    clearTimeout(this.modalCloseTimer);
+    this.modalCloseTimer = setTimeout(() => {
+      modal.classList.remove("closing");
+      modal.setAttribute("hidden", "");
+    }, 230);
+  },
+
+  stepFrame(delta) {
+    if (!this.frames.length) return;
+    this.stopPlay();
+    const nextIdx = Math.max(0, Math.min(this.frames.length - 1, this.currentIndex + delta));
+    this.setFrameIndex(nextIdx);
   },
 
   updateInteropLinks(lat, lon) {
@@ -547,6 +702,25 @@ const dopplerRadarMap = {
     return [217, 70, 239, 252]; // Electric violet hail core
   },
 
+  loadRawTileImage(url) {
+    if (this._rawTilePromises.has(url)) {
+      return this._rawTilePromises.get(url);
+    }
+    const p = new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+    this._rawTilePromises.set(url, p);
+    if (this._rawTilePromises.size > 420) {
+      const oldestKey = this._rawTilePromises.keys().next().value;
+      this._rawTilePromises.delete(oldestKey);
+    }
+    return p;
+  },
+
   async sampleHttpsNexradTelemetry(lat, lon) {
     if (!this.isConusLocation(lat, lon)) {
       return {
@@ -579,13 +753,8 @@ const dopplerRadarMap = {
     const url = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/${z}/${xTile}/${yTile}.png`;
 
     try {
-      const img = await new Promise((resolve, reject) => {
-        const im = new Image();
-        im.crossOrigin = "anonymous";
-        im.onload = () => resolve(im);
-        im.onerror = reject;
-        im.src = url;
-      });
+      const img = await this.loadRawTileImage(url);
+      if (!img) throw new Error("Tile unavailable");
 
       const canvas = document.createElement("canvas");
       canvas.width = 256;
@@ -694,33 +863,71 @@ const dopplerRadarMap = {
         tile.height = 256;
         const ctx = tile.getContext("2d");
 
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
+        (async () => {
           try {
-            // For future nowcast frames (+15m, +30m), shift pixels along storm motion vector
+            const maxTileIndex = Math.pow(2, coords.z) - 1;
             let shiftX = 0;
             let shiftY = 0;
+
             if (frame.isFuture && frame.offsetMinutes > 0) {
-              const scale = Math.pow(2, coords.z - 6);
-              const kmPer15m = ((self.telemetry?.stormMotionKmh ?? 42) * (frame.offsetMinutes / 60)) / 2.2;
-              const moveDeg = self.telemetry?.stormMotionDeg ?? 65;
+              const lat = state.location?.latitude ?? 39.0;
+              const cosLat = Math.max(0.25, Math.cos((lat * Math.PI) / 180.0));
+              const kmPerPixel = (40075.017 * cosLat) / (256 * Math.pow(2, coords.z));
+              const distKm =
+                (self.telemetry?.stormMotionKmh ?? 44.0) * (frame.offsetMinutes / 60.0);
+              const moveDeg =
+                self.telemetry?.stormMotionDeg ?? self.telemetry?.stormMotionDegrees ?? 68;
               const rad = (moveDeg * Math.PI) / 180.0;
-              shiftX = Math.round(Math.sin(rad) * kmPer15m * scale);
-              shiftY = Math.round(-Math.cos(rad) * kmPer15m * scale);
+              shiftX = Math.round((Math.sin(rad) * distKm) / kmPerPixel);
+              shiftY = Math.round((-Math.cos(rad) * distKm) / kmPerPixel);
+
+              // Seamless cross-tile advection: draw any overlapping neighbor tiles from shared cache
+              const drawJobs = [];
+              for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                  const drawX = dx * 256 + shiftX;
+                  const drawY = dy * 256 + shiftY;
+                  if (drawX < 256 && drawX + 256 > 0 && drawY < 256 && drawY + 256 > 0) {
+                    const tx = coords.x + dx;
+                    const ty = coords.y + dy;
+                    if (tx >= 0 && tx <= maxTileIndex && ty >= 0 && ty <= maxTileIndex) {
+                      const url = frame.tileUrlTemplate
+                        .replace("{z}", coords.z)
+                        .replace("{x}", tx)
+                        .replace("{y}", ty);
+                      drawJobs.push(
+                        self.loadRawTileImage(url).then((im) => ({ im, drawX, drawY }))
+                      );
+                    }
+                  }
+                }
+              }
+              const loaded = await Promise.all(drawJobs);
+              loaded.forEach(({ im, drawX, drawY }) => {
+                if (im) ctx.drawImage(im, drawX, drawY);
+              });
+            } else {
+              const url = frame.tileUrlTemplate
+                .replace("{z}", coords.z)
+                .replace("{x}", coords.x)
+                .replace("{y}", coords.y);
+              const img = await self.loadRawTileImage(url);
+              if (img) ctx.drawImage(img, 0, 0);
             }
 
-            ctx.drawImage(img, shiftX, shiftY);
             const imageData = ctx.getImageData(0, 0, 256, 256);
             const d = imageData.data;
-            const decay = frame.isFuture ? (frame.offsetMinutes > 15 ? 0.88 : 0.94) : 1.0;
+            const decay = frame.isFuture
+              ? Math.max(0.76, 1.0 - (frame.offsetMinutes / 120.0) * 0.18)
+              : 1.0;
 
             for (let i = 0; i < d.length; i += 4) {
               if (d[i + 3] < 20) {
                 d[i + 3] = 0;
                 continue;
               }
-              const dbz = self.estimateDbzFromN0qRgba(d[i], d[i + 1], d[i + 2], d[i + 3]) * decay;
+              const dbz =
+                self.estimateDbzFromN0qRgba(d[i], d[i + 1], d[i + 2], d[i + 3]) * decay;
               const [zr, zg, zb, za] = self.zusColorForDbz(dbz);
               d[i] = zr;
               d[i + 1] = zg;
@@ -728,16 +935,10 @@ const dopplerRadarMap = {
               d[i + 3] = za;
             }
             ctx.putImageData(imageData, 0, 0);
-          } catch (_) {
-            ctx.drawImage(img, 0, 0);
-          }
+          } catch (_) {}
           done(null, tile);
-        };
-        img.onerror = () => done(null, tile);
-        img.src = frame.tileUrlTemplate
-          .replace("{z}", coords.z)
-          .replace("{x}", coords.x)
-          .replace("{y}", coords.y);
+        })();
+
         return tile;
       },
     });
@@ -819,44 +1020,37 @@ const dopplerRadarMap = {
     this.renderTelemetryStrip(this.telemetry);
   },
 
-  async triggerBackfillCheck() {
-    const btn = document.getElementById("radar-backfill-btn");
-    const metaEl = document.getElementById("radar-dataset-meta");
-    if (btn) {
-      btn.textContent = "↻ Scanning 24h...";
-      btn.disabled = true;
-    }
-    try {
-      const resp = await fetch(`${ZUS_API_BASE}/radar/backfill?lookback_hours=24`, {
-        method: "POST",
-      });
-      if (resp.ok) {
-        const res = await resp.json();
-        if (metaEl) {
-          metaEl.textContent = `24h Archive Verified • ${res.backfilledNow} recovered (${res.remainingGaps} gaps) • ${
-            this.cacheStats?.framesInRam ?? 8
-          } Frames in RAM`;
-        }
-        if (btn) btn.textContent = "✓ 24h Synced";
-      } else {
-        throw new Error("Backfill check fallback");
+  ensureTwoHourNowcastFrames(frames) {
+    if (!Array.isArray(frames) || !frames.length) return frames;
+    const liveFrame = frames.find((f) => f.offsetMinutes === 0) || frames[frames.length - 1];
+    const baseTs = liveFrame?.timestamp || Math.floor(Date.now() / 1000);
+    const futureTargets = [
+      { offset: 15, label: "+15m" },
+      { offset: 30, label: "+30m" },
+      { offset: 45, label: "+45m" },
+      { offset: 60, label: "+1h" },
+      { offset: 75, label: "+1h 15m" },
+      { offset: 90, label: "+1h 30m" },
+      { offset: 105, label: "+1h 45m" },
+      { offset: 120, label: "+2h" },
+    ];
+    const existingOffsets = new Set(frames.map((f) => Number(f.offsetMinutes)));
+    const out = [...frames];
+    futureTargets.forEach((ft) => {
+      if (!existingOffsets.has(ft.offset)) {
+        out.push({
+          frameId: `nowcast_p${ft.offset}m`,
+          timestamp: baseTs + ft.offset * 60,
+          label: ft.label,
+          offsetMinutes: ft.offset,
+          isFuture: true,
+          useZusCanvasLut: true,
+          tileUrlTemplate:
+            "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png",
+        });
       }
-    } catch (_) {
-      // HTTPS edge verification fallback
-      if (metaEl) {
-        metaEl.textContent = `24h Archive Verified • 0 recovered (0 gaps) • ${
-          this.frames.length || 8
-        } Frames in RAM`;
-      }
-      if (btn) btn.textContent = "✓ 24h Synced";
-    } finally {
-      setTimeout(() => {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = "↻ Sync 24h Archive";
-        }
-      }, 3000);
-    }
+    });
+    return out.sort((a, b) => Number(a.offsetMinutes) - Number(b.offsetMinutes));
   },
 
   async syncForLocation(lat, lon) {
@@ -865,15 +1059,13 @@ const dopplerRadarMap = {
     }
     this.clearProbe();
     this.updateInteropLinks(lat, lon);
+    this.updateCoordsHudLabel();
 
     if (this.map) {
       this.map.setView([lat, lon], 6, { animate: true });
       if (this.marker) this.marker.setLatLng([lat, lon]);
       if (this.scanCircle) this.scanCircle.setLatLng([lat, lon]);
     }
-
-    const badgeEl = document.getElementById("radar-engine-badge");
-    const metaEl = document.getElementById("radar-dataset-meta");
 
     // 1. Try ZüsAPI 1km CONUS Master Grid & 8-Bit Storm Engine on panda first
     try {
@@ -888,18 +1080,9 @@ const dopplerRadarMap = {
       if (resp.ok) {
         const data = await resp.json();
         if (Array.isArray(data.frames) && data.frames.length > 0) {
-          this.frames = data.frames;
+          this.frames = this.ensureTwoHourNowcastFrames(data.frames);
           this.telemetry = data.localTelemetry || null;
           this.cacheStats = data.cacheStats || null;
-          if (badgeEl) {
-            badgeEl.textContent = data.localTelemetry?.inConusGrid
-              ? "ZüsAPI 1km CONUS Core"
-              : "ZüsAPI Global Core";
-          }
-          if (metaEl && data.cacheStats) {
-            const cs = data.cacheStats;
-            metaEl.textContent = `1km Grid (${cs.framesInRam} Frames • ${cs.masterGridRamMb} MB RAM • ${cs.cachedTilesCount} Cached Tiles) • 24h Auto-Backfill`;
-          }
           this.rebuildLayers();
           this.renderTelemetryStrip(data.localTelemetry);
           return data.localTelemetry;
@@ -909,7 +1092,7 @@ const dopplerRadarMap = {
       // On https://zuscast.com, browsers block http://192.168.1.65:8000 (Mixed Content) -> use HTTPS 1km CONUS Core
     }
 
-    // 2. HTTPS 1km CONUS NEXRAD + 8-Bit Züs Storm LUT Engine (for https://zuscast.com)
+    // 2. HTTPS 1km CONUS NEXRAD + 8-Bit Züs Storm LUT Engine (with +2h in 15m steps)
     if (this.isConusLocation(lat, lon)) {
       const nowSec = Math.floor(Math.floor(Date.now() / 1000) / 300) * 300;
       const steps = [
@@ -921,6 +1104,12 @@ const dopplerRadarMap = {
         { id: "latest", suffix: "", offset: 0, label: "LIVE", future: false },
         { id: "p15m", suffix: "", offset: 15, label: "+15m", future: true },
         { id: "p30m", suffix: "", offset: 30, label: "+30m", future: true },
+        { id: "p45m", suffix: "", offset: 45, label: "+45m", future: true },
+        { id: "p60m", suffix: "", offset: 60, label: "+1h", future: true },
+        { id: "p75m", suffix: "", offset: 75, label: "+1h 15m", future: true },
+        { id: "p90m", suffix: "", offset: 90, label: "+1h 30m", future: true },
+        { id: "p105m", suffix: "", offset: 105, label: "+1h 45m", future: true },
+        { id: "p120m", suffix: "", offset: 120, label: "+2h", future: true },
       ];
 
       this.frames = steps.map((s) => ({
@@ -935,11 +1124,6 @@ const dopplerRadarMap = {
 
       const httpsTel = await this.sampleHttpsNexradTelemetry(lat, lon);
       this.telemetry = httpsTel;
-      if (badgeEl) badgeEl.textContent = "ZüsAPI 1km CONUS Core";
-      if (metaEl) {
-        metaEl.textContent =
-          "1km Grid (8 Frames • 131.8 MB RAM • 8-Bit Storm LUT) • 24h Auto-Backfill";
-      }
       this.rebuildLayers();
       this.renderTelemetryStrip(httpsTel);
       return httpsTel;
@@ -952,7 +1136,7 @@ const dopplerRadarMap = {
         const rvData = await rvResp.json();
         const host = rvData.host || "https://tilecache.rainviewer.com";
         const past = (rvData.radar?.past || []).slice(-6);
-        const nowcast = (rvData.radar?.nowcast || []).slice(0, 2);
+        const nowcast = rvData.radar?.nowcast || [];
         const combined = [...past, ...nowcast];
         const liveTs = past.length ? past[past.length - 1].time : Math.floor(Date.now() / 1000);
 
@@ -967,8 +1151,6 @@ const dopplerRadarMap = {
             tileUrlTemplate: `${host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`,
           };
         });
-        if (badgeEl) badgeEl.textContent = "ZüsAPI Global Core";
-        if (metaEl) metaEl.textContent = "Global Radar Mesh Active • 8 Frames in RAM";
         this.rebuildLayers();
         this.renderTelemetryStrip(null);
       }
@@ -983,31 +1165,17 @@ const dopplerRadarMap = {
     });
     this.tileLayers = {};
 
-    const slider = document.getElementById("radar-frame-slider");
-    if (slider) {
-      slider.max = String(Math.max(0, this.frames.length - 1));
-    }
-
-    // Build quick-select frame step pills
-    const pillsWrap = document.getElementById("radar-frame-pills");
-    if (pillsWrap) {
-      pillsWrap.innerHTML = "";
-      this.frames.forEach((f, idx) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = `frame-step-btn ${f.isFuture ? "future" : ""}`;
-        btn.textContent = f.label;
-        btn.addEventListener("click", () => {
-          this.stopPlay();
-          this.setFrameIndex(idx);
-        });
-        pillsWrap.appendChild(btn);
-      });
-    }
-
-    // Default to LIVE frame (offsetMinutes === 0)
     let liveIdx = this.frames.findIndex((f) => f.offsetMinutes === 0);
     if (liveIdx < 0) liveIdx = Math.max(0, this.frames.length - 1);
+
+    const slider = document.getElementById("radar-frame-slider");
+    if (slider) {
+      const maxIdx = Math.max(1, this.frames.length - 1);
+      slider.max = String(maxIdx);
+      const livePct = ((liveIdx / maxIdx) * 100).toFixed(1);
+      slider.style.setProperty("--live-pct", `${livePct}%`);
+    }
+
     this.setFrameIndex(liveIdx);
   },
 
@@ -1030,8 +1198,11 @@ const dopplerRadarMap = {
     const frame = this.frames[bounded];
 
     const slider = document.getElementById("radar-frame-slider");
-    if (slider && Number(slider.value) !== bounded) {
-      slider.value = String(bounded);
+    if (slider) {
+      if (Number(slider.value) !== bounded) {
+        slider.value = String(bounded);
+      }
+      slider.classList.toggle("is-future", Boolean(frame.isFuture));
     }
 
     if (!this.tileLayers[frame.frameId]) {
@@ -1042,14 +1213,6 @@ const dopplerRadarMap = {
       layer.setOpacity(id === frame.frameId ? 0.86 : 0.0);
     });
     this.activeFrameId = frame.frameId;
-
-    // Highlight active frame pill
-    const pillsWrap = document.getElementById("radar-frame-pills");
-    if (pillsWrap) {
-      Array.from(pillsWrap.children).forEach((btn, i) => {
-        btn.classList.toggle("active", i === bounded);
-      });
-    }
 
     const frameClock = frame.timestamp
       ? new Date(frame.timestamp * 1000).toLocaleTimeString([], {
@@ -1070,6 +1233,7 @@ const dopplerRadarMap = {
     }
     if (timeEl) {
       timeEl.textContent = frameClock ? `${frameClock} (${frame.label})` : frame.label;
+      timeEl.classList.toggle("future", Boolean(frame.isFuture));
     }
   },
 
@@ -1095,7 +1259,7 @@ const dopplerRadarMap = {
     this.playTimer = setInterval(() => {
       const next = (this.currentIndex + 1) % this.frames.length;
       this.setFrameIndex(next);
-    }, 650);
+    }, 620);
   },
 
   stopPlay() {
@@ -1161,9 +1325,7 @@ async function loadWeatherForCurrentLocation() {
     4
   )}° ${latDir}, ${Math.abs(longitude).toFixed(4)}° ${lonDir}`;
 
-  document.getElementById("radar-coords-label").textContent = `${latitude.toFixed(
-    2
-  )}°, ${longitude.toFixed(2)}° • Tap map to probe`;
+  dopplerRadarMap.updateCoordsHudLabel();
 
   // Sync Züs 1km Doppler Radar Map & Point Telemetry in parallel
   const dopplerPromise = dopplerRadarMap.syncForLocation(latitude, longitude);
@@ -2565,6 +2727,30 @@ function renderHourlyTimeline(hourly) {
   syncLiquidPillGlider(document.getElementById("timeline-pill-bar"));
 }
 
+/* Lock Radar Card height to the collapsed 10-Day Forecast card height so expanding a day never stretches the radar */
+function syncRadarCardHeight() {
+  const dailyCard = document.querySelector(".daily-card");
+  const radarCard = document.getElementById("radar-map-card");
+  if (!dailyCard || !radarCard) return;
+
+  if (window.innerWidth <= 960) {
+    radarCard.style.removeProperty("--radar-card-height");
+    return;
+  }
+
+  // Only measure when all 10-day accordions are collapsed so the height stays locked to the base 10-row height
+  const hasOpenDay = dailyCard.querySelector(".day-accordion.open");
+  if (!hasOpenDay) {
+    const h = Math.round(dailyCard.getBoundingClientRect().height);
+    if (h >= 380) {
+      radarCard.style.setProperty("--radar-card-height", `${h}px`);
+      if (dopplerRadarMap.map && !dopplerRadarMap.isModalOpen) {
+        requestAnimationFrame(() => dopplerRadarMap.map.invalidateSize());
+      }
+    }
+  }
+}
+
 /* Dark Sky Expandable 10-Day Forecast */
 function renderDailyForecast(daily) {
   const list = document.getElementById("daily-list");
@@ -2736,16 +2922,12 @@ function renderDailyForecast(daily) {
       if (willOpen) {
         requestAnimationFrame(() => syncLiquidPillGlider(dayPillBarEl));
       }
-      setTimeout(() => {
-        if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize();
-      }, 120);
-      setTimeout(() => {
-        if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize();
-      }, 390);
     });
 
     list.appendChild(wrapper);
   });
+
+  requestAnimationFrame(() => syncRadarCardHeight());
 }
 
 /* Render Multi-Model Sources Alignment Tooltip Popover */
@@ -3786,6 +3968,9 @@ function bindSheetSwipeDismiss(sheetId, grabberId, closeFn) {
 function setupMobileBottomSheetSwipe() {
   bindSheetSwipeDismiss("tile-modal-sheet", "sheet-grabber-bar", closeTileDetailModal);
   bindSheetSwipeDismiss("hour-modal-sheet", "hour-sheet-grabber-bar", closeHourDetailModal);
+  bindSheetSwipeDismiss("radar-modal-sheet", "radar-sheet-grabber-bar", () =>
+    dopplerRadarMap.closeModal()
+  );
 }
 
 /* City Search */
@@ -3931,7 +4116,6 @@ function setupControls() {
       renderHourDetailModalContent();
     }
     dopplerRadarMap.renderTelemetryStrip(dopplerRadarMap.telemetry);
-    dopplerRadarMap.updateInteropLinks(state.location.latitude, state.location.longitude);
   });
 
   // 24-Hour Timeline Mode Tabs (Top Chart)
@@ -3955,6 +4139,7 @@ function setupControls() {
     "resize",
     () => {
       syncLiquidPillGlider(topPillBar);
+      syncRadarCardHeight();
       document
         .querySelectorAll(".day-accordion.open .day-pill-bar")
         .forEach((bar) => syncLiquidPillGlider(bar));
@@ -4032,12 +4217,30 @@ function setupControls() {
   document.addEventListener("keydown", (e) => {
     const hourModalOpen =
       hourModalBackdrop && !hourModalBackdrop.hasAttribute("hidden");
+    const radarModalOpen = Boolean(dopplerRadarMap.isModalOpen);
     if (e.key === "Escape") {
       toggleConfidenceTooltip(false);
-      if (hourModalOpen) {
+      if (radarModalOpen) {
+        dopplerRadarMap.closeModal();
+      } else if (hourModalOpen) {
         closeHourDetailModal();
       } else {
         closeTileDetailModal();
+      }
+      return;
+    }
+    if (radarModalOpen) {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        dopplerRadarMap.stopAnimation();
+        dopplerRadarMap.stepFrame(-1);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        dopplerRadarMap.stopAnimation();
+        dopplerRadarMap.stepFrame(1);
+      } else if (e.key === " ") {
+        e.preventDefault();
+        dopplerRadarMap.toggleAnimation();
       }
       return;
     }
