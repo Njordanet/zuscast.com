@@ -1601,10 +1601,10 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   border: none;
   color: var(--text-primary);
   display: grid;
-  grid-template-columns: 88px 32px 44px 1fr 20px;
+  grid-template-columns: 60px 32px 1fr 18px;
   align-items: center;
-  gap: 10px;
-  padding: 12px 6px;
+  gap: 12px;
+  padding: 10px 6px;
   cursor: pointer;
   text-align: left;
   transition: background 0.18s ease, transform 0.16s ease;
@@ -1615,62 +1615,130 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   background: rgba(56, 189, 248, 0.07);
 }
 
+.daily-row-btn:hover .daily-scale-pill {
+  border-color: rgba(125, 211, 252, 0.42);
+  box-shadow:
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.42),
+    0 4px 14px -2px rgba(14, 165, 233, 0.28);
+}
+
 .daily-row-btn:active {
   transform: scale(0.992);
 }
 
+.daily-day-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1.12;
+  min-width: 0;
+}
+
 .daily-day {
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  text-transform: uppercase;
 }
 
 .daily-icon {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
+}
+
+.daily-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .daily-precip {
-  font-size: 0.74rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--accent-cyan);
   font-variant-numeric: tabular-nums;
 }
 
-.daily-range-group {
-  display: grid;
-  grid-template-columns: 36px 1fr 36px;
+.daily-precip.is-zero {
+  color: rgba(88, 199, 255, 0.52);
+}
+
+/* Dark Sky Scaled Floating Temperature Capsule Layout */
+.daily-scale-lane {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  display: flex;
   align-items: center;
-  gap: 10px;
+  padding: 0 42px;
+}
+
+.daily-scale-track {
+  position: relative;
+  width: 100%;
+  height: 24px;
+}
+
+.daily-scale-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  min-width: 26px;
+}
+
+.daily-scale-pill {
+  width: 100%;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background:
+    linear-gradient(
+      90deg,
+      rgba(56, 189, 248, 0.26) 0%,
+      rgba(129, 140, 248, 0.24) 52%,
+      rgba(251, 191, 36, 0.28) 100%
+    ),
+    rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.32),
+    inset 0 -1px 0.5px rgba(2, 6, 20, 0.35),
+    0 4px 12px -3px rgba(2, 6, 20, 0.5);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .daily-min {
-  font-size: 0.85rem;
-  color: var(--text-muted);
+  position: absolute;
+  right: calc(100% + 9px);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: rgba(248, 250, 252, 0.92);
   text-align: right;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
 .daily-max {
-  font-size: 0.85rem;
+  position: absolute;
+  left: calc(100% + 9px);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.92rem;
   font-weight: 700;
   color: var(--text-primary);
+  text-align: left;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
-}
-
-.range-track {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.09);
-  border-radius: var(--radius-pill);
-  position: relative;
-  overflow: hidden;
-}
-
-.range-bar {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, #38bdf8, #818cf8, #fbbf24);
 }
 
 .day-chevron {
@@ -3365,14 +3433,47 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   }
 
   .daily-row-btn {
-    grid-template-columns: 64px 26px 34px 1fr 16px;
-    gap: 7px;
-    padding: 11px 4px;
+    grid-template-columns: 52px 26px 1fr 14px;
+    gap: 8px;
+    padding: 9px 4px;
   }
 
-  .daily-range-group {
-    grid-template-columns: 32px 1fr 32px;
-    gap: 7px;
+  .daily-day {
+    font-size: 0.84rem;
+  }
+
+  .daily-precip {
+    font-size: 0.7rem;
+  }
+
+  .daily-icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  .daily-scale-lane {
+    padding: 0 36px;
+  }
+
+  .daily-scale-track {
+    height: 22px;
+  }
+
+  .daily-scale-pill {
+    height: 20px;
+  }
+
+  .daily-min,
+  .daily-max {
+    font-size: 0.84rem;
+  }
+
+  .daily-min {
+    right: calc(100% + 7px);
+  }
+
+  .daily-max {
+    left: calc(100% + 7px);
   }
 
   .day-drawer {

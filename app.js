@@ -3068,10 +3068,13 @@ function renderDailyForecast(daily) {
     const cond = conditionFromWMO(dItem.wmoCode);
     const dayName =
       idx === 0
-        ? "Today"
-        : dItem.date.toLocaleDateString([], { weekday: "short" });
-    const leftPct = ((dItem.tempMin - globalMin) / totalSpan) * 100;
-    const widthPct = Math.max(7, ((dItem.tempMax - dItem.tempMin) / totalSpan) * 100);
+        ? "TODAY"
+        : dItem.date.toLocaleDateString([], { weekday: "short" }).toUpperCase();
+    const rawLeftPct = ((dItem.tempMin - globalMin) / totalSpan) * 100;
+    const rawWidthPct = ((dItem.tempMax - dItem.tempMin) / totalSpan) * 100;
+    const widthPct = Math.min(100, Math.max(12, rawWidthPct));
+    const leftPct = Math.min(100 - widthPct, Math.max(0, rawLeftPct));
+    const precipPct = Math.round(dItem.precipProb ?? 0);
 
     // Start with all 10 days collapsed on load
     const wrapper = document.createElement("div");
@@ -3092,17 +3095,19 @@ function renderDailyForecast(daily) {
 
     wrapper.innerHTML = `
       <button type="button" class="daily-row-btn" aria-expanded="false">
-        <div class="daily-day">${dayName}</div>
+        <div class="daily-day-col">
+          <span class="daily-day">${dayName}</span>
+          <span class="daily-precip${precipPct === 0 ? " is-zero" : ""}">${precipPct}%</span>
+        </div>
         <div class="daily-icon">${getWeatherSVG(cond.icon)}</div>
-        <div class="daily-precip">${
-          dItem.precipProb >= 15 ? `${dItem.precipProb}%` : ""
-        }</div>
-        <div class="daily-range-group">
-          <span class="daily-min">${formatTemp(dItem.tempMin)}</span>
-          <div class="range-track">
-            <div class="range-bar" style="left: ${leftPct}%; width: ${widthPct}%"></div>
+        <div class="daily-scale-lane">
+          <div class="daily-scale-track">
+            <div class="daily-scale-bar" style="left: ${leftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%">
+              <span class="daily-min">${formatTemp(dItem.tempMin)}</span>
+              <div class="daily-scale-pill"></div>
+              <span class="daily-max">${formatTemp(dItem.tempMax)}</span>
+            </div>
           </div>
-          <span class="daily-max">${formatTemp(dItem.tempMax)}</span>
         </div>
         <span class="day-chevron">▾</span>
       </button>
