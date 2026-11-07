@@ -511,6 +511,7 @@ const dopplerRadarMap = {
       }
     });
 
+    const radarCardEl = document.getElementById("radar-map-card");
     const frameEl = document.getElementById("radar-map-frame");
     const cardHeaderEl = document.getElementById("radar-card-header");
     const controlsBar = document.getElementById("radar-controls-bar");
@@ -537,6 +538,16 @@ const dopplerRadarMap = {
 
     if (frameEl) {
       frameEl.addEventListener("click", (e) => {
+        if (this.isModalOpen) return;
+        if (e.target.closest("#radar-controls-bar") || e.target.closest("#radar-map-controls")) {
+          return;
+        }
+        this.openModal();
+      });
+    }
+
+    if (radarCardEl) {
+      radarCardEl.addEventListener("click", (e) => {
         if (this.isModalOpen) return;
         if (e.target.closest("#radar-controls-bar") || e.target.closest("#radar-map-controls")) {
           return;
@@ -3305,9 +3316,24 @@ function renderDailyForecast(daily) {
         : dItem.date.toLocaleDateString([], { weekday: "short" }).toUpperCase();
     const rawLeftPct = ((dItem.tempMin - globalMin) / totalSpan) * 100;
     const rawWidthPct = ((dItem.tempMax - dItem.tempMin) / totalSpan) * 100;
-    const widthPct = Math.min(100, Math.max(12, rawWidthPct));
+    const widthPct = Math.min(100, Math.max(10, rawWidthPct));
     const leftPct = Math.min(100 - widthPct, Math.max(0, rawLeftPct));
+    const gradWidthPct = (100 / widthPct) * 100;
+    const gradLeftPct = -(leftPct / widthPct) * 100;
     const precipPct = Math.round(dItem.precipProb ?? 0);
+
+    let todayDotHtml = "";
+    if (idx === 0 && Number.isFinite(state.weather?.temperature)) {
+      const curTemp = state.weather.temperature;
+      const curGlobalPct = ((curTemp - globalMin) / totalSpan) * 100;
+      const clampedDotPct = Math.min(
+        leftPct + widthPct,
+        Math.max(leftPct, curGlobalPct)
+      );
+      todayDotHtml = `<div class="meter-dot daily-current-dot" style="left: ${clampedDotPct.toFixed(
+        2
+      )}%" title="Now: ${formatTemp(curTemp, true)}"></div>`;
+    }
 
     // Start with all 10 days collapsed on load
     const wrapper = document.createElement("div");
@@ -3337,9 +3363,12 @@ function renderDailyForecast(daily) {
           <div class="daily-scale-track">
             <div class="daily-scale-bar" style="left: ${leftPct.toFixed(2)}%; width: ${widthPct.toFixed(2)}%">
               <span class="daily-min">${formatTemp(dItem.tempMin)}</span>
-              <div class="daily-scale-pill"></div>
+              <div class="daily-scale-pill">
+                <div class="daily-scale-gradient" style="left: ${gradLeftPct.toFixed(2)}%; width: ${gradWidthPct.toFixed(2)}%"></div>
+              </div>
               <span class="daily-max">${formatTemp(dItem.tempMax)}</span>
             </div>
+            ${todayDotHtml}
           </div>
         </div>
         <span class="day-chevron">▾</span>
@@ -4719,6 +4748,14 @@ function bindSheetSwipeDismiss(sheetId, grabberId, closeFn) {
     if (window.innerWidth > 640) return;
     const touch = e.touches?.[0];
     if (!touch) return;
+    if (
+      sheetId === "radar-modal-sheet" &&
+      e.target.closest(
+        "#radar-modal-map-slot, #radar-map-frame, #zus-doppler-map, .leaflet-container, .radar-controls-bar, .radar-map-controls, .radar-modal-hud-footer, #radar-modal-close"
+      )
+    ) {
+      return;
+    }
     const isGrabber = grabber && grabber.contains(e.target);
     if (!isGrabber && sheet.scrollTop > 2) return;
     startY = touch.clientY;
