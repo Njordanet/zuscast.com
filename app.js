@@ -1540,36 +1540,78 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
 
   // Parse Multi-Model Ensemble (from hourly model arrays at current hour)
   const eIdx = Math.min(startHourIdx, 23);
-  const ensembleModels = [
+  const rawEnsembleModels = [
     {
       name: "HRRR / Best Match",
       tag: "High-Res",
       temp: eh.temperature_2m_best_match?.[eIdx] ?? c.temperature_2m,
       precip: eh.precipitation_best_match?.[eIdx] ?? c.precipitation ?? 0,
+      precipProb:
+        eh.precipitation_probability_best_match?.[eIdx] ??
+        h.precipitation_probability?.[startHourIdx] ??
+        0,
+      wind: eh.wind_speed_10m_best_match?.[eIdx] ?? c.wind_speed_10m ?? 0,
     },
     {
       name: "ECMWF IFS 0.25°",
       tag: "European",
       temp: eh.temperature_2m_ecmwf_ifs025?.[eIdx] ?? c.temperature_2m,
       precip: eh.precipitation_ecmwf_ifs025?.[eIdx] ?? c.precipitation ?? 0,
+      precipProb:
+        eh.precipitation_probability_ecmwf_ifs025?.[eIdx] ??
+        h.precipitation_probability?.[startHourIdx] ??
+        0,
+      wind: eh.wind_speed_10m_ecmwf_ifs025?.[eIdx] ?? c.wind_speed_10m ?? 0,
     },
     {
       name: "NOAA GFS",
       tag: "US Global",
       temp: eh.temperature_2m_gfs_seamless?.[eIdx] ?? c.temperature_2m,
       precip: eh.precipitation_gfs_seamless?.[eIdx] ?? c.precipitation ?? 0,
+      precipProb:
+        eh.precipitation_probability_gfs_seamless?.[eIdx] ??
+        h.precipitation_probability?.[startHourIdx] ??
+        0,
+      wind: eh.wind_speed_10m_gfs_seamless?.[eIdx] ?? c.wind_speed_10m ?? 0,
     },
     {
       name: "DWD ICON",
       tag: "German Global",
       temp: eh.temperature_2m_icon_seamless?.[eIdx] ?? c.temperature_2m,
       precip: eh.precipitation_icon_seamless?.[eIdx] ?? c.precipitation ?? 0,
+      precipProb:
+        eh.precipitation_probability_icon_seamless?.[eIdx] ??
+        h.precipitation_probability?.[startHourIdx] ??
+        0,
+      wind: eh.wind_speed_10m_icon_seamless?.[eIdx] ?? c.wind_speed_10m ?? 0,
     },
   ];
 
-  const validTemps = ensembleModels
+  const validTemps = rawEnsembleModels
     .map((m) => m.temp)
     .filter((t) => t !== null && t !== undefined && !Number.isNaN(t));
+  const meanTempC =
+    validTemps.length > 0
+      ? validTemps.reduce((acc, v) => acc + v, 0) / validTemps.length
+      : c.temperature_2m ?? 0;
+  const meanPop =
+    rawEnsembleModels.reduce((acc, m) => acc + Number(m.precipProb ?? 0), 0) /
+    rawEnsembleModels.length;
+
+  const ensembleModels = rawEnsembleModels.map((m) => {
+    const deltaC = Number(m.temp ?? meanTempC) - meanTempC;
+    const popDiff = Math.abs(Number(m.precipProb ?? 0) - meanPop);
+    const alignmentPct = Math.max(
+      74,
+      Math.min(100, Math.round(100 - Math.abs(deltaC) * 6.2 - popDiff * 0.14))
+    );
+    return {
+      ...m,
+      deltaC,
+      alignmentPct,
+    };
+  });
+
   const spreadC =
     validTemps.length > 1
       ? Math.max(...validTemps) - Math.min(...validTemps)
@@ -1685,6 +1727,7 @@ function renderDashboard() {
   document.getElementById(
     "confidence-badge-text"
   ).textContent = `${w.confidencePct}% Model Agreement`;
+  renderConfidenceTooltip(w);
   document.getElementById("hero-icon-container").innerHTML = getWeatherSVG(cond.icon);
   document.getElementById("hero-temp").textContent = formatTemp(w.temperature);
   document.getElementById("hero-condition").textContent = cond.label;
@@ -1790,7 +1833,7 @@ function renderDashboard() {
   }
 
   // Multi-Model Ensemble Strip
-  renderEnsembleComparison(w.ensembleModels, w.spreadC);
+  renderEnsembleComparison(w.ensembleModels, w.spreadC, w.confidencePct);
 
   document.getElementById("last-updated").textContent = `Updated ${new Date().toLocaleTimeString(
     [],
@@ -2639,18 +2682,125 @@ function renderDailyForecast(daily) {
   });
 }
 
+/* Render Multi-Model Sources Alignment Tooltip Popover */
+function renderConfidenceTooltip(w) {
+  if (!w || !w.ensembleModels) return;
+  const spreadEl = document.getElementById("confidence-tooltip-spread");
+  const summaryEl = document.getElementById("confidence-tooltip-summary");
+  const meterFillEl = document.getElementById("confidence-meter-fill");
+  const listEl = document.getElementById("confidence-sources-list");
+  const groundEl = document.getElementById("confidence-tooltip-ground");
+  if (!listEl) return;
+
+  const spreadVal = state.useImperial ? w.spreadC * 1.8 : w.spreadC;
+  const unit = state.useImperial ? "°F" : "°C";
+
+  if (spreadEl) {
+    spreadEl.textContent = `Spread ±${(spreadVal / 2).toFixed(1)}${unit}`;
+  }
+  if (summaryEl) {
+    const tier =
+      w.confidencePct >= 93
+        ? "Tight consensus across all 4 NWP sources"
+        : w.confidencePct >= 87
+        ? "Strong alignment across 4 NWP sources"
+        : "Moderate variance across 4 NWP sources";
+    summaryEl.textContent = `${w.confidencePct}% agreement • ${tier}`;
+  }
+  if (meterFillEl) {
+    meterFillEl.style.width = `${Math.max(10, Math.min(100, w.confidencePct))}%`;
+  }
+  if (groundEl) {
+    groundEl.textContent = w.localStationName
+      ? `Ground truth: ${w.localStationName} + NEXRAD`
+      : "Assimilating 1km NEXRAD + METAR";
+  }
+
+  listEl.innerHTML = w.ensembleModels
+    .map((m) => {
+      const deltaVal = state.useImperial ? (m.deltaC ?? 0) * 1.8 : m.deltaC ?? 0;
+      const absDelta = Math.abs(deltaVal);
+      const deltaLabel =
+        absDelta < 0.15
+          ? "Consensus"
+          : `Δ ${deltaVal > 0 ? "+" : ""}${deltaVal.toFixed(1)}${unit}`;
+      const alignPct = m.alignmentPct ?? w.confidencePct;
+      const toneClass =
+        alignPct >= 93 ? "aligned" : alignPct >= 86 ? "moderate" : "divergent";
+      const pop = Math.round(m.precipProb ?? 0);
+      const windStr = formatWind(m.wind ?? w.windSpeed);
+
+      return `
+        <div class="confidence-source-row">
+          <div class="confidence-source-top">
+            <div class="confidence-source-name-wrap">
+              <span class="confidence-source-name">${m.name}</span>
+              <span class="confidence-source-tag">${m.tag}</span>
+            </div>
+            <div class="confidence-source-metrics">
+              <span class="confidence-source-temp">${formatTemp(m.temp, true)}</span>
+              <span class="confidence-source-delta ${toneClass}">${deltaLabel}</span>
+            </div>
+          </div>
+          <div class="confidence-source-sub">
+            <span>PoP ${pop}% &bull; Wind ${windStr}</span>
+            <div class="confidence-source-bar-wrap">
+              <div class="confidence-source-bar-track">
+                <div class="confidence-source-bar-fill ${toneClass}" style="width: ${alignPct}%"></div>
+              </div>
+              <span class="confidence-source-pct">${alignPct}%</span>
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function toggleConfidenceTooltip(forceState) {
+  const btn = document.getElementById("confidence-pill-btn");
+  const tooltip = document.getElementById("confidence-tooltip");
+  const heroCard = document.querySelector(".hero-card");
+  if (!btn || !tooltip) return;
+
+  const isCurrentlyOpen = !tooltip.hasAttribute("hidden");
+  const nextOpen = typeof forceState === "boolean" ? forceState : !isCurrentlyOpen;
+
+  if (nextOpen) {
+    if (state.weather) renderConfidenceTooltip(state.weather);
+    tooltip.removeAttribute("hidden");
+    btn.setAttribute("aria-expanded", "true");
+    if (heroCard) heroCard.classList.add("tooltip-open");
+  } else {
+    tooltip.setAttribute("hidden", "");
+    btn.setAttribute("aria-expanded", "false");
+    if (heroCard) heroCard.classList.remove("tooltip-open");
+  }
+}
+
 /* Render Multi-Model Ensemble Strip */
-function renderEnsembleComparison(models, spreadC) {
+function renderEnsembleComparison(models, spreadC, confidencePct = 92) {
   const grid = document.getElementById("ensemble-models-grid");
   const spreadLabel = document.getElementById("ensemble-spread-label");
   if (!grid || !models) return;
 
   const spreadVal = state.useImperial ? spreadC * 1.8 : spreadC;
   const unit = state.useImperial ? "°F" : "°C";
-  spreadLabel.textContent = `Model Spread: ±${(spreadVal / 2).toFixed(1)}${unit}`;
+  spreadLabel.textContent = `${confidencePct}% Agreement • Spread ±${(spreadVal / 2).toFixed(1)}${unit}`;
 
   grid.innerHTML = "";
   models.forEach((m, idx) => {
+    const deltaVal = state.useImperial ? (m.deltaC ?? 0) * 1.8 : m.deltaC ?? 0;
+    const absDelta = Math.abs(deltaVal);
+    const deltaLabel =
+      absDelta < 0.15
+        ? "Consensus"
+        : `Δ ${deltaVal > 0 ? "+" : ""}${deltaVal.toFixed(1)}${unit}`;
+    const alignPct = m.alignmentPct ?? confidencePct;
+    const toneClass =
+      alignPct >= 93 ? "aligned" : alignPct >= 86 ? "moderate" : "divergent";
+    const pop = Math.round(m.precipProb ?? 0);
+
     const box = document.createElement("div");
     box.className = "ensemble-pill-box interactive-tile";
     box.style.animationDelay = `${(0.54 + idx * 0.04).toFixed(2)}s`;
@@ -2661,8 +2811,17 @@ function renderEnsembleComparison(models, spreadC) {
         <span>${m.name}</span>
         <span>${m.tag} ↗</span>
       </div>
-      <div class="ensemble-model-temp">${formatTemp(m.temp, true)}</div>
-      <div class="ensemble-model-meta">Precip rate: ${formatPrecipAmount(
+      <div class="ensemble-model-temp-row">
+        <span class="ensemble-model-temp">${formatTemp(m.temp, true)}</span>
+        <span class="confidence-source-delta ${toneClass}">${deltaLabel}</span>
+      </div>
+      <div class="ensemble-model-score-row">
+        <div class="ensemble-score-track">
+          <div class="ensemble-score-fill ${toneClass}" style="width: ${alignPct}%"></div>
+        </div>
+        <span class="ensemble-score-pct ${toneClass}">${alignPct}% Aligned</span>
+      </div>
+      <div class="ensemble-model-meta">PoP ${pop}% &bull; ${formatPrecipAmount(
         m.precip
       )}/hr</div>
     `;
@@ -2986,11 +3145,20 @@ function openTileDetailModal(tileType) {
         "ZüsCast continuously computes the min–max envelope across NOAA HRRR 3km, ECMWF IFS 0.25°, NOAA GFS, and DWD ICON so you can see both the primary forecast and model uncertainty.";
       chartMode = "temp";
       jumpLabel = "View Full 10-Day Model Envelope ↗";
-      stats = (w.ensembleModels || []).map((m) => ({
-        label: `${m.name} (${m.tag})`,
-        val: formatTemp(m.temp, true),
-        sub: `Precip: ${formatPrecipAmount(m.precip)}/hr`,
-      }));
+      stats = (w.ensembleModels || []).map((m) => {
+        const deltaVal = state.useImperial ? (m.deltaC ?? 0) * 1.8 : m.deltaC ?? 0;
+        const deltaLabel =
+          Math.abs(deltaVal) < 0.15
+            ? "Consensus"
+            : `Δ ${deltaVal > 0 ? "+" : ""}${deltaVal.toFixed(1)}${unit}`;
+        const alignPct = m.alignmentPct ?? w.confidencePct;
+        const pop = Math.round(m.precipProb ?? 0);
+        return {
+          label: `${m.name} (${m.tag})`,
+          val: `${formatTemp(m.temp, true)} • ${alignPct}%`,
+          sub: `${deltaLabel} • PoP ${pop}% • ${formatPrecipAmount(m.precip)}/hr`,
+        };
+      });
       break;
     }
   }
@@ -3479,6 +3647,29 @@ function setupControls() {
     });
   });
 
+  // Model Agreement Pill -> Toggle Sources Alignment Tooltip
+  const confPillBtn = document.getElementById("confidence-pill-btn");
+  const confWrap = document.getElementById("confidence-pill-wrap");
+  const confMoreBtn = document.getElementById("confidence-tooltip-more-btn");
+  if (confPillBtn) {
+    confPillBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleConfidenceTooltip();
+    });
+  }
+  if (confMoreBtn) {
+    confMoreBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleConfidenceTooltip(false);
+      openTileDetailModal("ensemble");
+    });
+  }
+  document.addEventListener("click", (e) => {
+    if (confWrap && !confWrap.contains(e.target)) {
+      toggleConfidenceTooltip(false);
+    }
+  });
+
   // Modal Close Controls
   const modalCloseBtn = document.getElementById("tile-modal-close");
   const modalDoneBtn = document.getElementById("tile-modal-done-btn");
@@ -3491,7 +3682,10 @@ function setupControls() {
     });
   }
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeTileDetailModal();
+    if (e.key === "Escape") {
+      toggleConfidenceTooltip(false);
+      closeTileDetailModal();
+    }
   });
 }
 
