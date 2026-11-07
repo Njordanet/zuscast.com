@@ -876,8 +876,8 @@ const dopplerRadarMap = {
               const lat = state.location?.latitude ?? 39.0;
               const cosLat = Math.max(0.25, Math.cos((lat * Math.PI) / 180.0));
               const kmPerPixel = (40075.017 * cosLat) / (256 * Math.pow(2, coords.z));
-              const distKm =
-                (self.telemetry?.stormMotionKmh ?? 44.0) * (frame.offsetMinutes / 60.0);
+              const speedKmh = Math.max(52.0, self.telemetry?.stormMotionKmh ?? 54.0);
+              const distKm = speedKmh * (frame.offsetMinutes / 60.0);
               const moveDeg =
                 self.telemetry?.stormMotionDeg ?? self.telemetry?.stormMotionDegrees ?? 68;
               const rad = (moveDeg * Math.PI) / 180.0;
@@ -1083,7 +1083,16 @@ const dopplerRadarMap = {
       if (resp.ok) {
         const data = await resp.json();
         if (Array.isArray(data.frames) && data.frames.length > 0) {
-          this.frames = this.ensureTwoHourNowcastFrames(data.frames);
+          const normalizedFrames = data.frames.map((f) => ({
+            ...f,
+            tileUrlTemplate:
+              typeof f.tileUrlTemplate === "string" &&
+              window.location.protocol === "https:" &&
+              f.tileUrlTemplate.startsWith("http://")
+                ? "https://" + f.tileUrlTemplate.slice("http://".length)
+                : f.tileUrlTemplate,
+          }));
+          this.frames = this.ensureTwoHourNowcastFrames(normalizedFrames);
           this.telemetry = data.localTelemetry || null;
           this.cacheStats = data.cacheStats || null;
           this.rebuildLayers();
@@ -1360,6 +1369,7 @@ async function loadWeatherForCurrentLocation() {
     const ensembleParams = new URLSearchParams({
       latitude: String(latitude),
       longitude: String(longitude),
+      minutely_15: "precipitation",
       hourly:
         "temperature_2m,apparent_temperature,precipitation_probability,precipitation,wind_speed_10m,wind_gusts_10m,uv_index,dew_point_2m,cloud_cover,visibility,pressure_msl",
       models: "best_match,ecmwf_ifs025,gfs_seamless,icon_seamless",
@@ -1432,8 +1442,20 @@ async function loadWeatherForCurrentLocation() {
         if (latestTel && latestTel !== mergedDoppler) {
           dopplerRadarMap.telemetry = latestTel;
           dopplerRadarMap.renderTelemetryStrip(latestTel);
+          state.weather = parseWeatherData(
+            rawForecast,
+            rawAqi,
+            rawEnsemble,
+            latestTel,
+            lateZus || zusWeather
+          );
           if (state.weather) {
-            renderNextHourNowcast(state.weather.minuteRates, state.weather.hourly?.[0]);
+            renderNextHourNowcast(
+              state.weather.minuteRates,
+              state.weather.hourly?.[0],
+              state.weather.minuteRatesMin,
+              state.weather.minuteRatesMax
+            );
           }
         }
       }
@@ -1508,7 +1530,83 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
   // Next 24 hours (assimilate ZüsAPI MOS bias-corrected & ground-truth hourly stream + multi-model min/max envelope)
   const zHourly = Array.isArray(zusWeather?.hourly) ? zusWeather.hourly : [];
   const eh = rawEnsemble?.hourly || {};
+  const em15 = rawEnsemble?.minutely_15 || {};
   const modelKeys = ["best_match", "ecmwf_ifs025", "gfs_seamless", "icon_seamless"];
+
+  let startEm15Idx = startM15Idx;
+  if (Array.isArray(em15.time)) {
+    const foundEm15 = em15.time.findIndex((t) => new Date(t).getTime() >= nowMs - 900000);
+    if (foundEm15 >= 0) startEm15Idx = foundEm15;
+  }
+
+  // Extract 61-minute per-model precipitation trajectories (0..60m) for the min/max estimation band
+  const modelCheckpoints15m = {};
+  for (const mk of modelKeys) {
+    const arr15 = em15[`precipitation_${mk}`];
+    const arrH = eh[`precipitation_${mk}`];
+    const pts = [];
+    for (let k = 0; k <= 4; k++) {
+      const v15 = arr15?.[startEm15Idx + k];
+      if (v15 !== null && v15 !== undefined && !Number.isNaN(Number(v15))) {
+        pts.push(Math.max(0, Number(v15) * 4));
+      } else {
+        const h0 = Number(arrH?.[startHourIdx] ?? m15.precipitation?.[startM15Idx] * 4 ?? 0);
+        const h1 = Number(arrH?.[startHourIdx + 1] ?? h0);
+        const f = k / 4;
+        pts.push(Math.max(0, h0 * (1 - f) + h1 * f));
+      }
+    }
+    modelCheckpoints15m[mk] = pts;
+  }
+
+  const minuteRatesMin = [];
+  const minuteRatesMax = [];
+  const curPop = Number(zHourly[0]?.precipitationChance ?? h.precipitation_probability?.[startHourIdx] ?? 0);
+  const baseDrySpread = Math.min(0.85, 0.42 + (curPop / 100) * 0.45);
+
+  for (let min = 0; min <= 60; min++) {
+    const p = minuteRates[min] ?? 0;
+    const seg15 = Math.min(3, Math.floor(min / 15));
+    const frac15 = (min - seg15 * 15) / 15;
+    const mu15 = (1 - Math.cos(frac15 * Math.PI)) / 2;
+
+    const candidates = [p];
+    for (const mk of modelKeys) {
+      const cp = modelCheckpoints15m[mk];
+      if (cp) {
+        const mRate = cp[seg15] * (1 - mu15) + cp[seg15 + 1] * mu15;
+        if (!Number.isNaN(mRate)) candidates.push(Math.max(0, mRate));
+      }
+    }
+
+    // Include pure primary NWP 15-min rate and pure Doppler rate as physical envelope members
+    const p15a = Number(m15.precipitation?.[startM15Idx + seg15] ?? 0) * 4;
+    const p15b = Number(m15.precipitation?.[startM15Idx + seg15 + 1] ?? p15a / 4) * 4;
+    candidates.push(Math.max(0, p15a * (1 - mu15) + p15b * mu15));
+
+    if (dopRates.length >= 13) {
+      const seg5 = Math.min(11, Math.floor(min / 5));
+      const frac5 = (min - seg5 * 5) / 5;
+      const mu5 = (1 - Math.cos(frac5 * Math.PI)) / 2;
+      const d0 = Number(dopRates[seg5] ?? 0);
+      const d1 = Number(dopRates[seg5 + 1] ?? d0);
+      candidates.push(Math.max(0, d0 * (1 - mu5) + d1 * mu5));
+    }
+
+    const rawMin = Math.max(0, Math.min(...candidates));
+    const rawMax = Math.max(...candidates);
+    const spread = rawMax - rawMin;
+
+    const minFallback = p > 0.05 ? Math.max(0, p * 0.68 - 0.12) : 0;
+    const maxFallback = p > 0.05 ? Math.max(p * 1.32 + 0.38, p + baseDrySpread) : baseDrySpread;
+
+    minuteRatesMin.push(
+      spread > 0.08 ? Math.max(0, Math.min(p, rawMin)) : Math.min(rawMin, minFallback)
+    );
+    minuteRatesMax.push(
+      Math.min(9.0, spread > 0.08 ? Math.max(p + 0.25, rawMax) : Math.max(rawMax, maxFallback))
+    );
+  }
 
   const extractModelVals = (fieldPrefix, hourIdx, scale = 1) => {
     const vals = [];
@@ -1879,6 +1977,8 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     localStationName: zCur?.localStationName ?? null,
     localStationWx: zCur?.localStationWx ?? null,
     minuteRates,
+    minuteRatesMin,
+    minuteRatesMax,
     hourly,
     daily,
     ensembleModels,
@@ -2036,7 +2136,12 @@ function renderDashboard() {
 }
 
 /* Dark Sky Next-Hour Precipitation Curve & Headline */
-function renderNextHourNowcast(minuteRates, currentHour) {
+function renderNextHourNowcast(
+  minuteRates,
+  currentHour,
+  minuteRatesMin = state.weather?.minuteRatesMin,
+  minuteRatesMax = state.weather?.minuteRatesMax
+) {
   const headlineEl = document.getElementById("nowcast-headline");
   const subEl = document.getElementById("nowcast-subheadline");
   const badgeEl = document.getElementById("nowcast-updated-label");
@@ -2141,15 +2246,87 @@ function renderNextHourNowcast(minuteRates, currentHour) {
   });
   ctx.setLineDash([]);
 
-  // Plot smooth curve (scale 0..9 mm/hr)
+  // Plot smooth curve & multi-model min/max estimation band (scale 0..9 mm/hr)
   const scaleMax = 9.0;
-  const points = minuteRates.map((rate, i) => {
-    const x = (i / 60) * W;
-    const norm = Math.min(1, rate / scaleMax);
-    const y = H - 4 - norm * (H - 14);
-    return { x, y };
-  });
+  const yBottom = H - 5;
+  const yTop = 10;
+  const ySpan = Math.max(20, yBottom - yTop);
+  const rateToY = (r) => {
+    const norm = Math.min(1, Math.max(0, Number(r || 0)) / scaleMax);
+    return yBottom - norm * ySpan;
+  };
 
+  const points = [];
+  const upperPoints = [];
+  const lowerPoints = [];
+
+  for (let i = 0; i < minuteRates.length; i++) {
+    const x = (i / Math.max(1, minuteRates.length - 1)) * W;
+    const rMain = Number(minuteRates[i] ?? 0);
+    const rMin =
+      Array.isArray(minuteRatesMin) && minuteRatesMin[i] !== undefined
+        ? Number(minuteRatesMin[i])
+        : Math.max(0, rMain * 0.7);
+    const rMax =
+      Array.isArray(minuteRatesMax) && minuteRatesMax[i] !== undefined
+        ? Number(minuteRatesMax[i])
+        : Math.max(rMain * 1.3 + 0.35, 0.5);
+
+    const yMain = rateToY(rMain);
+    let yUp = rateToY(Math.max(rMain, rMax));
+    let yLow = rateToY(Math.min(rMain, rMin));
+
+    // Guarantee a legible light-gray estimation envelope around the curve
+    if (yLow - yUp < 9) {
+      yUp = Math.max(yTop - 2, Math.min(yUp, yMain - 6));
+      yLow = Math.min(H - 1, Math.max(yLow, yMain + 3.5));
+    }
+
+    points.push({ x, y: yMain });
+    upperPoints.push({ x, y: yUp });
+    lowerPoints.push({ x, y: yLow });
+  }
+
+  // 1) Light gray multi-model min/max estimation band fill & dashed envelope edges
+  if (upperPoints.length > 1) {
+    const bandGrad = ctx.createLinearGradient(0, yTop, 0, H);
+    bandGrad.addColorStop(0, "rgba(226, 232, 240, 0.28)");
+    bandGrad.addColorStop(1, "rgba(148, 163, 184, 0.18)");
+
+    ctx.beginPath();
+    upperPoints.forEach((p, idx) => {
+      if (idx === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    for (let idx = lowerPoints.length - 1; idx >= 0; idx--) {
+      ctx.lineTo(lowerPoints[idx].x, lowerPoints[idx].y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = bandGrad;
+    ctx.fill();
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(203, 213, 225, 0.52)";
+    ctx.lineWidth = 1.15;
+    ctx.setLineDash([3, 3]);
+
+    ctx.beginPath();
+    upperPoints.forEach((p, idx) => {
+      if (idx === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.stroke();
+
+    ctx.beginPath();
+    lowerPoints.forEach((p, idx) => {
+      if (idx === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 2) Primary precipitation area fill & curve
   const grad = ctx.createLinearGradient(0, 0, 0, H);
   grad.addColorStop(0, "rgba(56, 189, 248, 0.68)");
   grad.addColorStop(1, "rgba(56, 189, 248, 0.04)");
@@ -2177,7 +2354,12 @@ function renderNextHourNowcast(minuteRates, currentHour) {
     canvas._nowcastResizeBound = true;
     const ro = new ResizeObserver(() => {
       if (state.weather?.minuteRates) {
-        renderNextHourNowcast(state.weather.minuteRates, state.weather.hourly?.[0]);
+        renderNextHourNowcast(
+          state.weather.minuteRates,
+          state.weather.hourly?.[0],
+          state.weather.minuteRatesMin,
+          state.weather.minuteRatesMax
+        );
       }
     });
     ro.observe(canvas);
