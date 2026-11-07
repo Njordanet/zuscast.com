@@ -368,7 +368,7 @@ function renderLocationsStrip() {
   });
 }
 
-const ZUS_API_HTTPS_HOST = "https://euros-screensaver-outstanding-remedies.trycloudflare.com";
+const ZUS_API_HTTPS_HOST = "https://api.zuscast.com";
 const ZUS_API_LAN_HOST = "http://192.168.1.65:8000";
 const ZUS_API_HOST =
   typeof window !== "undefined" && window.location.protocol === "https:"
