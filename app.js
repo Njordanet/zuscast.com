@@ -28,19 +28,70 @@ const US_STATE_CODES = {
 function normalizeStateLabel(raw) {
   if (!raw) return "";
   const cleaned = String(raw).replace(/^[A-Z]{2}-/i, "").trim();
+  if (/^\d+$/.test(cleaned)) return "";
   const code = US_STATE_CODES[cleaned.toLowerCase()];
   return code || cleaned;
 }
 
+function cleanCountryName(raw) {
+  if (!raw) return "";
+  return String(raw)
+    .replace(/\s*\(the\)\s*/gi, "")
+    .trim();
+}
+
+function resolveReverseGeocodeRegion(info, cityName = "") {
+  if (!info) return "";
+  const countryCode = String(info.countryCode || "").toUpperCase();
+  const countryName = cleanCountryName(info.countryName);
+  const subCodeSuffix = info.principalSubdivisionCode
+    ? String(info.principalSubdivisionCode).replace(/^[A-Z]{2}-/i, "").trim()
+    : "";
+  const useShortCode =
+    ["US", "CA", "AU"].includes(countryCode) && /^[A-Z]{2,3}$/i.test(subCodeSuffix);
+
+  let admin = useShortCode
+    ? subCodeSuffix.toUpperCase()
+    : normalizeStateLabel(info.principalSubdivision);
+
+  const cityLower = String(cityName || info.city || "").trim().toLowerCase();
+  if (admin && cityLower && admin.toLowerCase() === cityLower) {
+    const locality = String(info.locality || "").trim();
+    if (locality && locality.toLowerCase() !== cityLower && !/^\d+$/.test(locality)) {
+      admin = locality;
+    } else {
+      admin = "";
+    }
+  }
+
+  const postcode = String(info.postcode || "").trim();
+  if (postcode) {
+    return [admin || countryName || countryCode, postcode].filter(Boolean).join(" • ");
+  }
+  if (countryCode && countryCode !== "US") {
+    return [admin, countryName || countryCode].filter(Boolean).join(" • ");
+  }
+  return [admin || countryName, postcode].filter(Boolean).join(" • ");
+}
+
 function sanitizeRegionString(regionStr) {
   if (!regionStr) return "";
-  return String(regionStr)
+  const cleaned = String(regionStr)
     .replace(/📍/g, "")
     .replace(/\bGPS\s+Hyperlocal\b/gi, "")
     .replace(/\bHyperlocal(?:\s+Forecast|\s+Telemetry)?\b/gi, "")
     .replace(/^[•\s,]+|[•\s,]+$/g, "")
     .replace(/\s*•\s*•\s*/g, " • ")
     .trim();
+  if (/^\d{1,3}$/.test(cleaned)) return "";
+  const parts = cleaned
+    .split("•")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length > 1 && /^\d{1,3}$/.test(parts[0])) {
+    parts.shift();
+  }
+  return parts.join(" • ");
 }
 
 function loadRecentSearches() {
@@ -973,10 +1024,18 @@ const dopplerRadarMap = {
               const lat = state.location?.latitude ?? 39.0;
               const cosLat = Math.max(0.25, Math.cos((lat * Math.PI) / 180.0));
               const kmPerPixel = (40075.017 * cosLat) / (256 * Math.pow(2, coords.z));
-              const speedKmh = Math.max(52.0, self.telemetry?.stormMotionKmh ?? 54.0);
+              const windSpeed = state.weather?.windSpeed ?? 38.0;
+              const windFromDeg = state.weather?.windDirection ?? 245;
+              const fallbackMoveDeg = (windFromDeg + 180) % 360;
+              const speedKmh = Math.max(
+                42.0,
+                self.telemetry?.stormMotionKmh ?? Math.round(windSpeed * 1.15)
+              );
               const distKm = speedKmh * (frame.offsetMinutes / 60.0);
               const moveDeg =
-                self.telemetry?.stormMotionDeg ?? self.telemetry?.stormMotionDegrees ?? 68;
+                self.telemetry?.stormMotionDeg ??
+                self.telemetry?.stormMotionDegrees ??
+                fallbackMoveDeg;
               const rad = (moveDeg * Math.PI) / 180.0;
               shiftX = Math.round((Math.sin(rad) * distKm) / kmPerPixel);
               shiftY = Math.round((-Math.cos(rad) * distKm) / kmPerPixel);
@@ -1021,18 +1080,28 @@ const dopplerRadarMap = {
               ? Math.max(0.76, 1.0 - (frame.offsetMinutes / 120.0) * 0.18)
               : 1.0;
 
-            for (let i = 0; i < d.length; i += 4) {
-              if (d[i + 3] < 20) {
-                d[i + 3] = 0;
-                continue;
+            if (frame.isRainViewer) {
+              for (let i = 0; i < d.length; i += 4) {
+                if (d[i + 3] < 16) {
+                  d[i + 3] = 0;
+                  continue;
+                }
+                d[i + 3] = Math.round(d[i + 3] * decay);
               }
-              const dbz =
-                self.estimateDbzFromN0qRgba(d[i], d[i + 1], d[i + 2], d[i + 3]) * decay;
-              const [zr, zg, zb, za] = self.zusColorForDbz(dbz);
-              d[i] = zr;
-              d[i + 1] = zg;
-              d[i + 2] = zb;
-              d[i + 3] = za;
+            } else {
+              for (let i = 0; i < d.length; i += 4) {
+                if (d[i + 3] < 20) {
+                  d[i + 3] = 0;
+                  continue;
+                }
+                const dbz =
+                  self.estimateDbzFromN0qRgba(d[i], d[i + 1], d[i + 2], d[i + 3]) * decay;
+                const [zr, zg, zb, za] = self.zusColorForDbz(dbz);
+                d[i] = zr;
+                d[i + 1] = zg;
+                d[i + 2] = zb;
+                d[i + 3] = za;
+              }
             }
             ctx.putImageData(imageData, 0, 0);
           } catch (_) {}
@@ -1046,7 +1115,7 @@ const dopplerRadarMap = {
     return new GridLayerClass({
       opacity: 0,
       zIndex: 200,
-      maxNativeZoom: 8,
+      maxNativeZoom: frame.maxNativeZoom || 8,
       maxZoom: 10,
     });
   },
@@ -1120,10 +1189,15 @@ const dopplerRadarMap = {
     this.renderTelemetryStrip(this.telemetry);
   },
 
-  ensureTwoHourNowcastFrames(frames) {
+  ensureTwoHourNowcastFrames(frames, options = {}) {
     if (!Array.isArray(frames) || !frames.length) return frames;
     const liveFrame = frames.find((f) => f.offsetMinutes === 0) || frames[frames.length - 1];
     const baseTs = liveFrame?.timestamp || Math.floor(Date.now() / 1000);
+    const fallbackUrl =
+      options.tileUrlTemplate ||
+      "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png";
+    const maxNativeZoom = options.maxNativeZoom || liveFrame?.maxNativeZoom || 8;
+    const isRainViewer = Boolean(options.isRainViewer || liveFrame?.isRainViewer);
     const futureTargets = [
       { offset: 15, label: "+15m" },
       { offset: 30, label: "+30m" },
@@ -1139,14 +1213,15 @@ const dopplerRadarMap = {
     futureTargets.forEach((ft) => {
       if (!existingOffsets.has(ft.offset)) {
         out.push({
-          frameId: `nowcast_p${ft.offset}m`,
+          frameId: `nowcast_p${ft.offset}m_${baseTs}`,
           timestamp: baseTs + ft.offset * 60,
           label: ft.label,
           offsetMinutes: ft.offset,
           isFuture: true,
           useZusCanvasLut: true,
-          tileUrlTemplate:
-            "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png",
+          isRainViewer,
+          maxNativeZoom,
+          tileUrlTemplate: fallbackUrl,
         });
       }
     });
@@ -1167,42 +1242,47 @@ const dopplerRadarMap = {
       if (this.scanCircle) this.scanCircle.setLatLng([lat, lon]);
     }
 
-    // 1. Try ZüsAPI 1km CONUS Master Grid & 8-Bit Storm Engine on panda first
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4500);
-      const resp = await fetch(
-        `${ZUS_API_BASE}/radar/manifest?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`,
-        { signal: controller.signal }
-      );
-      clearTimeout(timeout);
+    const inConus = this.isConusLocation(lat, lon);
 
-      if (resp.ok) {
-        const data = await resp.json();
-        if (Array.isArray(data.frames) && data.frames.length > 0) {
-          const normalizedFrames = data.frames.map((f) => ({
-            ...f,
-            tileUrlTemplate:
-              typeof f.tileUrlTemplate === "string" &&
-              window.location.protocol === "https:" &&
-              f.tileUrlTemplate.startsWith("http://")
-                ? "https://" + f.tileUrlTemplate.slice("http://".length)
-                : f.tileUrlTemplate,
-          }));
-          this.frames = this.ensureTwoHourNowcastFrames(normalizedFrames);
-          this.telemetry = data.localTelemetry || null;
-          this.cacheStats = data.cacheStats || null;
-          this.rebuildLayers();
-          this.renderTelemetryStrip(data.localTelemetry);
-          return data.localTelemetry;
+    // 1. Try ZüsAPI 1km CONUS Master Grid & 8-Bit Storm Engine on panda first (CONUS locations)
+    if (inConus) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4500);
+        const resp = await fetch(
+          `${ZUS_API_BASE}/radar/manifest?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeout);
+
+        if (resp.ok) {
+          const data = await resp.json();
+          if (Array.isArray(data.frames) && data.frames.length > 0) {
+            const normalizedFrames = data.frames.map((f) => ({
+              ...f,
+              maxNativeZoom: 8,
+              tileUrlTemplate:
+                typeof f.tileUrlTemplate === "string" &&
+                window.location.protocol === "https:" &&
+                f.tileUrlTemplate.startsWith("http://")
+                  ? "https://" + f.tileUrlTemplate.slice("http://".length)
+                  : f.tileUrlTemplate,
+            }));
+            this.frames = this.ensureTwoHourNowcastFrames(normalizedFrames, { maxNativeZoom: 8 });
+            this.telemetry = data.localTelemetry || null;
+            this.cacheStats = data.cacheStats || null;
+            this.rebuildLayers();
+            this.renderTelemetryStrip(data.localTelemetry);
+            return data.localTelemetry;
+          }
         }
+      } catch (_) {
+        // On https://zuscast.com, browsers block http://192.168.1.65:8000 (Mixed Content) -> use HTTPS 1km CONUS Core
       }
-    } catch (_) {
-      // On https://zuscast.com, browsers block http://192.168.1.65:8000 (Mixed Content) -> use HTTPS 1km CONUS Core
     }
 
     // 2. HTTPS 1km CONUS NEXRAD + 8-Bit Züs Storm LUT Engine (with +2h in 15m steps)
-    if (this.isConusLocation(lat, lon)) {
+    if (inConus) {
       const nowSec = Math.floor(Math.floor(Date.now() / 1000) / 300) * 300;
       const steps = [
         { id: "m45m", suffix: "-m45m", offset: -45, label: "-45m", future: false },
@@ -1228,6 +1308,7 @@ const dopplerRadarMap = {
         offsetMinutes: s.offset,
         isFuture: s.future,
         useZusCanvasLut: true,
+        maxNativeZoom: 8,
         tileUrlTemplate: `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${s.suffix}/{z}/{x}/{y}.png`,
       }));
 
@@ -1238,7 +1319,7 @@ const dopplerRadarMap = {
       return httpsTel;
     }
 
-    // 3. International Fallback outside CONUS: RainViewer public radar frames
+    // 3. International Fallback outside CONUS: RainViewer public radar frames (maxNativeZoom: 7)
     try {
       const rvResp = await fetch("https://api.rainviewer.com/public/weather-maps.json");
       if (rvResp.ok) {
@@ -1248,8 +1329,16 @@ const dopplerRadarMap = {
         const nowcast = rvData.radar?.nowcast || [];
         const combined = [...past, ...nowcast];
         const liveTs = past.length ? past[past.length - 1].time : Math.floor(Date.now() / 1000);
+        const livePath = past.length
+          ? past[past.length - 1].path
+          : combined.length
+          ? combined[combined.length - 1].path
+          : "";
+        const liveTileUrl = livePath
+          ? `${host}${livePath}/256/{z}/{x}/{y}/2/1_1.png`
+          : "";
 
-        this.frames = combined.map((f) => {
+        const baseFrames = combined.map((f) => {
           const diffMin = Math.round((f.time - liveTs) / 60);
           return {
             frameId: `rv_${f.time}`,
@@ -1257,9 +1346,20 @@ const dopplerRadarMap = {
             label: diffMin === 0 ? "LIVE" : diffMin > 0 ? `+${diffMin}m` : `${diffMin}m`,
             offsetMinutes: diffMin,
             isFuture: diffMin > 0,
+            isRainViewer: true,
+            maxNativeZoom: 7,
             tileUrlTemplate: `${host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`,
           };
         });
+
+        this.frames = liveTileUrl
+          ? this.ensureTwoHourNowcastFrames(baseFrames, {
+              tileUrlTemplate: liveTileUrl,
+              maxNativeZoom: 7,
+              isRainViewer: true,
+            })
+          : baseFrames;
+        this.telemetry = null;
         this.rebuildLayers();
         this.renderTelemetryStrip(null);
       }
@@ -1295,7 +1395,7 @@ const dopplerRadarMap = {
     return L.tileLayer(frame.tileUrlTemplate, {
       opacity: 0,
       zIndex: 200,
-      maxNativeZoom: 8,
+      maxNativeZoom: frame.maxNativeZoom || 7,
       maxZoom: 10,
     }).addTo(this.map);
   },
@@ -1432,18 +1532,14 @@ async function loadWeatherForCurrentLocation() {
   const mobileNavKickerEl = document.getElementById("mobile-nav-kicker");
   if (mobileNavKickerEl) mobileNavKickerEl.textContent = cleanedRegion;
 
-  if (!/\b[A-Z0-9]{3,10}\b/i.test((cleanedRegion.split("•")[1] || "").trim())) {
+  if (!cleanedRegion || !/\b[A-Z0-9]{3,10}\b/i.test((cleanedRegion.split("•")[1] || "").trim())) {
     fetch(
       `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
     )
       .then((r) => (r.ok ? r.json() : null))
       .then((info) => {
         if (!info) return;
-        const admin = info.principalSubdivisionCode
-          ? info.principalSubdivisionCode.replace(/^[A-Z]{2}-/i, "")
-          : normalizeStateLabel(info.principalSubdivision) || info.countryName || "";
-        const postcode = (info.postcode || "").trim();
-        const resolvedRegion = [admin, postcode].filter(Boolean).join(" • ");
+        const resolvedRegion = resolveReverseGeocodeRegion(info, name);
         if (
           resolvedRegion &&
           Math.abs(state.location.latitude - latitude) < 0.01 &&
@@ -2268,7 +2364,6 @@ function renderDashboard() {
   document.getElementById(
     "confidence-badge-text"
   ).textContent = `${w.confidencePct}% Model Agreement`;
-  renderConfidenceTooltip(w);
   document.getElementById("hero-icon-container").innerHTML = getWeatherSVG(
     cond.icon,
     Boolean(w.isNight)
@@ -3475,105 +3570,6 @@ function renderDailyForecast(daily) {
   });
 
   requestAnimationFrame(() => syncRadarCardHeight());
-}
-
-/* Render Multi-Model Sources Alignment Tooltip Popover */
-function renderConfidenceTooltip(w) {
-  if (!w || !w.ensembleModels) return;
-  const spreadEl = document.getElementById("confidence-tooltip-spread");
-  const summaryEl = document.getElementById("confidence-tooltip-summary");
-  const meterFillEl = document.getElementById("confidence-meter-fill");
-  const listEl = document.getElementById("confidence-sources-list");
-  const groundEl = document.getElementById("confidence-tooltip-ground");
-  if (!listEl) return;
-
-  const spreadVal = state.useImperial ? w.spreadC * 1.8 : w.spreadC;
-  const unit = state.useImperial ? "°F" : "°C";
-
-  if (spreadEl) {
-    spreadEl.textContent = `Spread ±${(spreadVal / 2).toFixed(1)}${unit}`;
-  }
-  if (summaryEl) {
-    const tier =
-      w.confidencePct >= 93
-        ? "Tight consensus across all 4 NWP sources"
-        : w.confidencePct >= 87
-        ? "Strong alignment across 4 NWP sources"
-        : "Moderate variance across 4 NWP sources";
-    summaryEl.textContent = `${w.confidencePct}% agreement • ${tier}`;
-  }
-  if (meterFillEl) {
-    meterFillEl.style.width = `${Math.max(10, Math.min(100, w.confidencePct))}%`;
-  }
-  if (groundEl) {
-    groundEl.textContent = w.localStationName
-      ? `Ground truth: ${w.localStationName} + NEXRAD`
-      : "Assimilating 1km NEXRAD + METAR";
-  }
-
-  listEl.innerHTML = w.ensembleModels
-    .map((m) => {
-      const deltaVal = state.useImperial ? (m.deltaC ?? 0) * 1.8 : m.deltaC ?? 0;
-      const absDelta = Math.abs(deltaVal);
-      const deltaLabel =
-        absDelta < 0.15
-          ? "Consensus"
-          : `Δ ${deltaVal > 0 ? "+" : ""}${deltaVal.toFixed(1)}${unit}`;
-      const alignPct = m.alignmentPct ?? w.confidencePct;
-      const toneClass =
-        alignPct >= 93 ? "aligned" : alignPct >= 86 ? "moderate" : "divergent";
-      const pop = Math.round(m.precipProb ?? 0);
-      const windStr = formatWind(m.wind ?? w.windSpeed);
-
-      return `
-        <div class="confidence-source-row">
-          <div class="confidence-source-top">
-            <div class="confidence-source-name-wrap">
-              <span class="confidence-source-name">${m.name}</span>
-              <span class="confidence-source-tag">${m.tag}</span>
-            </div>
-            <div class="confidence-source-metrics">
-              <span class="confidence-source-temp">${formatTemp(m.temp, true)}</span>
-              <span class="confidence-source-delta ${toneClass}">${deltaLabel}</span>
-            </div>
-          </div>
-          <div class="confidence-source-sub">
-            <span>PoP ${pop}% &bull; Wind ${windStr}</span>
-            <div class="confidence-source-bar-wrap">
-              <div class="confidence-source-bar-track">
-                <div class="confidence-source-bar-fill ${toneClass}" style="width: ${alignPct}%"></div>
-              </div>
-              <span class="confidence-source-pct">${alignPct}%</span>
-            </div>
-          </div>
-        </div>
-      `;
-    })
-    .join("");
-}
-
-function toggleConfidenceTooltip(forceState) {
-  const btn = document.getElementById("confidence-pill-btn");
-  const tooltip = document.getElementById("confidence-tooltip");
-  const ensembleCard = document.querySelector(".ensemble-card");
-  const heroCard = document.querySelector(".hero-card");
-  if (!btn || !tooltip) return;
-
-  const isCurrentlyOpen = !tooltip.hasAttribute("hidden");
-  const nextOpen = typeof forceState === "boolean" ? forceState : !isCurrentlyOpen;
-
-  if (nextOpen) {
-    if (state.weather) renderConfidenceTooltip(state.weather);
-    tooltip.removeAttribute("hidden");
-    btn.setAttribute("aria-expanded", "true");
-    if (ensembleCard) ensembleCard.classList.add("tooltip-open");
-    if (heroCard) heroCard.classList.add("tooltip-open");
-  } else {
-    tooltip.setAttribute("hidden", "");
-    btn.setAttribute("aria-expanded", "false");
-    if (ensembleCard) ensembleCard.classList.remove("tooltip-open");
-    if (heroCard) heroCard.classList.remove("tooltip-open");
-  }
 }
 
 /* Render Multi-Model Ensemble Strip */
@@ -4839,7 +4835,12 @@ function setupCitySearch() {
           btn.type = "button";
           btn.className = "search-result-item";
           const dropdownMeta = [item.admin1, item.country].filter(Boolean).join(", ");
-          const stateCode = normalizeStateLabel(item.admin1) || item.country_code || item.country || "";
+          const rawAdmin = normalizeStateLabel(item.admin1);
+          const countryLabel = cleanCountryName(item.country) || item.country_code || "";
+          const stateCode =
+            rawAdmin && rawAdmin.toLowerCase() !== String(item.name || "").trim().toLowerCase()
+              ? rawAdmin
+              : countryLabel || rawAdmin || "";
           const firstZip =
             Array.isArray(item.postcodes) && item.postcodes.length
               ? String(item.postcodes[0]).trim()
@@ -4918,11 +4919,7 @@ function acquireUserLocation(isAutoStartup = false) {
         if (rev.ok) {
           const info = await rev.json();
           cityName = info.city || info.locality || "Current Location";
-          const admin = info.principalSubdivisionCode
-            ? info.principalSubdivisionCode.replace(/^[A-Z]{2}-/i, "")
-            : normalizeStateLabel(info.principalSubdivision) || info.countryName || "";
-          const postcode = (info.postcode || "").trim();
-          region = [admin, postcode].filter(Boolean).join(" • ");
+          region = resolveReverseGeocodeRegion(info, cityName);
         }
       } catch (_) {}
 
@@ -5048,29 +5045,6 @@ function setupControls() {
     });
   });
 
-  // Model Agreement Pill -> Toggle Sources Alignment Tooltip
-  const confPillBtn = document.getElementById("confidence-pill-btn");
-  const confWrap = document.getElementById("confidence-pill-wrap");
-  const confMoreBtn = document.getElementById("confidence-tooltip-more-btn");
-  if (confPillBtn) {
-    confPillBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleConfidenceTooltip();
-    });
-  }
-  if (confMoreBtn) {
-    confMoreBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleConfidenceTooltip(false);
-      openTileDetailModal("ensemble");
-    });
-  }
-  document.addEventListener("click", (e) => {
-    if (confWrap && !confWrap.contains(e.target)) {
-      toggleConfidenceTooltip(false);
-    }
-  });
-
   // Modal Close Controls
   const modalCloseBtn = document.getElementById("tile-modal-close");
   const modalDoneBtn = document.getElementById("tile-modal-done-btn");
@@ -5105,7 +5079,6 @@ function setupControls() {
       hourModalBackdrop && !hourModalBackdrop.hasAttribute("hidden");
     const radarModalOpen = Boolean(dopplerRadarMap.isModalOpen);
     if (e.key === "Escape") {
-      toggleConfidenceTooltip(false);
       toggleMobileSearch(false);
       if (radarModalOpen) {
         dopplerRadarMap.closeModal();
