@@ -2824,7 +2824,7 @@ function renderHourlyCurveIntoContainer(
     <path d="${bandPathD}" fill="${desc.bandFill}" stroke="none" />
     <path d="${upperPathD}" fill="none" stroke="${desc.bandStroke}" stroke-width="1.2" stroke-dasharray="3 3" />
     <path d="${lowerPathD}" fill="none" stroke="${desc.bandStroke}" stroke-width="1.2" stroke-dasharray="3 3" />
-    <path d="${mainPathD}" fill="none" stroke="${desc.lineColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="${mainPathD}" fill="none" stroke="${desc.lineColor}" stroke-width="${colW <= 58 ? 3.2 : 4}" stroke-linecap="round" stroke-linejoin="round" />
   `;
   stage.appendChild(svg);
 
@@ -2923,13 +2923,15 @@ function renderHourlyTimeline(hourly) {
   if (!scroll || !hourly || !hourly.length) return;
 
   const prevScrollLeft = scroll.scrollLeft;
-  const colW = 74;
+  const isMobile = window.innerWidth <= 640;
+  const colW = isMobile ? 54 : 74;
+  const H = isMobile ? 154 : 196;
 
   renderHourlyCurveIntoContainer(scroll, hourly, state.hourlyMode, {
     showNowOnFirst: true,
     showDayDividers: true,
     colW,
-    H: 196,
+    H,
     contextLabel: "24-Hour & 10-Day Timeline",
     onSelectMode: (newMode) => {
       state.hourlyMode = newMode;
@@ -4366,6 +4368,16 @@ function setupControls() {
     () => {
       syncLiquidPillGlider(topPillBar);
       syncRadarCardHeight();
+      const scroll = document.getElementById("hourly-scroll");
+      const targetColW = window.innerWidth <= 640 ? 54 : 74;
+      if (
+        scroll &&
+        scroll._curveState &&
+        scroll._curveState.colW !== targetColW &&
+        state.weather?.hourly
+      ) {
+        renderHourlyTimeline(state.weather.hourly);
+      }
       document
         .querySelectorAll(".day-accordion.open .day-pill-bar")
         .forEach((bar) => syncLiquidPillGlider(bar));

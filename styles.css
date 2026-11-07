@@ -1268,7 +1268,6 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 .hourly-curve-stage {
   position: relative;
   height: 196px;
-  min-width: 1776px;
   user-select: none;
 }
 
@@ -3324,6 +3323,50 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   }
 
   /* M4: 24-Hour & 10-Day Timeline Touch Ergonomics */
+  .hourly-chart-scroll {
+    padding: 10px 8px 8px;
+  }
+
+  .hourly-curve-stage {
+    height: 154px;
+  }
+
+  .hourly-col {
+    flex: 0 0 54px;
+    width: 54px;
+  }
+
+  .hourly-col-time {
+    font-size: 0.68rem;
+  }
+
+  .day-divider-pill {
+    font-size: 0.54rem;
+    padding: 1px 4px;
+    margin-right: 1px;
+  }
+
+  .hourly-node-icon {
+    width: 21px;
+    height: 21px;
+    bottom: calc(100% + 3px);
+  }
+
+  .hourly-node-pop {
+    bottom: calc(100% + 25px);
+    font-size: 0.56rem;
+  }
+
+  .hourly-node-val {
+    font-size: 0.82rem;
+    padding: 1px 5px;
+  }
+
+  .hourly-node-spread {
+    font-size: 0.6rem;
+    padding: 1px 4px;
+  }
+
   .mode-tab {
     padding: 8px 15px;
     font-size: 0.8rem;
