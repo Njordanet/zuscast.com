@@ -540,6 +540,8 @@ const dopplerRadarMap = {
       zoom: this.baseZoom,
       minZoom: 3,
       maxZoom: 10,
+      zoomSnap: 0.25,
+      zoomDelta: 1,
       zoomControl: false,
       attributionControl: false,
       scrollWheelZoom: false,
@@ -549,6 +551,8 @@ const dopplerRadarMap = {
       boxZoom: false,
       keyboard: false,
     });
+
+    this.initTrackpadGestures(mapEl);
 
     // Keyless Esri World Dark Gray Base (works on localhost, file://, and production without API keys)
     L.tileLayer(
@@ -739,13 +743,96 @@ const dopplerRadarMap = {
     }
   },
 
+  initTrackpadGestures(mapEl) {
+    if (!mapEl) return;
+    this._wheelPinchAccum = 0;
+    this._safariGestureActive = false;
+    this._gestureStartZoom = this.baseZoom;
+
+    mapEl.addEventListener(
+      "wheel",
+      (e) => {
+        if (!this.isModalOpen || !this.map) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Trackpad pinch-to-zoom (fires wheel with ctrlKey === true across Chrome, Safari, Firefox, Edge)
+        if (e.ctrlKey || e.metaKey) {
+          if (this._safariGestureActive) return;
+          const zoomDelta = -e.deltaY * 0.024;
+          this._wheelPinchAccum += zoomDelta;
+          if (Math.abs(this._wheelPinchAccum) >= 0.25) {
+            const step = Math.trunc(this._wheelPinchAccum / 0.25) * 0.25;
+            this._wheelPinchAccum -= step;
+            const rect = mapEl.getBoundingClientRect();
+            const pt = L.point(e.clientX - rect.left, e.clientY - rect.top);
+            const nextZoom = Math.max(
+              this.map.getMinZoom(),
+              Math.min(this.map.getMaxZoom(), this.map.getZoom() + step)
+            );
+            this.map.setZoomAround(pt, nextZoom, { animate: false });
+          }
+          return;
+        }
+
+        // Two-finger trackpad move -> pan the map
+        this._wheelPinchAccum = 0;
+        const scale = e.deltaMode === 1 ? 18 : e.deltaMode === 2 ? 360 : 1;
+        const dx = e.deltaX * scale;
+        const dy = e.deltaY * scale;
+        if (dx !== 0 || dy !== 0) {
+          this.map.panBy([dx, dy], { animate: false });
+        }
+      },
+      { passive: false }
+    );
+
+    // WebKit / Safari native trackpad pinch gesture fallback
+    mapEl.addEventListener(
+      "gesturestart",
+      (e) => {
+        if (!this.isModalOpen || !this.map) return;
+        e.preventDefault();
+        this._safariGestureActive = true;
+        this._gestureStartZoom = this.map.getZoom();
+      },
+      { passive: false }
+    );
+
+    mapEl.addEventListener(
+      "gesturechange",
+      (e) => {
+        if (!this.isModalOpen || !this.map) return;
+        e.preventDefault();
+        const scale = e.scale || 1;
+        const rawTarget = this._gestureStartZoom + Math.log2(scale) * 1.6;
+        const snapped = Math.round(rawTarget * 4) / 4;
+        const nextZoom = Math.max(
+          this.map.getMinZoom(),
+          Math.min(this.map.getMaxZoom(), snapped)
+        );
+        if (nextZoom !== this.map.getZoom()) {
+          const rect = mapEl.getBoundingClientRect();
+          const cx = typeof e.clientX === "number" ? e.clientX - rect.left : rect.width / 2;
+          const cy = typeof e.clientY === "number" ? e.clientY - rect.top : rect.height / 2;
+          this.map.setZoomAround(L.point(cx, cy), nextZoom, { animate: false });
+        }
+      },
+      { passive: false }
+    );
+
+    mapEl.addEventListener("gestureend", () => {
+      this._safariGestureActive = false;
+    });
+  },
+
   setMapInteractive(interactive) {
     if (!this.map) return;
+    // Keep scrollWheelZoom disabled so two-finger trackpad gestures pan instead of zooming
     const handlers = [
       "dragging",
       "touchZoom",
       "doubleClickZoom",
-      "scrollWheelZoom",
       "boxZoom",
       "keyboard",
     ];
@@ -755,6 +842,9 @@ const dopplerRadarMap = {
         else this.map[h].disable();
       }
     });
+    if (this.map.scrollWheelZoom) {
+      this.map.scrollWheelZoom.disable();
+    }
     this.updateCoordsHudLabel();
   },
 
