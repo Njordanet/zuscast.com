@@ -320,6 +320,7 @@ function uvAdvice(uv) {
 
 function toggleMobileSearch(forceOpen) {
   const topNav = document.querySelector(".top-nav");
+  const firstScreen = document.getElementById("mobile-first-screen");
   const toggleBtn = document.getElementById("mobile-search-toggle-btn");
   const searchInput = document.getElementById("city-search-input");
   const dropdown = document.getElementById("search-dropdown");
@@ -329,6 +330,9 @@ function toggleMobileSearch(forceOpen) {
   const nextOpen = typeof forceOpen === "boolean" ? forceOpen : !isCurrentlyOpen;
 
   topNav.classList.toggle("mobile-search-open", nextOpen);
+  if (firstScreen) {
+    firstScreen.classList.toggle("search-expanded", nextOpen);
+  }
   if (toggleBtn) {
     toggleBtn.setAttribute("aria-expanded", String(nextOpen));
   }
@@ -2756,9 +2760,9 @@ function renderHourlyCurveIntoContainer(
   const rawSpan = Math.max(0.0001, allMax - allMin);
 
   const W = hourly.length * colW;
-  const isCompactStage = H <= 115;
-  const yTop = Math.round(H * (isCompactStage ? 0.5 : 0.44));
-  const yBottom = Math.round(H * (isCompactStage ? 0.82 : 0.78));
+  const isCompactStage = H <= 152;
+  const yTop = Math.round(H * (isCompactStage ? 0.48 : 0.44));
+  const yBottom = Math.round(H * (isCompactStage ? 0.80 : 0.78));
   const ySpan = yBottom - yTop;
 
   const valueToY = (v) => {
@@ -3014,10 +3018,15 @@ function renderHourlyCurveIntoContainer(
 function getMobileHourlyColWidth(scrollEl) {
   const containerW =
     (scrollEl && scrollEl.clientWidth) ||
-    Math.max(296, window.innerWidth - 40);
-  const innerW = Math.max(270, containerW - 8);
-  // Fit 9 full hourly columns simultaneously across the mobile chart viewport
-  return Math.max(33, Math.min(44, Math.floor(innerW / 9.2)));
+    Math.max(296, window.innerWidth - 52);
+  const innerW = Math.max(270, containerW - 12);
+  // Fit 9 full hourly columns edge-to-edge across the mobile chart viewport with zero 10th-hour cutoff
+  return Math.max(32, Math.min(48, Number((innerW / 9).toFixed(2))));
+}
+
+function getMobileHourlyStageHeight(scrollEl) {
+  const containerH = scrollEl && scrollEl.clientHeight ? scrollEl.clientHeight - 14 : 124;
+  return Math.max(114, Math.min(156, Math.round(containerH)));
 }
 
 function renderHourlyTimeline(hourly) {
@@ -3027,7 +3036,7 @@ function renderHourlyTimeline(hourly) {
   const prevScrollLeft = scroll.scrollLeft;
   const isMobile = window.innerWidth <= 640;
   const colW = isMobile ? getMobileHourlyColWidth(scroll) : 74;
-  const H = isMobile ? 104 : 196;
+  const H = isMobile ? getMobileHourlyStageHeight(scroll) : 196;
 
   renderHourlyCurveIntoContainer(scroll, hourly, state.hourlyMode, {
     showNowOnFirst: true,
@@ -3056,6 +3065,24 @@ function renderHourlyTimeline(hourly) {
 
   scroll.scrollLeft = prevScrollLeft;
   syncLiquidPillGlider(document.getElementById("timeline-pill-bar"));
+
+  if (!scroll._hourlyResizeBound && typeof ResizeObserver !== "undefined") {
+    scroll._hourlyResizeBound = true;
+    const ro = new ResizeObserver(() => {
+      if (!state.weather?.hourly) return;
+      const mobileNow = window.innerWidth <= 640;
+      const nextColW = mobileNow ? getMobileHourlyColWidth(scroll) : 74;
+      const nextH = mobileNow ? getMobileHourlyStageHeight(scroll) : 196;
+      if (
+        scroll._curveState &&
+        (Math.abs(scroll._curveState.colW - nextColW) > 0.25 ||
+          Math.abs(scroll._curveState.H - nextH) > 2)
+      ) {
+        renderHourlyTimeline(state.weather.hourly);
+      }
+    });
+    ro.observe(scroll);
+  }
 }
 
 /* Lock Radar Card height to the collapsed 10-Day Forecast card height so expanding a day never stretches the radar */

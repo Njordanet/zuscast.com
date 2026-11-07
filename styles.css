@@ -349,6 +349,10 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   gap: clamp(14px, 1.6vw, 20px);
 }
 
+.mobile-first-screen {
+  display: contents;
+}
+
 /* Top Navigation Bar (Open Header Without Outer Glass Box) */
 .top-nav {
   display: flex;
@@ -3227,63 +3231,114 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   }
 }
 
-/* Mobile Perfection Suite (Phones & Phablets <= 640px) */
+/* Mobile Perfection Suite — iOS 27 Native App Proportions & Universal 100dvh First-Screen Fit (<= 640px) */
 @media (max-width: 640px) {
+  /* Lock root document so iOS 26/27 WebKit never activates the blurry _UIScrollPocket over the top bar */
+  html,
   body {
+    height: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+
+  body {
+    padding-top: env(safe-area-inset-top, 0px);
     background:
       radial-gradient(
-        ellipse 75% 40% at 50% 24%,
+        ellipse 80% 42% at 50% 30%,
         rgba(56, 189, 248, 0.14),
-        transparent 70%
+        transparent 72%
       ),
       linear-gradient(180deg, var(--sky-bg-top) 0%, var(--sky-bg-mid) 48%, var(--sky-bg-bottom) 100%);
   }
 
   .app-shell {
+    height: calc(100dvh - env(safe-area-inset-top, 0px));
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
     padding:
-      max(8px, calc(env(safe-area-inset-top, 0px) + 4px))
-      max(10px, env(safe-area-inset-right))
-      max(36px, calc(20px + env(safe-area-inset-bottom)))
-      max(10px, env(safe-area-inset-left));
-    gap: 8px;
+      8px
+      max(12px, env(safe-area-inset-right))
+      max(42px, calc(24px + env(safe-area-inset-bottom)))
+      max(12px, env(safe-area-inset-left));
+    gap: 12px;
   }
 
-  .hero-nowcast-grid,
+  body.modal-open .app-shell {
+    overflow: hidden;
+  }
+
+  /* Universal 100dvh First-Screen Viewport: Top Bar + Top 3 Tiles fill 100% of screen; 10-Day sits below fold */
+  .mobile-first-screen {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: calc(
+      100dvh - env(safe-area-inset-top, 0px) - 16px - max(8px, calc(env(safe-area-inset-bottom, 0px) * 0.45))
+    );
+    height: calc(
+      100dvh - env(safe-area-inset-top, 0px) - 16px - max(8px, calc(env(safe-area-inset-bottom, 0px) * 0.45))
+    );
+    flex-shrink: 0;
+  }
+
+  .mobile-first-screen.search-expanded {
+    height: auto;
+  }
+
+  .hero-nowcast-grid {
+    flex: 2.15 1 0%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
   .main-split-grid {
-    gap: 8px;
+    gap: 12px;
   }
 
-  /* M2: Compact 36px Single-Row Top Bar + On-Demand Expandable Search Drawer */
+  /* M2: Crisp iOS 27 Navigation Header (Zero Top Blur) + Expandable Search Drawer */
   .top-nav {
     position: relative;
+    flex: 0 0 auto;
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    min-height: 32px;
+    min-height: 36px;
     padding: 0 2px;
-    gap: 6px;
+    gap: 8px;
+    transform: translateZ(0);
   }
 
   .brand {
-    gap: 8px;
-    max-width: calc(100% - 124px);
-    min-height: 32px;
+    gap: 9px;
+    max-width: calc(100% - 134px);
+    min-height: 36px;
   }
 
   .brand-icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: linear-gradient(145deg, rgba(30, 58, 95, 0.95), rgba(15, 36, 71, 0.95));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .brand-icon svg {
-    width: 17px;
-    height: 17px;
+    width: 20px;
+    height: 20px;
   }
 
   .brand-name {
-    font-size: 1.05rem;
+    font-size: 1.18rem;
+    font-weight: 700;
     line-height: 1.1;
   }
 
@@ -3322,29 +3377,35 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     z-index: 5;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
   }
 
   #unit-toggle-btn {
-    padding: 5px 10px;
-    font-size: 0.72rem;
-    min-height: 30px;
+    padding: 6px 12px;
+    font-size: 0.78rem;
+    min-height: 34px;
+    background: linear-gradient(155deg, rgba(30, 52, 88, 0.92), rgba(18, 33, 60, 0.94));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .mobile-search-toggle-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 30px;
-    min-height: 30px;
+    width: 36px;
+    height: 34px;
+    min-height: 34px;
     padding: 0;
     border-radius: var(--radius-pill);
+    background: linear-gradient(155deg, rgba(30, 52, 88, 0.92), rgba(18, 33, 60, 0.94));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .top-nav.mobile-search-open .mobile-search-toggle-btn {
-    background: linear-gradient(135deg, rgba(56, 189, 248, 0.34), rgba(129, 140, 248, 0.24));
-    border-color: rgba(125, 211, 252, 0.72);
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.42), rgba(129, 140, 248, 0.32));
+    border-color: rgba(125, 211, 252, 0.78);
     color: #ffffff;
   }
 
@@ -3360,7 +3421,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   }
 
   .top-nav.mobile-search-open .search-wrapper {
-    margin-top: 2px;
+    margin-top: 4px;
     animation: mobileSearchExpand 0.2s var(--spring-smooth);
   }
 
@@ -3376,8 +3437,8 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   }
 
   .search-input-group {
-    padding: 4px 5px 4px 12px;
-    min-height: 38px;
+    padding: 5px 6px 5px 13px;
+    min-height: 42px;
   }
 
   /* M1: 16px font-size prevents iOS Safari auto-zoom when tapping the search input */
@@ -3386,27 +3447,27 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   }
 
   #city-search-input::placeholder {
-    font-size: 0.82rem;
+    font-size: 0.85rem;
   }
 
   .locate-btn {
-    padding: 5px 10px;
-    font-size: 0.74rem;
-    min-height: 28px;
+    padding: 6px 11px;
+    font-size: 0.76rem;
+    min-height: 30px;
   }
 
   .mobile-search-close-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     margin-left: 4px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.09);
+    border: 1px solid rgba(255, 255, 255, 0.16);
     color: var(--text-secondary);
-    font-size: 1rem;
+    font-size: 1.05rem;
     line-height: 1;
     cursor: pointer;
     flex-shrink: 0;
@@ -3414,221 +3475,235 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 
   .locations-strip {
     justify-content: flex-start;
-    padding: 1px 0;
+    padding: 2px 0;
     gap: 6px;
   }
 
   .location-chip {
-    padding: 4px 9px;
-    font-size: 0.72rem;
-    min-height: 26px;
+    padding: 4px 10px;
+    font-size: 0.74rem;
+    min-height: 28px;
   }
 
   .chip-remove {
     padding: 1px 3px;
-    font-size: 0.85rem;
+    font-size: 0.86rem;
   }
 
   /* Card Padding & Radius Tuning on Mobile */
   .daily-card,
   .radar-map-card,
   .ensemble-card {
-    padding: 13px;
-    border-radius: 18px;
+    padding: 15px;
+    border-radius: 22px;
   }
 
-  /* Tile 1: Compact Hero Card (~148px height so Tiles 1, 2, 3 all fit on splash screen) */
+  /* Tile 1: Large Apple Weather-Style Hero Card (Gets Majority of Extra Viewport Height) */
   .hero-card {
-    padding: 10px 12px;
-    gap: 6px;
-    border-radius: 18px;
+    flex: 1.38 1 0%;
+    min-height: 204px;
+    padding: clamp(14px, 2.1dvh, 20px) 16px;
+    gap: clamp(8px, 1.3dvh, 14px);
+    border-radius: 24px;
   }
 
   .location-kicker {
-    font-size: 0.62rem;
-    margin-bottom: 1px;
+    font-size: 0.72rem;
+    margin-bottom: 3px;
   }
 
   .hero-city {
-    font-size: clamp(1.25rem, 5.2vw, 1.48rem);
-    line-height: 1.06;
+    font-size: clamp(1.62rem, 6.6vw, 2.02rem);
+    line-height: 1.08;
   }
 
   .confidence-pill {
-    font-size: 0.62rem;
-    padding: 3px 8px;
-    gap: 4px;
+    font-size: 0.68rem;
+    padding: 5px 10px;
+    gap: 5px;
   }
 
   .hero-main-display {
-    gap: 8px;
+    gap: 12px;
     align-items: center;
     flex-wrap: nowrap;
   }
 
   .hero-temp-wrap {
-    gap: 8px;
+    gap: 12px;
   }
 
   .hero-icon-box {
-    width: 40px;
-    height: 40px;
+    width: clamp(50px, 7dvh, 62px);
+    height: clamp(50px, 7dvh, 62px);
   }
 
   .hero-temp {
-    font-size: clamp(2.3rem, 9.8vw, 2.7rem);
+    font-size: clamp(3.35rem, 7.2dvh, 4.35rem);
+    font-weight: 260;
   }
 
   .hero-summary-col {
-    gap: 1px;
+    gap: 2px;
   }
 
   .hero-condition-text {
-    font-size: 0.88rem;
-    line-height: 1.12;
+    font-size: clamp(1rem, 2dvh, 1.15rem);
+    line-height: 1.15;
   }
 
   .hero-feels-text,
   .hero-hilow-text {
-    font-size: 0.68rem;
-    line-height: 1.14;
+    font-size: clamp(0.76rem, 1.55dvh, 0.86rem);
+    line-height: 1.2;
   }
 
-  /* Slim 4-Across Micro Telemetry Strip */
+  /* iOS 27 4-Across Micro Telemetry Strip inside Hero */
   .hero-micro-strip {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 5px;
-    padding-top: 6px;
+    gap: 6px;
+    padding-top: clamp(9px, 1.5dvh, 14px);
   }
 
   .micro-item.interactive-tile {
-    padding: 4px 6px;
-    border-radius: 8px;
-    gap: 1px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: clamp(7px, 1.1dvh, 10px) 7px;
+    border-radius: 12px;
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     min-width: 0;
   }
 
   .micro-label {
-    font-size: 0.54rem;
+    font-size: 0.58rem;
     letter-spacing: 0.04em;
     white-space: nowrap;
   }
 
   .micro-val {
-    font-size: 0.72rem;
+    font-size: 0.78rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  /* Tile 2: Compact Next-Hour Precipitation Card (~118px height) */
+  /* Tile 2: Medium-Sized Next-Hour Precipitation Card */
   .nowcast-card {
-    padding: 9px 12px;
-    gap: 5px;
-    border-radius: 18px;
+    flex: 0.77 1 0%;
+    min-height: 140px;
+    padding: clamp(12px, 1.75dvh, 16px) 16px;
+    gap: 6px;
+    border-radius: 24px;
   }
 
   .nowcast-card .section-kicker,
   .timeline-card .section-kicker {
-    font-size: 0.62rem;
-    gap: 5px;
+    font-size: 0.68rem;
+    gap: 6px;
   }
 
   .nowcast-card .section-kicker svg,
   .timeline-card .section-kicker svg {
-    width: 12px;
-    height: 12px;
+    width: 13px;
+    height: 13px;
   }
 
   .nowcast-headline {
-    font-size: 0.86rem;
-    line-height: 1.18;
+    font-size: clamp(0.95rem, 1.85dvh, 1.06rem);
+    line-height: 1.2;
   }
 
   .nowcast-chart-box {
-    height: 62px;
-    padding: 5px 10px 16px;
-    border-radius: 12px;
+    flex: 1 1 auto;
+    min-height: 74px;
+    height: auto;
+    padding: 8px 12px 20px;
+    border-radius: 14px;
   }
 
   .nowcast-y-labels {
-    top: 5px;
-    bottom: 16px;
-    left: 8px;
-    font-size: 0.48rem;
+    top: 7px;
+    bottom: 20px;
+    left: 10px;
+    font-size: 0.54rem;
   }
 
   .nowcast-axis {
-    bottom: 3px;
-    left: 10px;
-    right: 10px;
-    font-size: 0.55rem;
+    bottom: 4px;
+    left: 12px;
+    right: 12px;
+    font-size: 0.6rem;
   }
 
-  /* Tile 3: Compact 9-Hour Visible Timeline Card (~192px height) */
+  /* Tile 3: Medium-Sized 9-Hour Visible Timeline Card */
   .timeline-card {
-    padding: 9px 10px;
-    gap: 6px;
-    border-radius: 18px;
+    flex: 0.95 1 0%;
+    min-height: 204px;
+    padding: clamp(12px, 1.75dvh, 16px) 14px;
+    gap: 8px;
+    border-radius: 24px;
   }
 
   .hourly-chart-scroll {
-    padding: 6px 4px 4px;
-    border-radius: 12px;
+    flex: 1 1 auto;
+    min-height: 116px;
+    display: flex;
+    align-items: center;
+    padding: 8px 6px 6px;
+    border-radius: 14px;
   }
 
   .hourly-curve-stage {
-    height: 104px;
+    height: 124px;
   }
 
   .hourly-col {
-    flex: 0 0 36px;
-    width: 36px;
+    flex: 0 0 38px;
+    width: 38px;
   }
 
   .hourly-col-time {
-    font-size: 0.55rem;
-    letter-spacing: -0.02em;
+    font-size: 0.6rem;
+    letter-spacing: -0.01em;
   }
 
   .day-divider-pill {
-    font-size: 0.48rem;
+    font-size: 0.52rem;
     padding: 1px 3px;
     margin-right: 0;
   }
 
   .hourly-node-icon {
-    width: 15px;
-    height: 15px;
-    bottom: calc(100% + 2px);
+    width: 18px;
+    height: 18px;
+    bottom: calc(100% + 3px);
   }
 
   .hourly-node-pop {
-    bottom: calc(100% + 17px);
-    font-size: 0.46rem;
+    bottom: calc(100% + 22px);
+    font-size: 0.5rem;
   }
 
   .hourly-node-val {
-    font-size: 0.68rem;
-    padding: 1px 3px;
-    border-radius: 5px;
+    font-size: 0.74rem;
+    padding: 1.5px 4px;
+    border-radius: 6px;
   }
 
   .hourly-node-spread {
-    font-size: 0.5rem;
-    padding: 0 3px;
+    font-size: 0.54rem;
+    padding: 1px 3px;
   }
 
   .timeline-pill-bar {
-    padding: 1px 2px 2px;
-    gap: 5px;
+    padding: 2px 2px 2px;
+    gap: 6px;
+    flex-shrink: 0;
   }
 
   .mode-tab {
-    padding: 5px 11px;
-    font-size: 0.72rem;
+    padding: 6px 13px;
+    font-size: 0.76rem;
   }
 
   .daily-row-btn {
