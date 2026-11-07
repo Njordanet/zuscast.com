@@ -1,79 +1,44 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
-    <!-- Full-Bleed Edge-to-Edge Liquid Glass Tile Background (No Border) -->
-    <linearGradient id="bgGlassBase" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#2E4C78"/>
-      <stop offset="48%" stop-color="#1D3557"/>
-      <stop offset="100%" stop-color="#0F1E36"/>
+    <!-- Option 3D: Smoked Silver & Obsidian Full-Bleed Squircle Background -->
+    <linearGradient id="bgObsidian" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#16243D"/>
+      <stop offset="100%" stop-color="#070C17"/>
     </linearGradient>
-    <radialGradient id="bgTopSheen" cx="18" cy="10" r="46" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#7DD3FC" stop-opacity="0.28"/>
-      <stop offset="55%" stop-color="#38BDF8" stop-opacity="0.08"/>
-      <stop offset="100%" stop-color="#0F1E36" stop-opacity="0"/>
-    </radialGradient>
-
-    <!-- Option 1: Refractive Wave Droplet & Liquid Gold Bolt -->
-    <linearGradient id="dropShell" x1="15" y1="6" x2="49" y2="58" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#E0F2FE" stop-opacity="0.90"/>
-      <stop offset="38%" stop-color="#38BDF8" stop-opacity="0.82"/>
-      <stop offset="78%" stop-color="#0284C7" stop-opacity="0.90"/>
-      <stop offset="100%" stop-color="#1E3A8A" stop-opacity="0.94"/>
+    <linearGradient id="dropSilver" x1="18" y1="10" x2="46" y2="55" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F8FAFC" stop-opacity="0.42"/>
+      <stop offset="50%" stop-color="#CBD5E1" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#94A3B8" stop-opacity="0.35"/>
     </linearGradient>
-    <linearGradient id="waveA" x1="12" y1="23" x2="52" y2="54" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#A5F3FC" stop-opacity="0.92"/>
-      <stop offset="50%" stop-color="#22D3EE" stop-opacity="0.74"/>
-      <stop offset="100%" stop-color="#0369A1" stop-opacity="0.28"/>
+    <linearGradient id="waveSilver" x1="16" y1="35" x2="48" y2="55" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.52"/>
+      <stop offset="100%" stop-color="#BAE6FD" stop-opacity="0.32"/>
     </linearGradient>
-    <linearGradient id="waveB" x1="16" y1="30" x2="50" y2="58" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#818CF8" stop-opacity="0.58"/>
-      <stop offset="55%" stop-color="#38BDF8" stop-opacity="0.78"/>
-      <stop offset="100%" stop-color="#BAE6FD" stop-opacity="0.88"/>
-    </linearGradient>
-    <linearGradient id="dropRim" x1="18" y1="6" x2="46" y2="58" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.92"/>
-      <stop offset="45%" stop-color="#7DD3FC" stop-opacity="0.45"/>
-      <stop offset="100%" stop-color="#E0F2FE" stop-opacity="0.78"/>
-    </linearGradient>
-    <linearGradient id="boltFill" x1="24" y1="9" x2="40" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FEF9C3"/>
-      <stop offset="35%" stop-color="#FDE047"/>
-      <stop offset="75%" stop-color="#F59E0B"/>
-      <stop offset="100%" stop-color="#EA580C"/>
-    </linearGradient>
-    <linearGradient id="boltRim" x1="25" y1="9" x2="38" y2="55" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95"/>
-      <stop offset="60%" stop-color="#FEF08A" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.8"/>
+    <linearGradient id="boltGold" x1="39" y1="13" x2="25" y2="51" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="65%" stop-color="#FEF9C3"/>
+      <stop offset="100%" stop-color="#FDE047"/>
     </linearGradient>
     <clipPath id="dropClip">
-      <path d="M32 7.5C32 7.5 14.5 27.2 14.5 39.2C14.5 48.865 22.335 56.5 32 56.5C41.665 56.5 49.5 48.865 49.5 39.2C49.5 27.2 32 7.5 32 7.5Z"/>
+      <path d="M32 9.5C32 9.5 16 27.2 16 38.8C16 47.6366 23.1634 54.8 32 54.8C40.8366 54.8 48 47.6366 48 38.8C48 27.2 32 9.5 32 9.5Z"/>
     </clipPath>
   </defs>
 
-  <!-- Full-Bleed Liquid Glass Surface (Fills 100% of Web App Icon Space with No Border) -->
-  <rect x="0" y="0" width="64" height="64" fill="url(#bgGlassBase)"/>
-  <rect x="0" y="0" width="64" height="64" fill="url(#bgTopSheen)"/>
+  <!-- Full-Bleed Borderless Background -->
+  <rect width="64" height="64" fill="url(#bgObsidian)"/>
 
-  <!-- Centered Emblem Scaled Slightly Larger for Full-Bleed Canvas -->
-  <g transform="translate(32, 32) scale(1.08) translate(-32, -32)">
-    <!-- Base Glass Droplet -->
-    <path d="M32 7.5C32 7.5 14.5 27.2 14.5 39.2C14.5 48.865 22.335 56.5 32 56.5C41.665 56.5 49.5 48.865 49.5 39.2C49.5 27.2 32 7.5 32 7.5Z" fill="url(#dropShell)"/>
+  <!-- Smoked Silver Glass Droplet -->
+  <path d="M32 9.5C32 9.5 16 27.2 16 38.8C16 47.6366 23.1634 54.8 32 54.8C40.8366 54.8 48 47.6366 48 38.8C48 27.2 32 9.5 32 9.5Z" fill="url(#dropSilver)"/>
 
-    <!-- Clipped Internal Liquid Glass Waves -->
-    <g clip-path="url(#dropClip)">
-      <path d="M12 36C19 29.5 26.5 41.5 34.5 35.5C41.5 30.2 46.5 24.5 52 29V58H12V36Z" fill="url(#waveA)"/>
-      <path d="M12 43.5C19.5 49 27.5 35.5 36.5 41C43.5 45.2 47.5 41.5 52 38.5V58H12V43.5Z" fill="url(#waveB)"/>
-      <path d="M14 36.2C20.5 30.2 27 41.2 35 35.2C41.5 30.3 46 25.5 50.5 28.8" stroke="#FFFFFF" stroke-opacity="0.65" stroke-width="1.5" stroke-linecap="round"/>
-      <path d="M21.5 38.5C21.5 31.2 26.5 21.5 30.2 15.2C24.5 23.2 18.8 31.8 18.8 39.2C18.8 46.2 23.8 51.8 30.5 53.2C25.2 51.2 21.5 45.5 21.5 38.5Z" fill="#FFFFFF" fill-opacity="0.55"/>
-    </g>
+  <!-- Mirrored Lightning Bolt (Tucked Behind Translucent Wave) -->
+  <path d="M28.6 14.5C28.3 13.8 27.4 14.2 27.6 14.9L31.5 29.2H24.6C23.9 29.2 23.5 30 23.9 30.6L35.4 50C35.8 50.6 36.7 50.2 36.5 49.5L32.5 34.8H39.4C40.1 34.8 40.5 34 40.1 33.4L28.6 14.5Z" fill="url(#boltGold)"/>
 
-    <!-- Outer Refractive Glass Rim on Droplet -->
-    <path d="M32 7.5C32 7.5 14.5 27.2 14.5 39.2C14.5 48.865 22.335 56.5 32 56.5C41.665 56.5 49.5 48.865 49.5 39.2C49.5 27.2 32 7.5 32 7.5Z" stroke="url(#dropRim)" stroke-width="1.5"/>
-
-    <!-- Soft Optical Refraction Shadow Behind Bolt -->
-    <path d="M36.5 11.2C36.9 10.4 38 10.9 37.7 11.8L33.2 28.2H41.2C42.1 28.2 42.6 29.3 42 30L27.5 53.2C27 54 25.8 53.4 26.2 52.5L31.2 35.2H23.2C22.3 35.2 21.8 34.1 22.4 33.4L36.5 11.2Z" fill="#082F49" fill-opacity="0.38" transform="translate(0.8, 1.4)"/>
-
-    <!-- Sculpted Fluid-Edge Lightning Bolt -->
-    <path d="M36.5 11.2C36.9 10.4 38 10.9 37.7 11.8L33.2 28.2H41.2C42.1 28.2 42.6 29.3 42 30L27.5 53.2C27 54 25.8 53.4 26.2 52.5L31.2 35.2H23.2C22.3 35.2 21.8 34.1 22.4 33.4L36.5 11.2Z" fill="url(#boltFill)" stroke="url(#boltRim)" stroke-width="1.15" stroke-linejoin="round"/>
+  <!-- Translucent Smoked-Silver Wave Refracting Over Lower Bolt Tip -->
+  <g clip-path="url(#dropClip)">
+    <path d="M14 40C21.5 34 29 44 37.5 38C42.5 34.5 46 33 50 35.5V56H14V40Z" fill="url(#waveSilver)"/>
+    <path d="M15 40C22 34.2 29 43.8 37.5 37.8C42.5 34.2 46 33 49.5 35.2" stroke="#FFFFFF" stroke-opacity="0.72" stroke-width="1.15"/>
   </g>
+
+  <!-- Crisp Specular Droplet Rim -->
+  <path d="M32 9.5C32 9.5 16 27.2 16 38.8C16 47.6366 23.1634 54.8 32 54.8C40.8366 54.8 48 47.6366 48 38.8C48 27.2 32 9.5 32 9.5Z" stroke="#FFFFFF" stroke-opacity="0.58" stroke-width="1.1"/>
 </svg>
