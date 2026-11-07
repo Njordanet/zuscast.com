@@ -6,17 +6,53 @@
 
 const DEFAULT_FALLBACK_LOCATION = {
   name: "New York",
-  region: "NY",
+  region: "NY • 10007",
   latitude: 40.7128,
   longitude: -74.006,
 };
+
+const US_STATE_CODES = {
+  alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA",
+  colorado: "CO", connecticut: "CT", delaware: "DE", florida: "FL", georgia: "GA",
+  hawaii: "HI", idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA",
+  kansas: "KS", kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD",
+  massachusetts: "MA", michigan: "MI", minnesota: "MN", mississippi: "MS", missouri: "MO",
+  montana: "MT", nebraska: "NE", nevada: "NV", "new hampshire": "NH", "new jersey": "NJ",
+  "new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND", ohio: "OH",
+  oklahoma: "OK", oregon: "OR", pennsylvania: "PA", "rhode island": "RI", "south carolina": "SC",
+  "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT", vermont: "VT",
+  virginia: "VA", washington: "WA", "west virginia": "WV", wisconsin: "WI", wyoming: "WY",
+  "district of columbia": "DC",
+};
+
+function normalizeStateLabel(raw) {
+  if (!raw) return "";
+  const cleaned = String(raw).replace(/^[A-Z]{2}-/i, "").trim();
+  const code = US_STATE_CODES[cleaned.toLowerCase()];
+  return code || cleaned;
+}
+
+function sanitizeRegionString(regionStr) {
+  if (!regionStr) return "";
+  return String(regionStr)
+    .replace(/📍/g, "")
+    .replace(/\bGPS\s+Hyperlocal\b/gi, "")
+    .replace(/\bHyperlocal(?:\s+Forecast|\s+Telemetry)?\b/gi, "")
+    .replace(/^[•\s,]+|[•\s,]+$/g, "")
+    .replace(/\s*•\s*•\s*/g, " • ")
+    .trim();
+}
 
 function loadRecentSearches() {
   try {
     const raw = localStorage.getItem("zus_recent_searches");
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.slice(0, 6) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.slice(0, 6).map((item) => ({
+      ...item,
+      region: sanitizeRegionString(item.region),
+    }));
   } catch (_) {
     return [];
   }
@@ -1328,9 +1364,33 @@ async function loadWeatherForCurrentLocation() {
   }
   const { latitude, longitude, name, region } = state.location;
   document.getElementById("hero-city").textContent = name;
-  document.getElementById("location-kicker").innerHTML = `<span>📍 ${
-    region || "Hyperlocal Telemetry"
-  }</span>`;
+  const cleanedRegion = sanitizeRegionString(region);
+  document.getElementById("location-kicker").innerHTML = `<span>${cleanedRegion}</span>`;
+
+  if (!/\b[A-Z0-9]{3,10}\b/i.test((cleanedRegion.split("•")[1] || "").trim())) {
+    fetch(
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((info) => {
+        if (!info) return;
+        const admin = info.principalSubdivisionCode
+          ? info.principalSubdivisionCode.replace(/^[A-Z]{2}-/i, "")
+          : normalizeStateLabel(info.principalSubdivision) || info.countryName || "";
+        const postcode = (info.postcode || "").trim();
+        const resolvedRegion = [admin, postcode].filter(Boolean).join(" • ");
+        if (
+          resolvedRegion &&
+          Math.abs(state.location.latitude - latitude) < 0.01 &&
+          Math.abs(state.location.longitude - longitude) < 0.01
+        ) {
+          state.location.region = resolvedRegion;
+          document.getElementById("location-kicker").innerHTML = `<span>${resolvedRegion}</span>`;
+          saveRecentSearch(state.location);
+        }
+      })
+      .catch(() => {});
+  }
   const coordsEl = document.getElementById("hero-coords");
   if (coordsEl) {
     const latDir = latitude >= 0 ? "N" : "S";
@@ -4224,15 +4284,21 @@ function setupCitySearch() {
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = "search-result-item";
-          const region = [item.admin1, item.country].filter(Boolean).join(", ");
+          const dropdownMeta = [item.admin1, item.country].filter(Boolean).join(", ");
+          const stateCode = normalizeStateLabel(item.admin1) || item.country_code || item.country || "";
+          const firstZip =
+            Array.isArray(item.postcodes) && item.postcodes.length
+              ? String(item.postcodes[0]).trim()
+              : "";
+          const kickerRegion = [stateCode, firstZip].filter(Boolean).join(" • ");
           btn.innerHTML = `
             <span class="search-result-name">${item.name}</span>
-            <span class="search-result-meta">${region}</span>
+            <span class="search-result-meta">${dropdownMeta}</span>
           `;
           btn.addEventListener("click", () => {
             state.location = {
               name: item.name,
-              region: region || item.country || "",
+              region: kickerRegion || stateCode,
               latitude: item.latitude,
               longitude: item.longitude,
             };
@@ -4274,13 +4340,16 @@ function acquireUserLocation(isAutoStartup = false) {
       const sameAsCurrent =
         Math.abs((state.location?.latitude ?? 999) - latitude) < 0.02 &&
         Math.abs((state.location?.longitude ?? 999) - longitude) < 0.02;
+      const hasValidZip = /\b[A-Z0-9]{3,10}\b/i.test(
+        (sanitizeRegionString(state.location?.region).split("•")[1] || "").trim()
+      );
 
-      if (isAutoStartup && sameAsCurrent) {
+      if (isAutoStartup && sameAsCurrent && hasValidZip) {
         return;
       }
 
       let cityName = "Current Location";
-      let region = "GPS Hyperlocal";
+      let region = "";
       try {
         const rev = await fetch(
           `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
@@ -4289,9 +4358,10 @@ function acquireUserLocation(isAutoStartup = false) {
           const info = await rev.json();
           cityName = info.city || info.locality || "Current Location";
           const admin = info.principalSubdivisionCode
-            ? info.principalSubdivisionCode.replace(/^US-/, "")
-            : info.countryName;
-          region = [admin, "GPS Hyperlocal"].filter(Boolean).join(" • ");
+            ? info.principalSubdivisionCode.replace(/^[A-Z]{2}-/i, "")
+            : normalizeStateLabel(info.principalSubdivision) || info.countryName || "";
+          const postcode = (info.postcode || "").trim();
+          region = [admin, postcode].filter(Boolean).join(" • ");
         }
       } catch (_) {}
 
