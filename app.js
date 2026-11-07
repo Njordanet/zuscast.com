@@ -1685,24 +1685,14 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
   };
 }
 
-let tileCascadeTimer = null;
-
 function playTilesAppearCascade(skyClass) {
   const wasLoading = document.body.classList.contains("is-loading");
-  document.body.classList.remove("is-loading", "tiles-entering");
+  document.body.classList.remove("is-loading");
   document.body.classList.remove("sky-clear", "sky-overcast", "sky-rain", "sky-storm");
   if (skyClass) document.body.classList.add(skyClass);
 
-  // Force reflow so staggered tile materialization animation plays cleanly
-  void document.body.offsetWidth;
-  document.body.classList.add("tiles-entering");
-
-  clearTimeout(tileCascadeTimer);
-  tileCascadeTimer = setTimeout(() => {
-    document.body.classList.remove("tiles-entering");
-  }, 1150);
-
   if (wasLoading) {
+    document.body.classList.add("tiles-entering");
     setTimeout(() => {
       if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize();
       syncLiquidPillGlider(document.getElementById("timeline-pill-bar"));
@@ -2571,7 +2561,6 @@ function renderDailyForecast(daily) {
     // Start with all 10 days collapsed on load
     const wrapper = document.createElement("div");
     wrapper.className = "day-accordion";
-    wrapper.style.animationDelay = `${(0.22 + idx * 0.026).toFixed(3)}s`;
 
     const dayNarrative = `${cond.label} throughout the day. High of ${formatTemp(
       dItem.tempMax,
@@ -2803,7 +2792,6 @@ function renderEnsembleComparison(models, spreadC, confidencePct = 92) {
 
     const box = document.createElement("div");
     box.className = "ensemble-pill-box interactive-tile";
-    box.style.animationDelay = `${(0.54 + idx * 0.04).toFixed(2)}s`;
     box.setAttribute("role", "button");
     box.setAttribute("tabindex", "0");
     box.innerHTML = `
@@ -3536,16 +3524,25 @@ function setupCitySearch() {
 /* Automatic & Manual GPS Location Acquisition */
 function acquireUserLocation(isAutoStartup = false) {
   if (!navigator.geolocation) {
-    if (isAutoStartup) loadWeatherForCurrentLocation();
     return;
   }
 
   const btn = document.getElementById("locate-me-btn");
-  btn.textContent = "Locating...";
+  if (!isAutoStartup) {
+    btn.textContent = "Locating...";
+  }
 
   navigator.geolocation.getCurrentPosition(
     async (pos) => {
       const { latitude, longitude } = pos.coords;
+      const sameAsCurrent =
+        Math.abs((state.location?.latitude ?? 999) - latitude) < 0.02 &&
+        Math.abs((state.location?.longitude ?? 999) - longitude) < 0.02;
+
+      if (isAutoStartup && sameAsCurrent) {
+        return;
+      }
+
       let cityName = "Current Location";
       let region = "GPS Hyperlocal";
       try {
@@ -3575,9 +3572,6 @@ function acquireUserLocation(isAutoStartup = false) {
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
           <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
         </svg> GPS`;
-      if (isAutoStartup) {
-        loadWeatherForCurrentLocation();
-      }
     },
     { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
   );

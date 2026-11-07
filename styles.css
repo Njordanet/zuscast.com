@@ -251,8 +251,7 @@ body.is-loading .detail-card,
 body.is-loading .ensemble-card,
 body.is-loading .site-footer {
   opacity: 0 !important;
-  transform: translateY(22px) scale(0.965) !important;
-  filter: blur(10px);
+  transform: translate3d(0, 18px, 0) scale(0.975) !important;
   pointer-events: none;
   animation: none !important;
 }
@@ -261,17 +260,11 @@ body.is-loading .site-footer {
 @keyframes liquidTileAppear {
   0% {
     opacity: 0;
-    transform: translateY(22px) scale(0.965);
-    filter: blur(10px);
-  }
-  65% {
-    opacity: 1;
-    filter: blur(0px);
+    transform: translate3d(0, 18px, 0) scale(0.975);
   }
   100% {
     opacity: 1;
-    transform: translateY(0) scale(1);
-    filter: blur(0px);
+    transform: none;
   }
 }
 
@@ -283,28 +276,22 @@ body.tiles-entering .radar-map-card,
 body.tiles-entering .detail-card,
 body.tiles-entering .ensemble-card,
 body.tiles-entering .site-footer {
-  animation: liquidTileAppear 0.58s cubic-bezier(0.22, 1.18, 0.36, 1) both;
+  animation: liquidTileAppear 0.52s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 body.tiles-entering .hero-card { animation-delay: 0.02s; }
-body.tiles-entering .nowcast-card { animation-delay: 0.08s; }
-body.tiles-entering .timeline-card { animation-delay: 0.14s; }
-body.tiles-entering .daily-card { animation-delay: 0.20s; }
-body.tiles-entering .radar-map-card { animation-delay: 0.25s; }
-body.tiles-entering .details-grid .detail-card:nth-child(1) { animation-delay: 0.29s; }
-body.tiles-entering .details-grid .detail-card:nth-child(2) { animation-delay: 0.33s; }
-body.tiles-entering .details-grid .detail-card:nth-child(3) { animation-delay: 0.37s; }
-body.tiles-entering .details-grid .detail-card:nth-child(4) { animation-delay: 0.41s; }
-body.tiles-entering .details-grid .detail-card:nth-child(5) { animation-delay: 0.45s; }
-body.tiles-entering .details-grid .detail-card:nth-child(6) { animation-delay: 0.49s; }
-body.tiles-entering .ensemble-card { animation-delay: 0.53s; }
-body.tiles-entering .site-footer { animation-delay: 0.58s; }
-
-/* Sub-Row Stagger Inside 10-Day Forecast & Ensemble Strip on Appear */
-body.tiles-entering .day-accordion,
-body.tiles-entering .ensemble-pill-box {
-  animation: liquidTileAppear 0.48s cubic-bezier(0.22, 1.15, 0.36, 1) both;
-}
+body.tiles-entering .nowcast-card { animation-delay: 0.06s; }
+body.tiles-entering .timeline-card { animation-delay: 0.10s; }
+body.tiles-entering .daily-card { animation-delay: 0.14s; }
+body.tiles-entering .radar-map-card { animation-delay: 0.18s; }
+body.tiles-entering .details-grid .detail-card:nth-child(1) { animation-delay: 0.21s; }
+body.tiles-entering .details-grid .detail-card:nth-child(2) { animation-delay: 0.24s; }
+body.tiles-entering .details-grid .detail-card:nth-child(3) { animation-delay: 0.27s; }
+body.tiles-entering .details-grid .detail-card:nth-child(4) { animation-delay: 0.30s; }
+body.tiles-entering .details-grid .detail-card:nth-child(5) { animation-delay: 0.33s; }
+body.tiles-entering .details-grid .detail-card:nth-child(6) { animation-delay: 0.36s; }
+body.tiles-entering .ensemble-card { animation-delay: 0.39s; }
+body.tiles-entering .site-footer { animation-delay: 0.42s; }
 
 .liquid-glass-pill {
   background: var(--glass-fill);
