@@ -347,7 +347,9 @@ body.is-loading .liquid-boot-stage {
 }
 
 /* While Loading Telemetry: Keep Tiles Hidden (Zero Empty / "Syncing" Boxes) */
+body.is-loading .hero-nowcast-grid,
 body.is-loading .hero-card,
+body.is-loading .hero-card > *,
 body.is-loading .nowcast-card,
 body.is-loading .timeline-card,
 body.is-loading .daily-card,
@@ -356,6 +358,7 @@ body.is-loading .detail-card,
 body.is-loading .ensemble-card,
 body.is-loading .site-footer {
   opacity: 0 !important;
+  visibility: hidden !important;
   transform: translate3d(0, 18px, 0) scale(0.975) !important;
   pointer-events: none;
   animation: none !important;
@@ -382,6 +385,13 @@ body.tiles-entering .detail-card,
 body.tiles-entering .ensemble-card,
 body.tiles-entering .site-footer {
   animation: liquidTileAppear 0.52s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (min-width: 641px) {
+  body.tiles-entering .hero-nowcast-grid.is-dry .hero-card > * {
+    animation: liquidTileAppear 0.52s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.02s;
+  }
 }
 
 body.tiles-entering .hero-card { animation-delay: 0.02s; }
