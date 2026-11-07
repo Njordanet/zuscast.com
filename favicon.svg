@@ -19,16 +19,42 @@
       <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.42"/>
       <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.12"/>
     </linearGradient>
-    <linearGradient id="dropFill" x1="32" y1="10" x2="32" y2="55" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#7DD3FC"/>
-      <stop offset="45%" stop-color="#58C7FF"/>
-      <stop offset="100%" stop-color="#22A8F0"/>
+    <!-- Option 1: Refractive Wave Droplet & Liquid Gold Bolt -->
+    <linearGradient id="dropShell" x1="16" y1="8" x2="48" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E0F2FE" stop-opacity="0.88"/>
+      <stop offset="38%" stop-color="#38BDF8" stop-opacity="0.78"/>
+      <stop offset="78%" stop-color="#0284C7" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#1E3A8A" stop-opacity="0.92"/>
     </linearGradient>
-    <linearGradient id="boltFill" x1="25" y1="12" x2="39" y2="54" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFF9C4"/>
-      <stop offset="40%" stop-color="#FFD700"/>
-      <stop offset="100%" stop-color="#F59E0B"/>
+    <linearGradient id="waveA" x1="14" y1="24" x2="50" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#A5F3FC" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#22D3EE" stop-opacity="0.72"/>
+      <stop offset="100%" stop-color="#0369A1" stop-opacity="0.25"/>
     </linearGradient>
+    <linearGradient id="waveB" x1="18" y1="30" x2="48" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#818CF8" stop-opacity="0.55"/>
+      <stop offset="55%" stop-color="#38BDF8" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#BAE6FD" stop-opacity="0.85"/>
+    </linearGradient>
+    <linearGradient id="dropRim" x1="18" y1="8" x2="46" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.92"/>
+      <stop offset="45%" stop-color="#7DD3FC" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#E0F2FE" stop-opacity="0.78"/>
+    </linearGradient>
+    <linearGradient id="boltFill" x1="24" y1="10" x2="40" y2="55" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FEF9C3"/>
+      <stop offset="35%" stop-color="#FDE047"/>
+      <stop offset="75%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#EA580C"/>
+    </linearGradient>
+    <linearGradient id="boltRim" x1="25" y1="10" x2="38" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="60%" stop-color="#FEF08A" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.8"/>
+    </linearGradient>
+    <clipPath id="dropClip">
+      <path d="M32 7.5C32 7.5 14.5 27.2 14.5 39.2C14.5 48.865 22.335 56.5 32 56.5C41.665 56.5 49.5 48.865 49.5 39.2C49.5 27.2 32 7.5 32 7.5Z"/>
+    </clipPath>
   </defs>
 
   <!-- Liquid Glass Squircle Base -->
@@ -36,13 +62,23 @@
   <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#glassFill)" stroke="url(#glassRimOuter)" stroke-width="2"/>
   <rect x="4.2" y="4.2" width="55.6" height="55.6" rx="14" fill="none" stroke="url(#glassRimInner)" stroke-width="1"/>
 
-  <!-- Cyan Water Droplet -->
-  <path d="M32 10.5C32 10.5 16 28.5 16 39.5C16 48.3366 23.1634 55.5 32 55.5C40.8366 55.5 48 48.3366 48 39.5C48 28.5 32 10.5 32 10.5Z" fill="url(#dropFill)"/>
+  <!-- Base Glass Droplet -->
+  <path d="M32 7.5C32 7.5 14.5 27.2 14.5 39.2C14.5 48.865 22.335 56.5 32 56.5C41.665 56.5 49.5 48.865 49.5 39.2C49.5 27.2 32 7.5 32 7.5Z" fill="url(#dropShell)"/>
 
-  <!-- Droplet Left Specular Crescent -->
-  <path d="M24.2 39C24.2 34.5 27 28 29 24C25.2 30 22.8 35 22.8 39.5C22.8 44.5 26.2 48.5 31 49.5C27.2 48 24.2 44 24.2 39Z" fill="#FFFFFF" fill-opacity="0.65"/>
+  <!-- Clipped Internal Liquid Glass Waves -->
+  <g clip-path="url(#dropClip)">
+    <path d="M12 36C19 29.5 26.5 41.5 34.5 35.5C41.5 30.2 46.5 24.5 52 29V58H12V36Z" fill="url(#waveA)"/>
+    <path d="M12 43.5C19.5 49 27.5 35.5 36.5 41C43.5 45.2 47.5 41.5 52 38.5V58H12V43.5Z" fill="url(#waveB)"/>
+    <path d="M14 36.2C20.5 30.2 27 41.2 35 35.2C41.5 30.3 46 25.5 50.5 28.8" stroke="#FFFFFF" stroke-opacity="0.65" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M21.5 38.5C21.5 31.2 26.5 21.5 30.2 15.2C24.5 23.2 18.8 31.8 18.8 39.2C18.8 46.2 23.8 51.8 30.5 53.2C25.2 51.2 21.5 45.5 21.5 38.5Z" fill="#FFFFFF" fill-opacity="0.55"/>
+  </g>
 
-  <!-- Lightning Bolt Striking Through the Droplet -->
-  <path d="M36.8 12.5L22.5 34H31.8L26.5 53.2L42 30.5H32.5L36.8 12.5Z" fill="url(#boltFill)" stroke="#132542" stroke-width="2.2" stroke-linejoin="round"/>
-  <path d="M36.8 12.5L22.5 34H31.8L26.5 53.2L42 30.5H32.5L36.8 12.5Z" fill="url(#boltFill)"/>
+  <!-- Outer Refractive Glass Rim on Droplet -->
+  <path d="M32 7.5C32 7.5 14.5 27.2 14.5 39.2C14.5 48.865 22.335 56.5 32 56.5C41.665 56.5 49.5 48.865 49.5 39.2C49.5 27.2 32 7.5 32 7.5Z" stroke="url(#dropRim)" stroke-width="1.5"/>
+
+  <!-- Soft Optical Refraction Shadow Behind Bolt -->
+  <path d="M36.5 11.2C36.9 10.4 38 10.9 37.7 11.8L33.2 28.2H41.2C42.1 28.2 42.6 29.3 42 30L27.5 53.2C27 54 25.8 53.4 26.2 52.5L31.2 35.2H23.2C22.3 35.2 21.8 34.1 22.4 33.4L36.5 11.2Z" fill="#082F49" fill-opacity="0.38" transform="translate(0.8, 1.4)"/>
+
+  <!-- Sculpted Fluid-Edge Lightning Bolt -->
+  <path d="M36.5 11.2C36.9 10.4 38 10.9 37.7 11.8L33.2 28.2H41.2C42.1 28.2 42.6 29.3 42 30L27.5 53.2C27 54 25.8 53.4 26.2 52.5L31.2 35.2H23.2C22.3 35.2 21.8 34.1 22.4 33.4L36.5 11.2Z" fill="url(#boltFill)" stroke="url(#boltRim)" stroke-width="1.15" stroke-linejoin="round"/>
 </svg>
