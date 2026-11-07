@@ -2158,49 +2158,70 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
 
 function playTilesAppearCascade(skyClass, solarPhase = "day") {
   const wasLoading = document.body.classList.contains("is-loading");
-  document.body.classList.remove("is-loading");
-  document.body.classList.remove(
+  const rootEl = document.documentElement;
+  const skyClasses = [
     "sky-clear",
     "sky-overcast",
     "sky-rain",
     "sky-storm",
     "sky-phase-day",
     "sky-phase-twilight",
-    "sky-phase-night"
-  );
+    "sky-phase-night",
+  ];
+  document.body.classList.remove("is-loading", ...skyClasses);
+  rootEl.classList.remove("is-loading", ...skyClasses);
+
   const activeSky = skyClass || "sky-clear";
   const activePhase = ["day", "twilight", "night"].includes(solarPhase)
     ? solarPhase
     : "day";
   document.body.classList.add(activeSky, `sky-phase-${activePhase}`);
+  rootEl.classList.add(activeSky, `sky-phase-${activePhase}`);
 
-  // Sync iOS status bar theme-color meta tag to exact top sky background color for zero-blur crispness
+  const skyThemeByPhase = {
+    day: {
+      "sky-clear": "#1d63b8",
+      "sky-overcast": "#334766",
+      "sky-rain": "#1f3352",
+      "sky-storm": "#1a203d",
+    },
+    twilight: {
+      "sky-clear": "#1b2854",
+      "sky-overcast": "#222b45",
+      "sky-rain": "#172038",
+      "sky-storm": "#151833",
+    },
+    night: {
+      "sky-clear": "#070e20",
+      "sky-overcast": "#0e1526",
+      "sky-rain": "#09101f",
+      "sky-storm": "#090b1c",
+    },
+  };
+  const phaseMap = skyThemeByPhase[activePhase] || skyThemeByPhase.day;
+  const topHex = phaseMap[activeSky] || "#1d63b8";
+
+  // Sync root <html>, <body>, localStorage, and iOS <meta name="theme-color"> for zero-blur status bar match
+  rootEl.style.backgroundColor = topHex;
+  document.body.style.backgroundColor = topHex;
+  try {
+    localStorage.setItem(
+      "zus_sky_theme",
+      JSON.stringify({ sky: activeSky, phase: activePhase, hex: topHex })
+    );
+  } catch (_) {}
+
   const themeMeta =
     document.getElementById("theme-color-meta") ||
     document.querySelector('meta[name="theme-color"]');
   if (themeMeta) {
-    const skyThemeByPhase = {
-      day: {
-        "sky-clear": "#1d63b8",
-        "sky-overcast": "#334766",
-        "sky-rain": "#1f3352",
-        "sky-storm": "#1a203d",
-      },
-      twilight: {
-        "sky-clear": "#1b2854",
-        "sky-overcast": "#222b45",
-        "sky-rain": "#172038",
-        "sky-storm": "#151833",
-      },
-      night: {
-        "sky-clear": "#070e20",
-        "sky-overcast": "#0e1526",
-        "sky-rain": "#09101f",
-        "sky-storm": "#090b1c",
-      },
-    };
-    const phaseMap = skyThemeByPhase[activePhase] || skyThemeByPhase.day;
-    themeMeta.setAttribute("content", phaseMap[activeSky] || "#1d63b8");
+    const prevHex = themeMeta.getAttribute("content");
+    themeMeta.setAttribute("content", topHex);
+    if (prevHex !== topHex && themeMeta.parentNode) {
+      const freshMeta = themeMeta.cloneNode(true);
+      freshMeta.setAttribute("content", topHex);
+      themeMeta.parentNode.replaceChild(freshMeta, themeMeta);
+    }
   }
 
   if (wasLoading) {

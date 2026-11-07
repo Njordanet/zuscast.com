@@ -1,8 +1,8 @@
 :root {
   /* Liquid Glass & Dark Sky Atmospheric Palette */
-  --sky-bg-top: #0c1426;
-  --sky-bg-mid: #121e36;
-  --sky-bg-bottom: #080d18;
+  --sky-bg-top: #1d63b8;
+  --sky-bg-mid: #2f7dd3;
+  --sky-bg-bottom: #1b4f91;
 
   /* Liquid Glass Tokens */
   --glass-fill: linear-gradient(
@@ -76,7 +76,8 @@ html {
 body {
   min-height: 100vh;
   min-height: 100dvh;
-  background: radial-gradient(
+  background-color: var(--sky-bg-top);
+  background-image: radial-gradient(
       ellipse 85% 55% at 50% -10%,
       rgba(56, 189, 248, 0.2),
       transparent 70%
@@ -89,7 +90,7 @@ body {
     linear-gradient(180deg, var(--sky-bg-top) 0%, var(--sky-bg-mid) 48%, var(--sky-bg-bottom) 100%);
   overflow-x: hidden;
   position: relative;
-  transition: background 0.9s ease;
+  transition: background-color 0.6s ease, background-image 0.9s ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -98,12 +99,7 @@ body.modal-open {
   touch-action: none;
 }
 
-body.is-loading {
-  --sky-bg-top: #0c1426 !important;
-  --sky-bg-mid: #121e36 !important;
-  --sky-bg-bottom: #080d18 !important;
-}
-
+html.sky-clear,
 body.sky-clear {
   --sky-bg-top: #1d63b8;
   --sky-bg-mid: #2f7dd3;
@@ -119,6 +115,7 @@ body.sky-clear {
   --text-muted: rgba(224, 242, 254, 0.78);
 }
 
+html.sky-clear.sky-phase-twilight,
 body.sky-clear.sky-phase-twilight {
   --sky-bg-top: #1b2854;
   --sky-bg-mid: #3a3269;
@@ -134,6 +131,7 @@ body.sky-clear.sky-phase-twilight {
   --text-muted: rgba(203, 213, 225, 0.76);
 }
 
+html.sky-clear.sky-phase-night,
 body.sky-clear.sky-phase-night {
   --sky-bg-top: #070e20;
   --sky-bg-mid: #0e1d3a;
@@ -149,6 +147,7 @@ body.sky-clear.sky-phase-night {
   --text-muted: rgba(148, 163, 184, 0.72);
 }
 
+html.sky-overcast,
 body.sky-overcast {
   --sky-bg-top: #334766;
   --sky-bg-mid: #405678;
@@ -164,18 +163,21 @@ body.sky-overcast {
   --text-muted: rgba(226, 232, 240, 0.75);
 }
 
+html.sky-overcast.sky-phase-twilight,
 body.sky-overcast.sky-phase-twilight {
   --sky-bg-top: #222b45;
   --sky-bg-mid: #2f3856;
   --sky-bg-bottom: #141a2b;
 }
 
+html.sky-overcast.sky-phase-night,
 body.sky-overcast.sky-phase-night {
   --sky-bg-top: #0e1526;
   --sky-bg-mid: #162036;
   --sky-bg-bottom: #080c17;
 }
 
+html.sky-rain,
 body.sky-rain {
   --sky-bg-top: #1f3352;
   --sky-bg-mid: #294166;
@@ -189,37 +191,42 @@ body.sky-rain {
   --glass-fill-inset: rgba(6, 12, 24, 0.46);
 }
 
+html.sky-rain.sky-phase-twilight,
 body.sky-rain.sky-phase-twilight {
   --sky-bg-top: #172038;
   --sky-bg-mid: #202c4a;
   --sky-bg-bottom: #0c1222;
 }
 
+html.sky-rain.sky-phase-night,
 body.sky-rain.sky-phase-night {
   --sky-bg-top: #09101f;
   --sky-bg-mid: #101b30;
   --sky-bg-bottom: #050811;
 }
 
+html.sky-storm,
 body.sky-storm {
   --sky-bg-top: #1a203d;
   --sky-bg-mid: #242c52;
   --sky-bg-bottom: #0e1226;
 }
 
+html.sky-storm.sky-phase-twilight,
 body.sky-storm.sky-phase-twilight {
   --sky-bg-top: #151833;
   --sky-bg-mid: #1e2245;
   --sky-bg-bottom: #0a0c1c;
 }
 
+html.sky-storm.sky-phase-night,
 body.sky-storm.sky-phase-night {
   --sky-bg-top: #090b1c;
   --sky-bg-mid: #121530;
   --sky-bg-bottom: #04060f;
 }
 
-/* Ambient Atmospheric Canvas — Slightly Blurred Optical Depth-of-Field for Effortless Readability */
+/* Ambient Atmospheric Canvas */
 #atmosphere-canvas {
   position: fixed;
   inset: 0;
@@ -228,9 +235,6 @@ body.sky-storm.sky-phase-night {
   height: 100dvh;
   pointer-events: none;
   z-index: 0;
-  filter: blur(2.5px);
-  -webkit-filter: blur(2.5px);
-  transform: scale(1.02);
 }
 
 /* Core Liquid Glass Surface — Certified Optical Refraction & Dynamic Specular Sheen */
@@ -289,7 +293,7 @@ body.sky-storm.sky-phase-night {
   position: fixed;
   inset: 0;
   z-index: 20;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   pointer-events: none;
@@ -299,6 +303,7 @@ body.sky-storm.sky-phase-night {
 }
 
 body.is-loading .liquid-boot-stage {
+  display: flex;
   opacity: 1;
   visibility: visible;
 }
@@ -3484,44 +3489,50 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   }
 }
 
-/* Mobile Perfection Suite — iOS 27 Native App Proportions & Universal 100dvh First-Screen Fit (<= 640px) */
+/* Mobile Perfection Suite — iOS 27 Native App Proportions & Seamless Top Sky Integration (<= 640px) */
 @media (max-width: 640px) {
-  /* Lock root document so iOS 26/27 WebKit never activates the blurry _UIScrollPocket over the top bar */
   html,
   body {
-    height: 100%;
-    height: 100dvh;
-    max-height: 100dvh;
-    overflow: hidden;
+    background-color: var(--sky-bg-top);
   }
 
   body {
-    padding-top: env(safe-area-inset-top, 0px);
-    background:
+    background-color: var(--sky-bg-top);
+    background-image:
       radial-gradient(
-        ellipse 80% 42% at 50% 30%,
-        rgba(56, 189, 248, 0.14),
+        ellipse 80% 42% at 50% 34%,
+        rgba(56, 189, 248, 0.12),
         transparent 72%
       ),
-      linear-gradient(180deg, var(--sky-bg-top) 0%, var(--sky-bg-mid) 48%, var(--sky-bg-bottom) 100%);
+      linear-gradient(
+        180deg,
+        var(--sky-bg-top) 0%,
+        var(--sky-bg-top) 84px,
+        var(--sky-bg-mid) 54%,
+        var(--sky-bg-bottom) 100%
+      );
+  }
+
+  /* Avoid position:fixed at top:0 on mobile so iOS 26/27 WebKit never activates _UIScrollPocket top blur */
+  #atmosphere-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0px, transparent 56px, #000 120px);
+    mask-image: linear-gradient(180deg, transparent 0px, transparent 56px, #000 120px);
   }
 
   .app-shell {
-    height: calc(100dvh - env(safe-area-inset-top, 0px));
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
     padding:
-      8px
-      max(12px, env(safe-area-inset-right))
+      max(18px, calc(env(safe-area-inset-top, 0px) + 14px))
+      max(14px, env(safe-area-inset-right))
       max(42px, calc(24px + env(safe-area-inset-bottom)))
-      max(12px, env(safe-area-inset-left));
+      max(14px, env(safe-area-inset-left));
     gap: 12px;
-  }
-
-  body.modal-open .app-shell {
-    overflow: hidden;
   }
 
   /* Natural Open-Sky Flow on Mobile: No Forced Bottom Bar/Gap — 10-Day Forecast Can Naturally Peek In */
@@ -3544,7 +3555,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 11px;
+    gap: 10px;
   }
 
   .main-split-grid {
@@ -3559,10 +3570,10 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    min-height: 36px;
+    min-height: 38px;
     padding: 0 2px;
+    margin-bottom: 6px;
     gap: 8px;
-    transform: translateZ(0);
   }
 
   .brand {
@@ -3800,7 +3811,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     flex: 0 0 auto;
     height: auto;
     min-height: 0;
-    padding: 28px 4px 16px;
+    padding: 24px 0 0;
     gap: 18px;
     border-radius: 0;
     align-items: center;
@@ -3894,12 +3905,12 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     line-height: 1.22;
   }
 
-  /* Floating 4-Across Glass Micro-Pills Under Centered Hero */
+  /* Floating 4-Across Glass Micro-Pills Under Centered Hero (Moved Down Toward Precipitation Pill) */
   .hero-micro-strip {
     width: 100%;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
-    padding-top: 8px;
+    padding-top: 22px;
     border-top: none;
   }
 
