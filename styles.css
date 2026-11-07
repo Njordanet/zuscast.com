@@ -419,8 +419,9 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 /* Search Bar */
 .search-wrapper {
   position: relative;
-  flex: 1 1 260px;
-  max-width: 440px;
+  flex: 1 1 280px;
+  max-width: 480px;
+  min-width: 0;
 }
 
 .search-input-group {
@@ -450,11 +451,15 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 #city-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
   width: 100%;
+  padding-right: 8px;
   background: transparent;
   border: none;
   color: var(--text-primary);
   font-size: 0.88rem;
+  text-overflow: ellipsis;
   outline: none;
 }
 
@@ -2944,6 +2949,10 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   /* M1: 16px font-size prevents iOS Safari auto-zoom when tapping the search input */
   #city-search-input {
     font-size: 16px;
+  }
+
+  #city-search-input::placeholder {
+    font-size: 0.86rem;
   }
 
   .locate-btn {
