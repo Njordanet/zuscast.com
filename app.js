@@ -1997,14 +1997,21 @@ function playTilesAppearCascade(skyClass) {
     document.body.classList.add("tiles-entering");
     setTimeout(() => {
       if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize();
-      syncLiquidPillGlider(document.getElementById("timeline-pill-bar"));
       if (state.weather?.minuteRates) {
-        renderNextHourNowcast(state.weather.minuteRates, state.weather.hourly?.[0]);
+        renderNextHourNowcast(
+          state.weather.minuteRates,
+          state.weather.hourly?.[0],
+          state.weather.minuteRatesMin,
+          state.weather.minuteRatesMax
+        );
       }
     }, 80);
     setTimeout(() => {
       if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize();
     }, 380);
+    setTimeout(() => {
+      document.body.classList.remove("tiles-entering");
+    }, 1050);
   }
 }
 
@@ -2566,28 +2573,12 @@ function buildEnvelopeBandPath(upperPts, lowerPts) {
   return d;
 }
 
-/* Certified Liquid Glass Sliding Pill Indicator */
+/* Certified Liquid Glass Pill State Sync (Direct Button Styling — Zero Detached Glider Artifacts) */
 function syncLiquidPillGlider(pillBarEl) {
   if (!pillBarEl) return;
-  let glider = pillBarEl.querySelector(".liquid-pill-glider");
-  if (!glider) {
-    glider = document.createElement("div");
-    glider.className = "liquid-pill-glider";
-    glider.setAttribute("aria-hidden", "true");
-    pillBarEl.prepend(glider);
-  }
-  const activeTab = pillBarEl.querySelector(".mode-tab.active");
-  if (!activeTab || activeTab.offsetWidth === 0) {
-    pillBarEl.classList.remove("has-glider");
-    pillBarEl.style.setProperty("--glider-opacity", "0");
-    return;
-  }
-  pillBarEl.classList.add("has-glider");
-  pillBarEl.style.setProperty("--glider-x", `${activeTab.offsetLeft}px`);
-  pillBarEl.style.setProperty("--glider-y", `${activeTab.offsetTop}px`);
-  pillBarEl.style.setProperty("--glider-w", `${activeTab.offsetWidth}px`);
-  pillBarEl.style.setProperty("--glider-h", `${activeTab.offsetHeight}px`);
-  pillBarEl.style.setProperty("--glider-opacity", "1");
+  pillBarEl.classList.remove("has-glider");
+  const legacyGlider = pillBarEl.querySelector(".liquid-pill-glider");
+  if (legacyGlider) legacyGlider.remove();
 }
 
 function attachHourlyTouchScrubber(colsLayer) {

@@ -400,8 +400,32 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 .brand-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.footer-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer-brand-icon {
   width: 22px;
   height: 22px;
+  border-radius: 7px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.2), rgba(56, 189, 248, 0.12));
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.footer-brand-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .brand-name {
@@ -1467,44 +1491,13 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   align-items: center;
   gap: 8px;
   overflow-x: auto;
-  padding: 3px 3px 5px;
+  padding: 4px 4px 6px;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
 }
 
 .timeline-pill-bar::-webkit-scrollbar {
   display: none;
-}
-
-.liquid-pill-glider {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: var(--glider-w, 0px);
-  height: var(--glider-h, 34px);
-  transform: translate3d(var(--glider-x, 0px), var(--glider-y, 3px), 0);
-  background: linear-gradient(
-    135deg,
-    rgba(56, 189, 248, 0.38) 0%,
-    rgba(14, 165, 233, 0.24) 52%,
-    rgba(129, 140, 248, 0.32) 100%
-  );
-  backdrop-filter: blur(18px) saturate(190%);
-  -webkit-backdrop-filter: blur(18px) saturate(190%);
-  border: 1px solid rgba(125, 211, 252, 0.72);
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.6),
-    inset 0 -1px 1px rgba(14, 165, 233, 0.25),
-    0 6px 18px -4px rgba(14, 165, 233, 0.45);
-  border-radius: var(--radius-pill);
-  pointer-events: none;
-  z-index: 0;
-  opacity: var(--glider-opacity, 0);
-  transition:
-    transform 0.4s cubic-bezier(0.22, 1.24, 0.36, 1),
-    width 0.34s cubic-bezier(0.22, 1.16, 0.36, 1),
-    height 0.25s ease,
-    opacity 0.2s ease;
 }
 
 .mode-tab {
@@ -1541,20 +1534,19 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 .mode-tab.active {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.34), rgba(14, 165, 233, 0.24));
+  background: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.38) 0%,
+    rgba(14, 165, 233, 0.24) 52%,
+    rgba(129, 140, 248, 0.32) 100%
+  );
   border-color: rgba(125, 211, 252, 0.72);
   color: #ffffff;
+  text-shadow: 0 1px 8px rgba(14, 165, 233, 0.55);
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.52),
-    0 6px 16px -4px rgba(14, 165, 233, 0.42);
-}
-
-.timeline-pill-bar.has-glider .mode-tab.active {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-  color: #ffffff;
-  text-shadow: 0 1px 8px rgba(14, 165, 233, 0.65);
+    inset 0 1px 1px rgba(255, 255, 255, 0.58),
+    inset 0 -1px 1px rgba(14, 165, 233, 0.24),
+    0 5px 14px -4px rgba(14, 165, 233, 0.42);
 }
 
 /* Main Split Grid: 10-Day Interactive Forecast + Live Doppler Radar */
@@ -1794,7 +1786,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 .day-pill-bar {
-  padding-top: 2px;
+  padding: 4px 4px 6px;
   width: 100%;
   max-width: 100%;
 }
