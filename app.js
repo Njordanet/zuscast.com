@@ -4779,28 +4779,15 @@ function openTileDetailModal(tileType) {
     default: {
       const spreadVal = state.useImperial ? w.spreadC * 1.8 : w.spreadC;
       const unit = state.useImperial ? "°F" : "°C";
-      kickerEl.textContent = "🔬 MULTI-MODEL NWP ENSEMBLE";
+      kickerEl.textContent = "🔬 FORECAST MODELS BREAKDOWN";
       titleEl.textContent = "HRRR • ECMWF • GFS • ICON";
-      primaryEl.textContent = `${w.confidencePct}% Agreement`;
+      primaryEl.textContent = `${w.confidencePct}% Model Agreement`;
       badgeEl.textContent = `Spread ±${(spreadVal / 2).toFixed(1)}${unit}`;
       narrativeEl.textContent =
         "ZüsCast continuously computes the min–max envelope across NOAA HRRR 3km, ECMWF IFS 0.25°, NOAA GFS, and DWD ICON so you can see both the primary forecast and model uncertainty.";
       chartMode = "temp";
       jumpLabel = "View Full 10-Day Model Envelope ↗";
-      stats = (w.ensembleModels || []).map((m) => {
-        const deltaVal = state.useImperial ? (m.deltaC ?? 0) * 1.8 : m.deltaC ?? 0;
-        const deltaLabel =
-          Math.abs(deltaVal) < 0.15
-            ? "Consensus"
-            : `Δ ${deltaVal > 0 ? "+" : ""}${deltaVal.toFixed(1)}${unit}`;
-        const alignPct = m.alignmentPct ?? w.confidencePct;
-        const pop = Math.round(m.precipProb ?? 0);
-        return {
-          label: `${m.name} (${m.tag})`,
-          val: `${formatTemp(m.temp, true)} • ${alignPct}%`,
-          sub: `${deltaLabel} • PoP ${pop}% • ${formatPrecipAmount(m.precip)}/hr`,
-        };
-      });
+      stats = [];
       break;
     }
   }
@@ -4822,19 +4809,57 @@ function openTileDetailModal(tileType) {
     chartSecEl.setAttribute("hidden", "");
   }
 
-  // Render structured sub-metrics breakdown cards
+  // Render structured sub-metrics breakdown cards (or full 4-model breakout for ensemble)
   if (statsGridEl) {
-    statsGridEl.innerHTML = stats
-      .map(
-        (s) => `
+    if (tileType === "ensemble") {
+      const unit = state.useImperial ? "°F" : "°C";
+      statsGridEl.innerHTML = (w.ensembleModels || [])
+        .map((m) => {
+          const deltaVal = state.useImperial ? (m.deltaC ?? 0) * 1.8 : m.deltaC ?? 0;
+          const absDelta = Math.abs(deltaVal);
+          const deltaLabel =
+            absDelta < 0.15
+              ? "Consensus"
+              : `Δ ${deltaVal > 0 ? "+" : ""}${deltaVal.toFixed(1)}${unit}`;
+          const alignPct = m.alignmentPct ?? w.confidencePct;
+          const toneClass =
+            alignPct >= 93 ? "aligned" : alignPct >= 86 ? "moderate" : "divergent";
+          const pop = Math.round(m.precipProb ?? 0);
+          return `
+        <div class="ensemble-pill-box">
+          <div class="ensemble-model-name">
+            <span>${m.name}</span>
+          </div>
+          <div class="ensemble-model-temp-row">
+            <span class="ensemble-model-temp">${formatTemp(m.temp, true)}</span>
+            <span class="confidence-source-delta ${toneClass}">${deltaLabel}</span>
+          </div>
+          <div class="ensemble-model-score-row">
+            <div class="ensemble-score-track">
+              <div class="ensemble-score-fill ${toneClass}" style="width: ${alignPct}%"></div>
+            </div>
+            <span class="ensemble-score-pct ${toneClass}">${alignPct}% Aligned</span>
+          </div>
+          <div class="ensemble-model-meta">PoP ${pop}% &bull; ${formatPrecipAmount(
+            m.precip
+          )}/hr</div>
+        </div>
+      `;
+        })
+        .join("");
+    } else {
+      statsGridEl.innerHTML = stats
+        .map(
+          (s) => `
       <div class="tile-stat-box">
         <span class="tile-stat-label">${s.label}</span>
         <span class="tile-stat-val">${s.val}</span>
         <span class="tile-stat-sub">${s.sub}</span>
       </div>
     `
-      )
-      .join("");
+        )
+        .join("");
+    }
   }
 
   if (jumpBtnEl) {

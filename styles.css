@@ -2841,17 +2841,35 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   transition: left 0.55s var(--spring-bounce);
 }
 
-/* Multi-Model Ensemble Confidence Strip */
+/* Multi-Model Ensemble Confidence Strip (Minimized by Default) */
 .ensemble-card {
-  padding: clamp(18px, 2vw, 22px) clamp(18px, 2.2vw, 26px);
+  padding: clamp(13px, 1.5vw, 16px) clamp(18px, 2.2vw, 24px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
   min-width: 0;
+  cursor: pointer;
 }
 
 .ensemble-card.tooltip-open {
   z-index: 60;
+}
+
+.ensemble-card > .ensemble-models-grid {
+  display: none !important;
+}
+
+.confidence-pill-chevron {
+  width: 13px;
+  height: 13px;
+  opacity: 0.78;
+  flex-shrink: 0;
+  transition: transform 0.2s var(--spring-bounce), opacity 0.2s ease;
+}
+
+.ensemble-card:hover .confidence-pill-chevron {
+  transform: translateX(2px);
+  opacity: 1;
 }
 
 .ensemble-section-header {
