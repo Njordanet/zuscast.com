@@ -318,6 +318,30 @@ function uvAdvice(uv) {
   return "Extreme — Avoid direct midday sun";
 }
 
+function toggleMobileSearch(forceOpen) {
+  const topNav = document.querySelector(".top-nav");
+  const toggleBtn = document.getElementById("mobile-search-toggle-btn");
+  const searchInput = document.getElementById("city-search-input");
+  const dropdown = document.getElementById("search-dropdown");
+  if (!topNav) return;
+
+  const isCurrentlyOpen = topNav.classList.contains("mobile-search-open");
+  const nextOpen = typeof forceOpen === "boolean" ? forceOpen : !isCurrentlyOpen;
+
+  topNav.classList.toggle("mobile-search-open", nextOpen);
+  if (toggleBtn) {
+    toggleBtn.setAttribute("aria-expanded", String(nextOpen));
+  }
+  if (nextOpen) {
+    requestAnimationFrame(() => {
+      if (searchInput) searchInput.focus();
+    });
+  } else {
+    if (dropdown) dropdown.classList.remove("open");
+    if (searchInput) searchInput.blur();
+  }
+}
+
 /* Render Compact Recent Searches Strip (Max 3 Cities, Excluding Currently Displayed City) */
 function renderLocationsStrip() {
   const strip = document.getElementById("locations-strip");
@@ -360,6 +384,7 @@ function renderLocationsStrip() {
         return;
       }
       state.location = { ...loc };
+      toggleMobileSearch(false);
       saveRecentSearch(state.location);
       renderLocationsStrip();
       loadWeatherForCurrentLocation();
@@ -2053,6 +2078,18 @@ function playTilesAppearCascade(skyClass) {
   document.body.classList.remove("sky-clear", "sky-overcast", "sky-rain", "sky-storm");
   if (skyClass) document.body.classList.add(skyClass);
 
+  // Sync iOS status bar theme-color meta tag to exact top sky background color for zero-blur crispness
+  const themeMeta = document.getElementById("theme-color-meta") || document.querySelector('meta[name="theme-color"]');
+  if (themeMeta) {
+    const skyThemeMap = {
+      "sky-clear": "#0f2447",
+      "sky-overcast": "#151e30",
+      "sky-rain": "#0d1627",
+      "sky-storm": "#111328",
+    };
+    themeMeta.setAttribute("content", skyThemeMap[skyClass] || "#0f2447");
+  }
+
   if (wasLoading) {
     document.body.classList.add("tiles-entering");
     setTimeout(() => {
@@ -2286,8 +2323,8 @@ function renderNextHourNowcast(
 
   const ctx = canvas.getContext("2d");
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
-  const cssW = Math.max(240, canvas.clientWidth || 560);
-  const cssH = Math.max(76, canvas.clientHeight || 94);
+  const cssW = Math.max(220, canvas.clientWidth || 560);
+  const cssH = Math.max(36, canvas.clientHeight || (window.innerWidth <= 640 ? 44 : 94));
   const targetW = Math.round(cssW * dpr);
   const targetH = Math.round(cssH * dpr);
   if (canvas.width !== targetW || canvas.height !== targetH) {
@@ -2315,9 +2352,10 @@ function renderNextHourNowcast(
 
   // Plot smooth curve & multi-model min/max estimation band (scale 0..9 mm/hr)
   const scaleMax = 9.0;
-  const yBottom = H - 5;
-  const yTop = 10;
-  const ySpan = Math.max(20, yBottom - yTop);
+  const isCompactH = H <= 58;
+  const yBottom = H - (isCompactH ? 3 : 5);
+  const yTop = isCompactH ? 5 : 10;
+  const ySpan = Math.max(16, yBottom - yTop);
   const rateToY = (r) => {
     const norm = Math.min(1, Math.max(0, Number(r || 0)) / scaleMax);
     return yBottom - norm * ySpan;
@@ -2718,8 +2756,9 @@ function renderHourlyCurveIntoContainer(
   const rawSpan = Math.max(0.0001, allMax - allMin);
 
   const W = hourly.length * colW;
-  const yTop = Math.round(H * 0.44);
-  const yBottom = Math.round(H * 0.78);
+  const isCompactStage = H <= 115;
+  const yTop = Math.round(H * (isCompactStage ? 0.5 : 0.44));
+  const yBottom = Math.round(H * (isCompactStage ? 0.82 : 0.78));
   const ySpan = yBottom - yTop;
 
   const valueToY = (v) => {
@@ -2875,7 +2914,7 @@ function renderHourlyCurveIntoContainer(
     <path d="${bandPathD}" fill="${desc.bandFill}" stroke="none" />
     <path d="${upperPathD}" fill="none" stroke="${desc.bandStroke}" stroke-width="1.2" stroke-dasharray="3 3" />
     <path d="${lowerPathD}" fill="none" stroke="${desc.bandStroke}" stroke-width="1.2" stroke-dasharray="3 3" />
-    <path d="${mainPathD}" fill="none" stroke="${desc.lineColor}" stroke-width="${colW <= 58 ? 3.2 : 4}" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="${mainPathD}" fill="none" stroke="${desc.lineColor}" stroke-width="${colW <= 46 ? 2.5 : colW <= 58 ? 3.2 : 4}" stroke-linecap="round" stroke-linejoin="round" />
   `;
   stage.appendChild(svg);
 
@@ -2904,7 +2943,10 @@ function renderHourlyCurveIntoContainer(
       const dayShort = item.time
         .toLocaleDateString([], { weekday: "short" })
         .toUpperCase();
-      rawTime = `<span class="day-divider-pill">${dayShort}</span> 12AM`;
+      rawTime =
+        colW <= 46
+          ? `<span class="day-divider-pill">${dayShort}</span>`
+          : `<span class="day-divider-pill">${dayShort}</span> 12AM`;
     } else {
       rawTime = item.time
         .toLocaleTimeString([], { hour: "numeric", hour12: true })
@@ -2969,14 +3011,23 @@ function renderHourlyCurveIntoContainer(
   };
 }
 
+function getMobileHourlyColWidth(scrollEl) {
+  const containerW =
+    (scrollEl && scrollEl.clientWidth) ||
+    Math.max(296, window.innerWidth - 40);
+  const innerW = Math.max(270, containerW - 8);
+  // Fit 9 full hourly columns simultaneously across the mobile chart viewport
+  return Math.max(33, Math.min(44, Math.floor(innerW / 9.2)));
+}
+
 function renderHourlyTimeline(hourly) {
   const scroll = document.getElementById("hourly-scroll");
   if (!scroll || !hourly || !hourly.length) return;
 
   const prevScrollLeft = scroll.scrollLeft;
   const isMobile = window.innerWidth <= 640;
-  const colW = isMobile ? 54 : 74;
-  const H = isMobile ? 154 : 196;
+  const colW = isMobile ? getMobileHourlyColWidth(scroll) : 74;
+  const H = isMobile ? 104 : 196;
 
   renderHourlyCurveIntoContainer(scroll, hourly, state.hourlyMode, {
     showNowOnFirst: true,
@@ -4004,7 +4055,7 @@ const atmosphereCanvas = {
     if (!canvas) return;
 
     const resize = () => {
-      this.dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      this.dpr = Math.min(window.devicePixelRatio || 1, 2);
       this.w = window.innerWidth;
       this.h = window.innerHeight;
       canvas.width = Math.round(this.w * this.dpr);
@@ -4029,9 +4080,9 @@ const atmosphereCanvas = {
     }));
 
     this.orbs = [
-      { xFrac: 0.22, yFrac: 0.16, r: 220, speed: 0.00035, phase: 0.4, color: "56, 189, 248" },
-      { xFrac: 0.78, yFrac: 0.14, r: 260, speed: 0.00028, phase: 2.1, color: "251, 191, 36" },
-      { xFrac: 0.52, yFrac: 0.28, r: 240, speed: 0.00031, phase: 4.2, color: "129, 140, 248" },
+      { xFrac: 0.22, yFrac: 0.26, r: 220, speed: 0.00035, phase: 0.4, color: "56, 189, 248" },
+      { xFrac: 0.78, yFrac: 0.24, r: 260, speed: 0.00028, phase: 2.1, color: "251, 191, 36" },
+      { xFrac: 0.52, yFrac: 0.36, r: 240, speed: 0.00031, phase: 4.2, color: "129, 140, 248" },
     ];
 
     this.nextLightningAt = performance.now() + 4500 + Math.random() * 6000;
@@ -4309,6 +4360,7 @@ function setupCitySearch() {
             };
             input.value = "";
             dropdown.classList.remove("open");
+            toggleMobileSearch(false);
             saveRecentSearch(state.location);
             loadWeatherForCurrentLocation();
           });
@@ -4324,6 +4376,12 @@ function setupCitySearch() {
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".search-wrapper")) {
       dropdown.classList.remove("open");
+    }
+    if (
+      window.innerWidth <= 640 &&
+      !e.target.closest(".top-nav")
+    ) {
+      toggleMobileSearch(false);
     }
   });
 }
@@ -4392,7 +4450,25 @@ function acquireUserLocation(isAutoStartup = false) {
 function setupControls() {
   document
     .getElementById("locate-me-btn")
-    .addEventListener("click", () => acquireUserLocation(false));
+    .addEventListener("click", () => {
+      toggleMobileSearch(false);
+      acquireUserLocation(false);
+    });
+
+  const mobileSearchToggleBtn = document.getElementById("mobile-search-toggle-btn");
+  const mobileSearchCloseBtn = document.getElementById("mobile-search-close-btn");
+  if (mobileSearchToggleBtn) {
+    mobileSearchToggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleMobileSearch();
+    });
+  }
+  if (mobileSearchCloseBtn) {
+    mobileSearchCloseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleMobileSearch(false);
+    });
+  }
 
   const unitBtn = document.getElementById("unit-toggle-btn");
   const updateUnitLabel = () => {
@@ -4435,7 +4511,8 @@ function setupControls() {
       syncLiquidPillGlider(topPillBar);
       syncRadarCardHeight();
       const scroll = document.getElementById("hourly-scroll");
-      const targetColW = window.innerWidth <= 640 ? 54 : 74;
+      const targetColW =
+        window.innerWidth <= 640 ? getMobileHourlyColWidth(scroll) : 74;
       if (
         scroll &&
         scroll._curveState &&
@@ -4524,6 +4601,7 @@ function setupControls() {
     const radarModalOpen = Boolean(dopplerRadarMap.isModalOpen);
     if (e.key === "Escape") {
       toggleConfidenceTooltip(false);
+      toggleMobileSearch(false);
       if (radarModalOpen) {
         dopplerRadarMap.closeModal();
       } else if (hourModalOpen) {
