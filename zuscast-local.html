@@ -18,7 +18,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <meta name="zus-build-version" content="v1.1.6" />
+  <meta name="zus-build-version" content="v1.2.0" />
   <title>ZüsCast — Hyperlocal Weather &amp; Down-to-the-Minute Nowcast</title>
   <meta name="description" content="ZüsCast (zuscast.com) — Hyperlocal, down-to-the-minute weather intelligence with Liquid Glass aesthetics." />
   <meta name="theme-color" content="#1d63b8" id="theme-color-meta" />
@@ -1798,6 +1798,34 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 
 .daily-precip.is-zero {
   color: rgba(88, 199, 255, 0.52);
+}
+
+.daily-snow-badge,
+.daily-sleet-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
+}
+
+.daily-snow-badge {
+  background: rgba(125, 211, 252, 0.18);
+  color: #bae6fd;
+  border: 1px solid rgba(125, 211, 252, 0.38);
+}
+
+.daily-sleet-badge {
+  background: rgba(192, 132, 252, 0.2);
+  color: #e9d5ff;
+  border: 1px solid rgba(192, 132, 252, 0.38);
 }
 
 /* Dark Sky Scaled Floating Temperature Spectrum Bar (Aligned with UV / AQI Meter Bars) */
@@ -3778,6 +3806,16 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     0 6px 16px -6px rgba(14, 165, 233, 0.45);
 }
 
+.hour-metric-card.static-metric {
+  cursor: default;
+}
+
+.hour-metric-card.static-metric:hover {
+  transform: none;
+  background: var(--modal-inset-fill, var(--glass-fill-inset));
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
 .hour-metric-top {
   display: flex;
   align-items: center;
@@ -5545,7 +5583,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
         <span><strong>ZüsCast</strong> &bull; Down-to-the-minute hyperlocal weather intelligence.</span>
       </div>
       <div class="footer-right-controls">
-        <span class="footer-version-badge" id="footer-version-badge">v1.1.6</span>
+        <span class="footer-version-badge" id="footer-version-badge">v1.2.0</span>
         <div id="last-updated">Live Telemetry</div>
         <button type="button" id="unit-toggle-btn" class="liquid-glass-pill footer-unit-pill" aria-label="Toggle Imperial / Metric units">
           °F, mph
@@ -5882,6 +5920,13 @@ const SKY_CONDITIONS = {
     ribbonColor: "var(--cond-snow)",
     icon: "snow",
   },
+  sleet: {
+    label: "Sleet / Freezing Mix",
+    shortLabel: "Sleet",
+    bodyClass: "sky-overcast",
+    ribbonColor: "var(--cond-snow)",
+    icon: "sleet",
+  },
   thunderstorm: {
     label: "Thunderstorm",
     shortLabel: "T-Storm",
@@ -5908,6 +5953,12 @@ function conditionFromWMO(code) {
     case 55:
     case 80:
       return SKY_CONDITIONS.drizzle;
+    case 56:
+    case 57:
+    case 66:
+    case 67:
+    case 77:
+      return SKY_CONDITIONS.sleet;
     case 61:
     case 63:
     case 81:
@@ -5918,7 +5969,6 @@ function conditionFromWMO(code) {
     case 71:
     case 73:
     case 75:
-    case 77:
     case 85:
     case 86:
       return SKY_CONDITIONS.snow;
@@ -5990,6 +6040,16 @@ function getWeatherSVG(type, isNight = false) {
         <circle cx="22" cy="50" r="3" fill="#7DD3FC"/>
         <circle cx="33" cy="53" r="3" fill="#7DD3FC"/>
         <circle cx="44" cy="50" r="3" fill="#7DD3FC"/>
+      </svg>`;
+    case "sleet":
+      return `<svg viewBox="0 0 64 64" fill="none">
+        <path d="M18 40H48C53 40 57 36 57 31C57 26.3 53.4 22.5 48.8 22.1C47.2 15.2 41 10 33.5 10C24.9 10 18 16.9 18 25.5C18 26 18 26.5 18.1 27C14 27.8 11 31.4 11 35.7C11 38.1 12.9 40 15.3 40H18Z" fill="#94A3B8"/>
+        <g stroke="#58C7FF" stroke-width="2.6" stroke-linecap="round">
+          <line x1="20" y1="46" x2="17" y2="54"/>
+          <line x1="44" y1="46" x2="41" y2="54"/>
+        </g>
+        <circle cx="28" cy="50" r="2.8" fill="#E0F2FE" stroke="#7DD3FC" stroke-width="1.2"/>
+        <circle cx="35" cy="56" r="2.4" fill="#E0F2FE" stroke="#7DD3FC" stroke-width="1.2"/>
       </svg>`;
     case "thunderstorm":
       return `<svg viewBox="0 0 64 64" fill="none">
@@ -6100,6 +6160,50 @@ function calculateHumidex(tempC, dewPointC = null, relativeHumidity = null) {
   }
   const humidex = T + (5 / 9) * (e - 10);
   return { humidex, vaporPressureHpa: e };
+}
+
+/* Thermodynamic Wet-Bulb & Snow/Sleet Physics (Stull 2011 & Kuchera SLR) */
+function calcWetBulbC(tempC, rhPct) {
+  const t = Number(tempC);
+  const rh = Math.max(1.0, Math.min(100.0, Number(rhPct) || 50));
+  if (Number.isNaN(t)) return null;
+  const tw =
+    t * Math.atan(0.151977 * Math.sqrt(rh + 8.313659)) +
+    Math.atan(t + rh) -
+    Math.atan(rh - 1.676331) +
+    0.00391838 * Math.pow(rh, 1.5) * Math.atan(0.023101 * rh) -
+    4.686035;
+  return Math.round(tw * 10) / 10;
+}
+
+function calcSnowLiquidRatio(tempC, precipType = null) {
+  if (precipType === "sleet") return 3.0;
+  if (precipType === "rain") return 0.0;
+  const t = Number(tempC);
+  if (Number.isNaN(t)) return 10.0;
+  let slr;
+  if (t >= 0.5) {
+    slr = Math.max(4.0, 10.0 - 3.0 * t);
+  } else if (t >= -15.0) {
+    slr = 10.0 + (8.0 / 15.0) * (-t);
+  } else if (t >= -25.0) {
+    slr = Math.max(14.0, 18.0 - 0.3 * (-t - 15.0));
+  } else {
+    slr = 14.0;
+  }
+  return Math.round(slr * 10) / 10;
+}
+
+function formatSnowAccum(accumCm) {
+  if (accumCm === null || accumCm === undefined || Number.isNaN(Number(accumCm))) return null;
+  const cm = Number(accumCm);
+  if (state.useImperial) {
+    const inches = cm / 2.54;
+    if (inches < 0.1) return null;
+    return `${inches >= 10 ? Math.round(inches) : inches.toFixed(1)}"`;
+  }
+  if (cm < 0.25) return null;
+  return `${cm >= 10 ? Math.round(cm) : cm.toFixed(1)} cm`;
 }
 
 function humidexComfortTier(humidexVal) {
@@ -8066,7 +8170,7 @@ async function loadWeatherForCurrentLocation() {
         "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,precipitation,uv_index,dew_point_2m,visibility,cape,is_day",
       minutely_15: "precipitation,weather_code",
       hourly:
-        "temperature_2m,apparent_temperature,weather_code,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,dew_point_2m,cloud_cover,visibility,pressure_msl,cape,is_day",
+        "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index,dew_point_2m,cloud_cover,visibility,pressure_msl,cape,is_day",
       daily:
         "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,uv_index_max,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset",
       timezone: "auto",
@@ -8410,6 +8514,53 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     );
     const uvIndex = Math.max(0, Number(zh?.uvIndex ?? h.uv_index?.[idx] ?? 0));
     const dewPoint = Number(zh?.dewPoint ?? h.dew_point_2m?.[idx] ?? temperature - 4);
+    const humidity = Number(
+      zh?.humidity ??
+      h.relative_humidity_2m?.[idx] ??
+      Math.max(10, Math.min(100, Math.round(100 - 5 * (temperature - dewPoint))))
+    );
+    const wetBulbC =
+      zh?.wetBulbTemperature !== undefined && zh?.wetBulbTemperature !== null
+        ? Number(zh.wetBulbTemperature)
+        : calcWetBulbC(temperature, humidity);
+
+    let precipType = zh?.precipType || null;
+    if (!precipType) {
+      if ([56, 57, 66, 67, 77].includes(wmoCode)) {
+        precipType = "sleet";
+      } else if (wetBulbC !== null && wetBulbC !== undefined) {
+        if (wetBulbC <= -0.4) precipType = "snow";
+        else if (wetBulbC <= 0.8) precipType = "sleet";
+        else if ([71, 73, 75, 85, 86].includes(wmoCode) && temperature <= 2.0) precipType = "snow";
+        else precipType = "rain";
+      } else if ([71, 73, 75, 85, 86].includes(wmoCode)) {
+        precipType = "snow";
+      } else {
+        precipType = "rain";
+      }
+    }
+
+    let snowAccumulationCm =
+      zh?.snowAccumulationCm !== undefined && zh?.snowAccumulationCm !== null
+        ? Number(zh.snowAccumulationCm)
+        : 0.0;
+    if (
+      (zh?.snowAccumulationCm === undefined || zh?.snowAccumulationCm === null) &&
+      (precipType === "snow" || precipType === "sleet") &&
+      precipMm > 0
+    ) {
+      const slr = calcSnowLiquidRatio(temperature, precipType);
+      snowAccumulationCm = Math.round(((precipMm / 10.0) * slr) * 100) / 100;
+    }
+
+    let hourCondition = conditionFromWMO(wmoCode);
+    if (
+      precipType === "sleet" &&
+      (precipProb >= 25 || precipMm > 0.1 || [56, 57, 66, 67, 77].includes(wmoCode))
+    ) {
+      hourCondition = SKY_CONDITIONS.sleet;
+    }
+
     const cloudCover = Math.min(100, Math.max(0, Number(zh?.cloudCover ?? h.cloud_cover?.[idx] ?? 0)));
     const visibilityKm = Math.max(
       0.2,
@@ -8519,6 +8670,7 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       isNight: hourSolar.isNight,
       solarPhase: hourSolar.solarPhase,
       wmoCode,
+      condition: hourCondition,
       temperature,
       tempMin: tempB.min,
       tempMax: tempB.max,
@@ -8531,6 +8683,10 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       precipMm,
       precipMmMin: prMmB.min,
       precipMmMax: prMmB.max,
+      precipType,
+      snowAccumulationCm,
+      humidity,
+      wetBulbC,
       windSpeed,
       windDirection,
       windMin: windB.min,
@@ -8568,10 +8724,12 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
   const hourly = allHourly.slice(startHourIdx);
 
   // 10-Day Forecast (each day includes its 24-hour slice for the expandable day chart)
+  const zDaily = Array.isArray(zusWeather?.daily) ? zusWeather.daily : [];
   const daily = [];
   const dayLen = Math.min(d.time?.length || 0, 10);
   for (let i = 0; i < dayLen; i++) {
     const dayKey = String(d.time[i]);
+    const zd = i < zDaily.length ? zDaily[i] : null;
     let dayHours =
       i === 0
         ? hourly.slice(0, 24)
@@ -8580,14 +8738,50 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       dayHours = allHourly.slice(i * 24, (i + 1) * 24);
     }
 
+    let snowAccumulationCm =
+      zd?.snowAccumulationCm !== undefined && zd?.snowAccumulationCm !== null
+        ? Number(zd.snowAccumulationCm)
+        : dayHours.reduce((sum, pt) => sum + (pt.snowAccumulationCm || 0), 0);
+    snowAccumulationCm = Math.round(snowAccumulationCm * 10) / 10;
+
+    let precipType = zd?.precipType || null;
+    if (!precipType) {
+      const sleetHours = dayHours.filter(
+        (pt) => pt.precipType === "sleet" && (pt.precipMm > 0.1 || pt.precipProb >= 25)
+      );
+      const snowHours = dayHours.filter(
+        (pt) => pt.precipType === "snow" && (pt.precipMm > 0.1 || pt.precipProb >= 25)
+      );
+      if (sleetHours.length > snowHours.length && sleetHours.length > 0) {
+        precipType = "sleet";
+      } else if (snowHours.length > 0) {
+        precipType = "snow";
+      } else {
+        precipType = "rain";
+      }
+    }
+
+    let dayCondition = conditionFromWMO(d.weather_code[i]);
+    if (
+      precipType === "sleet" &&
+      (d.precipitation_probability_max?.[i] >= 25 ||
+        d.precipitation_sum?.[i] > 0.1 ||
+        [56, 57, 66, 67, 77].includes(Number(d.weather_code[i])))
+    ) {
+      dayCondition = SKY_CONDITIONS.sleet;
+    }
+
     daily.push({
       date: new Date(`${d.time[i]}T12:00:00`),
       dateKey: dayKey,
       wmoCode: d.weather_code[i],
+      condition: dayCondition,
       tempMin: d.temperature_2m_min[i],
       tempMax: d.temperature_2m_max[i],
       precipProb: d.precipitation_probability_max?.[i] ?? 0,
       precipSumMm: d.precipitation_sum?.[i] ?? 0,
+      precipType,
+      snowAccumulationCm,
       uvMax: d.uv_index_max?.[i] ?? 5,
       windMax: d.wind_speed_10m_max?.[i] ?? 10,
       windDir: d.wind_direction_10m_dominant?.[i] ?? 180,
@@ -8711,17 +8905,60 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     currentHourPt?.visibilityKm ??
     (h.visibility?.[startHourIdx] ?? 10000) / 1000;
 
+  const currentTemp = zCur?.temperature ?? c.temperature_2m ?? currentHourPt?.temperature ?? 0;
+  const currentHumidity = Number(zCur?.humidity ?? c.relative_humidity_2m ?? currentHourPt?.humidity ?? 50);
+  const currentDewPoint =
+    zCur?.dewPoint ??
+    c.dew_point_2m ??
+    currentHourPt?.dewPoint ??
+    h.dew_point_2m?.[startHourIdx] ??
+    currentTemp - (100 - currentHumidity) / 5;
+  const currentWetBulb =
+    zCur?.wetBulbTemperature !== undefined && zCur?.wetBulbTemperature !== null
+      ? Number(zCur.wetBulbTemperature)
+      : calcWetBulbC(currentTemp, currentHumidity);
+
+  let currentPrecipType = zCur?.precipType ?? currentHourPt?.precipType ?? null;
+  if (!currentPrecipType) {
+    if ([56, 57, 66, 67, 77].includes(effectiveWmo)) {
+      currentPrecipType = "sleet";
+    } else if (currentWetBulb !== null && currentWetBulb !== undefined) {
+      if (currentWetBulb <= -0.4) currentPrecipType = "snow";
+      else if (currentWetBulb <= 0.8) currentPrecipType = "sleet";
+      else if ([71, 73, 75, 85, 86].includes(effectiveWmo) && currentTemp <= 2.0) currentPrecipType = "snow";
+      else currentPrecipType = "rain";
+    } else if ([71, 73, 75, 85, 86].includes(effectiveWmo)) {
+      currentPrecipType = "snow";
+    } else {
+      currentPrecipType = "rain";
+    }
+  }
+
+  let currentCond = conditionFromWMO(effectiveWmo);
+  const currentPop = Number(
+    zHourly[0]?.precipitationChance ??
+    h.precipitation_probability?.[startHourIdx] ??
+    (minuteRates[0] > 0.05 ? 80 : 0)
+  );
+  const currentPrecipMm = Number(
+    zHourly[0]?.precipMm ?? h.precipitation?.[startHourIdx] ?? minuteRates[0]
+  );
+  if (
+    currentPrecipType === "sleet" &&
+    (currentPop >= 25 || currentPrecipMm > 0.1 || [56, 57, 66, 67, 77].includes(effectiveWmo))
+  ) {
+    currentCond = SKY_CONDITIONS.sleet;
+  }
+
   return {
     elevation: zCur?.elevationMeters ?? raw.elevation ?? 0,
-    temperature: zCur?.temperature ?? c.temperature_2m ?? currentHourPt?.temperature ?? 0,
+    temperature: currentTemp,
     feelsLike: zCur?.feelsLike ?? c.apparent_temperature ?? currentHourPt?.feelsLike ?? 0,
-    humidity: zCur?.humidity ?? c.relative_humidity_2m ?? 50,
-    dewPoint:
-      zCur?.dewPoint ??
-      c.dew_point_2m ??
-      currentHourPt?.dewPoint ??
-      h.dew_point_2m?.[startHourIdx] ??
-      c.temperature_2m - (100 - c.relative_humidity_2m) / 5,
+    humidity: currentHumidity,
+    dewPoint: currentDewPoint,
+    wetBulbC: currentWetBulb,
+    precipType: currentPrecipType,
+    condition: currentCond,
     pressure: zCur?.airPressure ?? c.pressure_msl ?? c.surface_pressure ?? currentHourPt?.pressure ?? 1013,
     windSpeed: zCur?.windSpeed ?? c.wind_speed_10m ?? currentHourPt?.windSpeed ?? 0,
     windDirection: zCur?.windDirection ?? c.wind_direction_10m ?? 0,
@@ -8745,6 +8982,7 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     cape: c.cape ?? h.cape?.[startHourIdx] ?? 0,
     usAqi: zCur?.usAqi ?? rawAqi?.current?.us_aqi ?? 28,
     pm25: rawAqi?.current?.pm2_5 ?? 6.2,
+    ozone: zCur?.ozone ?? rawAqi?.current?.ozone ?? null,
     localStationName: zCur?.localStationName ?? null,
     localStationWx: zCur?.localStationWx ?? null,
     minuteRates,
@@ -8853,7 +9091,7 @@ function renderDashboard() {
   const w = state.weather;
   if (!w) return;
 
-  const cond = conditionFromWMO(w.wmoCode);
+  const cond = w.condition || conditionFromWMO(w.wmoCode);
 
   // Hero Card
   document.getElementById(
@@ -8949,9 +9187,13 @@ function renderDashboard() {
     100,
     Math.max(4, (aqi / 200) * 100)
   )}%`;
+  const ozoneStr =
+    w.ozone !== null && w.ozone !== undefined && w.ozone > 0
+      ? ` · Ozone ${Math.round(w.ozone)} DU`
+      : "";
   document.getElementById("detail-aqi-desc").textContent = `${aqiCategoryLabel(
     aqi
-  )} (PM2.5: ${Number(w.pm25 || 0).toFixed(1)} µg/m³)`;
+  )} (PM2.5: ${Number(w.pm25 || 0).toFixed(1)} µg/m³${ozoneStr})`;
   const aqiBadgeEl = document.getElementById("detail-aqi-badge");
   if (aqiBadgeEl) {
     aqiBadgeEl.textContent =
@@ -9010,9 +9252,13 @@ function renderDashboard() {
   if (humDotEl) {
     humDotEl.style.left = `${Math.min(100, Math.max(4, w.humidity))}%`;
   }
+  const wetBulbStr =
+    w.wetBulbC !== null && w.wetBulbC !== undefined
+      ? ` · Wet bulb ${formatTemp(w.wetBulbC)}`
+      : "";
   document.getElementById("detail-dewpoint").textContent = `Dew point ${formatTemp(
     w.dewPoint
-  )} — ${muggyDescription(w.dewPoint)}`;
+  )}${wetBulbStr} — ${muggyDescription(w.dewPoint)}`;
   const humBadgeEl = document.getElementById("detail-humidity-badge");
   if (humBadgeEl) {
     humBadgeEl.textContent = `Dew ${formatTemp(w.dewPoint)}`;
@@ -9789,7 +10035,7 @@ function renderHourlyCurveIntoContainer(
   colsLayer.className = "hourly-columns-layer";
 
   hourly.forEach((item, idx) => {
-    const cond = conditionFromWMO(item.wmoCode);
+    const cond = item.condition || conditionFromWMO(item.wmoCode);
     const s = series[idx];
     const pt = mainPts[idx];
 
@@ -10006,7 +10252,7 @@ function renderDailyForecast(daily) {
   }
 
   daily.forEach((dItem, idx) => {
-    const cond = conditionFromWMO(dItem.wmoCode);
+    const cond = dItem.condition || conditionFromWMO(dItem.wmoCode);
     const dayName =
       idx === 0
         ? "TODAY"
@@ -10018,6 +10264,13 @@ function renderDailyForecast(daily) {
     const gradWidthPct = (100 / widthPct) * 100;
     const gradLeftPct = -(leftPct / widthPct) * 100;
     const precipPct = Math.round(dItem.precipProb ?? 0);
+
+    let snowBadgeHtml = "";
+    const accumFormatted = formatSnowAccum(dItem.snowAccumulationCm);
+    if (accumFormatted) {
+      const badgeCls = dItem.precipType === "sleet" ? "daily-sleet-badge" : "daily-snow-badge";
+      snowBadgeHtml = `<span class="${badgeCls}">${accumFormatted}</span>`;
+    }
 
     let todayDotHtml = "";
     if (idx === 0 && Number.isFinite(state.weather?.temperature)) {
@@ -10054,6 +10307,7 @@ function renderDailyForecast(daily) {
         <div class="daily-day-col">
           <span class="daily-day">${dayName}</span>
           <span class="daily-precip${precipPct === 0 ? " is-zero" : ""}">${precipPct}%</span>
+          ${snowBadgeHtml}
         </div>
         <div class="daily-icon">${getWeatherSVG(cond.icon)}</div>
         <div class="daily-scale-lane">
@@ -10354,7 +10608,7 @@ function renderHourDetailModalContent() {
     }
   }
 
-  const cond = conditionFromWMO(item.wmoCode);
+  const cond = item.condition || conditionFromWMO(item.wmoCode);
   const tempDesc = getHourlyMetricDescriptor("temp");
   const tempSpread = tempDesc.formatSpread(
     Math.max(0, item.tempMax - item.tempMin)
@@ -10399,13 +10653,22 @@ function renderHourDetailModalContent() {
   if (tempEl) tempEl.textContent = formatTemp(item.temperature, true);
   if (spreadEl) spreadEl.textContent = tempSpread;
   if (condBadgeEl) condBadgeEl.textContent = cond.label;
+  const wetBulbStr =
+    item.wetBulbC !== null && item.wetBulbC !== undefined
+      ? ` &bull; Wet-Bulb ${formatTemp(item.wetBulbC, true)}`
+      : "";
+  const accumVal = formatSnowAccum(item.snowAccumulationCm);
+  const accumStr = accumVal
+    ? ` &bull; ${item.precipType === "sleet" ? "Ice/Sleet" : "Snow"}: ${accumVal}`
+    : "";
+
   if (submetaEl) {
     submetaEl.innerHTML = `Feels like ${formatTemp(
       item.feelsLike,
       true
     )} &bull; PoP ${Math.round(item.precipProb)}% &bull; Wind ${formatWind(
       item.windSpeed
-    )}`;
+    )}${wetBulbStr}${accumStr}`;
   }
 
   if (prevBtn) {
@@ -10475,6 +10738,54 @@ function renderHourDetailModalContent() {
 
       gridEl.appendChild(card);
     });
+
+    if (item.wetBulbC !== null && item.wetBulbC !== undefined) {
+      const card = document.createElement("div");
+      card.className = "hour-metric-card static-metric";
+      card.style.setProperty("--metric-accent", "#38bdf8");
+      card.innerHTML = `
+        <div class="hour-metric-top">
+          <span class="hour-metric-label-wrap">
+            <span class="hour-metric-icon" style="color: #38bdf8">${getHourlyMetricIconSVG("dew")}</span>
+            <span class="hour-metric-label">Wet-Bulb Temp</span>
+          </span>
+          <span class="hour-metric-active-tag" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8">Thermodynamic</span>
+        </div>
+        <div class="hour-metric-mid">
+          <span class="hour-metric-val">${formatTemp(item.wetBulbC, true)}</span>
+          <span class="hour-metric-spread">${item.precipType ? item.precipType.toUpperCase() : "PHASE"}</span>
+        </div>
+      `;
+      gridEl.appendChild(card);
+    }
+
+    if (item.snowAccumulationCm && item.snowAccumulationCm >= 0.1) {
+      const card = document.createElement("div");
+      card.className = "hour-metric-card static-metric";
+      const isSleet = item.precipType === "sleet";
+      const accent = isSleet ? "#c084fc" : "#7dd3fc";
+      const label = isSleet ? "Sleet / Ice Accum" : "Snow Accumulation";
+      const accumFormatted =
+        formatSnowAccum(item.snowAccumulationCm) ||
+        (state.useImperial
+          ? `${(item.snowAccumulationCm / 2.54).toFixed(1)}"`
+          : `${item.snowAccumulationCm.toFixed(1)} cm`);
+      card.style.setProperty("--metric-accent", accent);
+      card.innerHTML = `
+        <div class="hour-metric-top">
+          <span class="hour-metric-label-wrap">
+            <span class="hour-metric-icon" style="color: ${accent}">${getHourlyMetricIconSVG("precip")}</span>
+            <span class="hour-metric-label">${label}</span>
+          </span>
+          <span class="hour-metric-active-tag" style="background: rgba(125, 211, 252, 0.15); color: ${accent}">Kuchera SLR</span>
+        </div>
+        <div class="hour-metric-mid">
+          <span class="hour-metric-val">${accumFormatted}</span>
+          <span class="hour-metric-spread">1-Hour Total</span>
+        </div>
+      `;
+      gridEl.appendChild(card);
+    }
   }
 }
 
