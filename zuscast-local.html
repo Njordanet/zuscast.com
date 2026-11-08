@@ -18,7 +18,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <meta name="zus-build-version" content="v1.3.0" />
+  <meta name="zus-build-version" content="v1.3.1" />
   <title>ZüsCast — Hyperlocal Weather &amp; Down-to-the-Minute Nowcast</title>
   <meta name="description" content="ZüsCast (zuscast.com) — Hyperlocal, down-to-the-minute weather intelligence with Liquid Glass aesthetics." />
   <meta name="theme-color" content="#1d63b8" id="theme-color-meta" />
@@ -2361,14 +2361,19 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   font-family: inherit !important;
 }
 
-/* Crisp Instant Frame Switching Between Doppler Radar Frames (Zero Ghosting/Smearing) */
+/* Crisp Instant Frame Switching Between Doppler Radar Frames (Zero Ghosting/Smearing & GPU Layer Resident) */
 .leaflet-tile-pane .leaflet-layer {
   transition: none !important;
+  will-change: opacity;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .leaflet-tile-pane canvas.leaflet-tile,
 .leaflet-tile-pane img.leaflet-tile {
   image-rendering: -webkit-optimize-contrast;
+  transition: none !important;
 }
 
 .leaflet-control-attribution {
@@ -5461,7 +5466,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
         </div>
 
         <div>
-          <div class="nowcast-headline" id="nowcast-headline">No precipitation for the hour.</div>
+          <div class="nowcast-headline" id="nowcast-headline">No precipitation in next hour.</div>
         </div>
 
         <div class="nowcast-chart-box" hidden>
@@ -5587,16 +5592,6 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
                       <span>Wind</span>
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    class="radar-heatmap-chip is-on"
-                    id="radar-heatmap-btn"
-                    aria-pressed="true"
-                    title="Toggle subtle wind-speed color field"
-                  >
-                    <span class="radar-heatmap-dot" id="radar-heatmap-dot"></span>
-                    <span>Color Field</span>
-                  </button>
                 </div>
               </div>
 
@@ -5785,7 +5780,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
         <span><strong>ZüsCast</strong> &bull; Down-to-the-minute hyperlocal weather intelligence.</span>
       </div>
       <div class="footer-right-controls">
-        <span class="footer-version-badge" id="footer-version-badge">v1.3.0</span>
+        <span class="footer-version-badge" id="footer-version-badge">v1.3.1</span>
         <div id="last-updated">Live Telemetry</div>
         <button type="button" id="unit-toggle-btn" class="liquid-glass-pill footer-unit-pill" aria-label="Toggle Imperial / Metric units">
           °F, mph
@@ -6536,6 +6531,12 @@ const dopplerRadarMap = {
   probedTelemetry: null,
   tileLayers: {},
   _rawTilePromises: new Map(),
+  _processedCanvasCache: new Map(),
+  _preloadedTileUrls: new Set(),
+  _readyFrameIds: new Set(),
+  _lastReadyFrameId: null,
+  _baseLayer: null,
+  _labelLayer: null,
   activeFrameId: null,
   frames: [],
   currentIndex: 0,
@@ -6547,7 +6548,7 @@ const dopplerRadarMap = {
   modalCloseTimer: null,
   baseZoom: 8,
   layerMode: "both",
-  showWindHeatmap: true,
+  showWindHeatmap: false,
   windCanvas: null,
   windCtx: null,
   _windHeatCanvas: null,
@@ -6567,6 +6568,9 @@ const dopplerRadarMap = {
       maxZoom: 10,
       zoomSnap: 0.25,
       zoomDelta: 1,
+      fadeAnimation: false,
+      zoomAnimation: true,
+      markerZoomAnimation: true,
       zoomControl: false,
       attributionControl: false,
       scrollWheelZoom: false,
@@ -6579,22 +6583,28 @@ const dopplerRadarMap = {
 
     this.initTrackpadGestures(mapEl);
 
-    // Keyless Esri World Dark Gray Base (works on localhost, file://, and production without API keys)
-    L.tileLayer(
+    // Keyless Esri World Dark Gray Base (persistent 8-tile ring buffer so pan/zoom/modal never flashes)
+    this._baseLayer = L.tileLayer(
       "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
       {
         maxZoom: 16,
         zIndex: 1,
+        keepBuffer: 8,
+        updateWhenIdle: false,
+        updateWhenZooming: false,
       }
     ).addTo(this.map);
 
     // Transparent Esri World Dark Gray Reference labels layered above the Doppler radar tiles
-    L.tileLayer(
+    this._labelLayer = L.tileLayer(
       "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
       {
         maxZoom: 16,
         zIndex: 350,
         opacity: 0.92,
+        keepBuffer: 8,
+        updateWhenIdle: false,
+        updateWhenZooming: false,
       }
     ).addTo(this.map);
 
@@ -6673,8 +6683,10 @@ const dopplerRadarMap = {
       });
     }
 
+    this.initRegionalRadarCanvas();
     this.initWindCanvas();
     this.map.on("move zoom viewreset resize", () => {
+      this.renderRegionalRadarCanvas();
       this.resizeWindCanvas();
       if (this.layerMode === "wind" || this.layerMode === "both") {
         this.drawWindCanvasFrame(false);
@@ -7265,7 +7277,7 @@ const dopplerRadarMap = {
 
       if (advance) {
         p.trail.push({ lat: p.lat, lon: p.lon, speedKmh });
-        if (p.trail.length > 15) p.trail.shift();
+        if (p.trail.length > 22) p.trail.shift();
 
         const nextX = pt.x + vx * zoomScale;
         const nextY = pt.y + vy * zoomScale;
@@ -7287,21 +7299,25 @@ const dopplerRadarMap = {
         p.lon = nextLl.lng;
       }
 
-      if (p.trail.length > 2) {
-        const [r, g, b] = this.windColorRgb(speedKmh);
+      if (p.trail.length > 3) {
         const lifeFade = Math.sin((Math.min(p.age, p.maxAge) / p.maxAge) * Math.PI);
-        let prevScreenPt = this.map.latLngToContainerPoint([p.trail[0].lat, p.trail[0].lon]);
-        for (let t = 1; t < p.trail.length; t++) {
-          const curScreenPt = this.map.latLngToContainerPoint([p.trail[t].lat, p.trail[t].lon]);
-          const segFrac = t / p.trail.length;
-          const alpha = segFrac * lifeFade * 0.9;
-          ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
-          ctx.lineWidth = 1.05 + segFrac * 1.4;
-          ctx.beginPath();
-          ctx.moveTo(prevScreenPt.x, prevScreenPt.y);
-          ctx.lineTo(curScreenPt.x, curScreenPt.y);
-          ctx.stroke();
-          prevScreenPt = curScreenPt;
+        if (lifeFade > 0.04) {
+          const n = p.trail.length;
+          const modeOpacityScale = this.layerMode === "both" ? 0.36 : 0.46;
+          let prevScreenPt = this.map.latLngToContainerPoint([p.trail[0].lat, p.trail[0].lon]);
+          for (let t = 1; t < n; t++) {
+            const curScreenPt = this.map.latLngToContainerPoint([p.trail[t].lat, p.trail[t].lon]);
+            const frac = t / (n - 1);
+            const fade = Math.pow(frac, 1.65) * Math.sin(frac * Math.PI * 0.85 + 0.15);
+            const alpha = fade * lifeFade * modeOpacityScale;
+            ctx.strokeStyle = `rgba(248, 250, 252, ${alpha.toFixed(3)})`;
+            ctx.lineWidth = 0.45 + frac * 0.85;
+            ctx.beginPath();
+            ctx.moveTo(prevScreenPt.x, prevScreenPt.y);
+            ctx.lineTo(curScreenPt.x, curScreenPt.y);
+            ctx.stroke();
+            prevScreenPt = curScreenPt;
+          }
         }
       }
     }
@@ -7339,7 +7355,7 @@ const dopplerRadarMap = {
     document.body.classList.add("modal-open");
 
     const syncCanvases = () => {
-      if (this.map) this.map.invalidateSize();
+      if (this.map) this.map.invalidateSize({ pan: false, animate: false });
       this.resizeWindCanvas();
       this.resetWindParticles();
       if (this.layerMode === "wind" || this.layerMode === "both") {
@@ -7371,14 +7387,14 @@ const dopplerRadarMap = {
       this.map.setView([state.location.latitude, state.location.longitude], this.baseZoom, {
         animate: false,
       });
-      this.map.invalidateSize();
+      this.map.invalidateSize({ pan: false, animate: false });
       this.resizeWindCanvas();
       this.resetWindParticles();
       if (this.layerMode === "wind" || this.layerMode === "both") {
         this.drawWindCanvasFrame(false);
       }
       setTimeout(() => {
-        if (this.map) this.map.invalidateSize();
+        if (this.map) this.map.invalidateSize({ pan: false, animate: false });
         this.resizeWindCanvas();
         this.resetWindParticles();
         if (this.layerMode === "wind" || this.layerMode === "both") {
@@ -7484,12 +7500,22 @@ const dopplerRadarMap = {
     const p = new Promise((resolve) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.onload = () => resolve(img);
+      img.decoding = "async";
+      img.onload = () => {
+        if (typeof img.decode === "function") {
+          img
+            .decode()
+            .then(() => resolve(img))
+            .catch(() => resolve(img));
+        } else {
+          resolve(img);
+        }
+      };
       img.onerror = () => resolve(null);
       img.src = url;
     });
     this._rawTilePromises.set(url, p);
-    if (this._rawTilePromises.size > 420) {
+    if (this._rawTilePromises.size > 1200) {
       const oldestKey = this._rawTilePromises.keys().next().value;
       this._rawTilePromises.delete(oldestKey);
     }
@@ -7639,6 +7665,14 @@ const dopplerRadarMap = {
         const ctx = tile.getContext("2d");
         ctx.imageSmoothingEnabled = false;
 
+        const cacheKey = `${frame.frameId}:${coords.z}:${coords.x}:${coords.y}`;
+        if (self._processedCanvasCache.has(cacheKey)) {
+          const cached = self._processedCanvasCache.get(cacheKey);
+          ctx.drawImage(cached, 0, 0);
+          setTimeout(() => done(null, tile), 0);
+          return tile;
+        }
+
         (async () => {
           try {
             const maxTileIndex = Math.pow(2, coords.z) - 1;
@@ -7729,6 +7763,16 @@ const dopplerRadarMap = {
               }
             }
             ctx.putImageData(imageData, 0, 0);
+
+            const off = document.createElement("canvas");
+            off.width = 256;
+            off.height = 256;
+            off.getContext("2d").drawImage(tile, 0, 0);
+            self._processedCanvasCache.set(cacheKey, off);
+            if (self._processedCanvasCache.size > 900) {
+              const oldest = self._processedCanvasCache.keys().next().value;
+              self._processedCanvasCache.delete(oldest);
+            }
           } catch (_) {}
           done(null, tile);
         })();
@@ -7742,6 +7786,9 @@ const dopplerRadarMap = {
       zIndex: 200,
       maxNativeZoom: frame.maxNativeZoom || 8,
       maxZoom: 10,
+      keepBuffer: 6,
+      updateWhenIdle: false,
+      updateWhenZooming: false,
     });
   },
 
@@ -7890,27 +7937,59 @@ const dopplerRadarMap = {
     this.updateCoordsHudLabel();
 
     if (this.map) {
-      this.map.setView([lat, lon], this.baseZoom, { animate: true });
+      this.map.setView([lat, lon], this.baseZoom, { animate: false });
+      this.map.invalidateSize({ pan: false, animate: false });
       if (this.marker) this.marker.setLatLng([lat, lon]);
       if (this.scanCircle) this.scanCircle.setLatLng([lat, lon]);
       this.resetWindParticles();
     }
 
     const inConus = this.isConusLocation(lat, lon);
+    this._regionalPackBounds = null;
+    this._regionalPackImages = null;
 
-    // 1. Try ZüsAPI 1km CONUS Master Grid & 8-Bit Storm Engine on panda first (CONUS locations)
+    // 1. Try ZüsAPI 1km CONUS Master Grid & Single-Canvas Regional Pack on panda first (CONUS locations)
     if (inConus) {
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 4500);
-        const resp = await fetch(
-          `${ZUS_API_BASE}/radar/manifest?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`,
-          { signal: controller.signal }
-        );
+        const [manifestResp, packResp] = await Promise.all([
+          fetch(`${ZUS_API_BASE}/radar/manifest?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`, {
+            signal: controller.signal,
+          }),
+          fetch(`${ZUS_API_BASE}/radar/regional_pack?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`, {
+            signal: controller.signal,
+          }).catch(() => null),
+        ]);
         clearTimeout(timeout);
 
-        if (resp.ok) {
-          const data = await resp.json();
+        if (packResp && packResp.ok) {
+          const packData = await packResp.json();
+          if (packData && packData.inConus && packData.bounds && packData.images) {
+            const decodedMap = {};
+            const entries = Object.entries(packData.images);
+            await Promise.all(
+              entries.map(async ([fid, b64]) => {
+                if (!b64) {
+                  decodedMap[fid] = null;
+                  return;
+                }
+                const img = new Image();
+                img.src = "data:image/png;base64," + b64;
+                try {
+                  if (img.decode) await img.decode();
+                  else await new Promise((r) => { img.onload = r; img.onerror = r; });
+                } catch (_) {}
+                decodedMap[fid] = img;
+              })
+            );
+            this._regionalPackBounds = packData.bounds;
+            this._regionalPackImages = decodedMap;
+          }
+        }
+
+        if (manifestResp.ok) {
+          const data = await manifestResp.json();
           if (Array.isArray(data.frames) && data.frames.length > 0) {
             const normalizedFrames = data.frames.map((f) => ({
               ...f,
@@ -7921,7 +8000,7 @@ const dopplerRadarMap = {
                 f.tileUrlTemplate.startsWith("http://")
                   ? "https://" + f.tileUrlTemplate.slice("http://".length)
                   : f.tileUrlTemplate
-              ).replace("?v=7", "?v=8"),
+              ).replace(/\?v=\d+/, "?v=9"),
             }));
             this.frames = this.ensureTwoHourNowcastFrames(normalizedFrames, { maxNativeZoom: 8 });
             this.telemetry = data.localTelemetry || null;
@@ -8022,12 +8101,132 @@ const dopplerRadarMap = {
     return null;
   },
 
+  preloadViewportTiles(lat, lon, zoom = 8) {
+    const z = Math.max(3, Math.min(8, Math.round(zoom || this.baseZoom)));
+    const n = Math.pow(2, z);
+    const cx = Math.floor(((lon + 180.0) / 360.0) * n);
+    const latRad = (Math.max(-85.0, Math.min(85.0, lat)) * Math.PI) / 180.0;
+    const cy = Math.floor(
+      ((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0) * n
+    );
+
+    const urls = [];
+    // 5x5 tile neighborhood covers both inline card and expanded fullscreen modal with pan buffer
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const tx = cx + dx;
+        const ty = cy + dy;
+        if (tx < 0 || tx >= n || ty < 0 || ty >= n) continue;
+
+        // 1. Pre-warm Esri Dark Gray Base & Silver Reference Label tiles
+        urls.push(
+          `https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/${z}/${ty}/${tx}`,
+          `https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/${z}/${ty}/${tx}`
+        );
+
+        // 2. Pre-warm all timeline radar frames for the central 3x3 viewport
+        if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) {
+          for (let i = 0; i < this.frames.length; i++) {
+            const f = this.frames[i];
+            if (!f || !f.tileUrlTemplate) continue;
+            const fz = Math.min(z, f.maxNativeZoom || 8);
+            const fn = Math.pow(2, fz);
+            const ftx = Math.floor(((lon + 180.0) / 360.0) * fn) + dx;
+            const fty =
+              Math.floor(
+                ((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0) * fn
+              ) + dy;
+            if (ftx >= 0 && ftx < fn && fty >= 0 && fty < fn) {
+              urls.push(
+                f.tileUrlTemplate
+                  .replace("{z}", String(fz))
+                  .replace("{x}", String(ftx))
+                  .replace("{y}", String(fty))
+              );
+            }
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < urls.length; i++) {
+      const u = urls[i];
+      if (!this._preloadedTileUrls.has(u)) {
+        this._preloadedTileUrls.add(u);
+        if (this._preloadedTileUrls.size > 1800) {
+          const first = this._preloadedTileUrls.values().next().value;
+          this._preloadedTileUrls.delete(first);
+        }
+        this.loadRawTileImage(u);
+      }
+    }
+  },
+
+  initRegionalRadarCanvas() {
+    if (!this.map || this.regionalRadarCanvas) return;
+    const canvas = document.createElement("canvas");
+    canvas.style.position = "absolute";
+    canvas.style.pointerEvents = "none";
+    canvas.style.zIndex = "200";
+    canvas.style.willChange = "transform";
+    this.map.getPanes().overlayPane.appendChild(canvas);
+    this.regionalRadarCanvas = canvas;
+    this.regionalRadarCtx = canvas.getContext("2d");
+  },
+
+  renderRegionalRadarCanvas() {
+    if (!this.map || !this.regionalRadarCanvas || !this.regionalRadarCtx) return;
+    const ctx = this.regionalRadarCtx;
+    const canvas = this.regionalRadarCanvas;
+    if (!this._regionalPackBounds || !this._regionalPackImages || this.layerMode === "wind") {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
+    const activeIdx = Math.max(
+      0,
+      Math.min(this.frames.length - 1, Math.round(Number(this.currentIndex) || 0))
+    );
+    const activeFrame = this.frames[activeIdx];
+    if (!activeFrame) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
+    const sw = L.latLng(this._regionalPackBounds[0][0], this._regionalPackBounds[0][1]);
+    const ne = L.latLng(this._regionalPackBounds[1][0], this._regionalPackBounds[1][1]);
+    const topLeft = this.map.latLngToLayerPoint(L.latLng(ne.lat, sw.lng));
+    const bottomRight = this.map.latLngToLayerPoint(L.latLng(sw.lat, ne.lng));
+    const w = Math.max(1, Math.round(bottomRight.x - topLeft.x));
+    const h = Math.max(1, Math.round(bottomRight.y - topLeft.y));
+
+    L.DomUtil.setPosition(canvas, topLeft);
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+    } else {
+      ctx.clearRect(0, 0, w, h);
+    }
+
+    const img = this._regionalPackImages[activeFrame.frameId];
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.globalAlpha = this.layerMode === "both" ? 0.84 : 0.94;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, 0, 0, w, h);
+    }
+  },
+
   rebuildLayers() {
     if (!this.map) return;
     Object.values(this.tileLayers).forEach((layer) => {
       if (this.map.hasLayer(layer)) this.map.removeLayer(layer);
     });
     this.tileLayers = {};
+    this._readyFrameIds = new Set();
+    this._lastReadyFrameId = null;
 
     let liveIdx = this.frames.findIndex((f) => f.offsetMinutes === 0);
     if (liveIdx < 0) liveIdx = Math.max(0, this.frames.length - 1);
@@ -8040,23 +8239,78 @@ const dopplerRadarMap = {
       slider.style.setProperty("--live-pct", `${livePct}%`);
     }
 
+    // If 100%-decoded Regional Pack is active, render directly on the single persistent <canvas>
+    if (this._regionalPackBounds && this._regionalPackImages) {
+      this.setFrameIndex(liveIdx);
+      this.renderRegionalRadarCanvas();
+      return;
+    }
+
+    // Eagerly mount LIVE frame first, then pre-mount all remaining timeline frames in background
+    const liveFrame = this.frames[liveIdx];
+    if (liveFrame) {
+      this.tileLayers[liveFrame.frameId] = this.createLayerForFrame(liveFrame);
+      this._lastReadyFrameId = liveFrame.frameId;
+    }
+
     this.setFrameIndex(liveIdx);
+
+    if (state.location) {
+      this.preloadViewportTiles(
+        state.location.latitude,
+        state.location.longitude,
+        this.map.getZoom() || this.baseZoom
+      );
+    }
+
+    requestAnimationFrame(() => {
+      if (!this.map) return;
+      this.frames.forEach((f) => {
+        if (f && !this.tileLayers[f.frameId]) {
+          this.tileLayers[f.frameId] = this.createLayerForFrame(f);
+        }
+      });
+    });
   },
 
   createLayerForFrame(frame) {
+    let layer;
     if (frame.useZusCanvasLut) {
-      return this.createZusCanvasLayer(frame).addTo(this.map);
+      layer = this.createZusCanvasLayer(frame).addTo(this.map);
+    } else {
+      layer = L.tileLayer(frame.tileUrlTemplate, {
+        opacity: 0,
+        zIndex: 200,
+        maxNativeZoom: frame.maxNativeZoom || 7,
+        maxZoom: 10,
+        keepBuffer: 6,
+        updateWhenIdle: false,
+        updateWhenZooming: false,
+      }).addTo(this.map);
     }
-    return L.tileLayer(frame.tileUrlTemplate, {
-      opacity: 0,
-      zIndex: 200,
-      maxNativeZoom: frame.maxNativeZoom || 7,
-      maxZoom: 10,
-    }).addTo(this.map);
+
+    const markReady = () => {
+      this._readyFrameIds.add(frame.frameId);
+      if (!this._lastReadyFrameId || this.activeFrameId === frame.frameId) {
+        this._lastReadyFrameId = frame.frameId;
+      }
+      if (this.activeFrameId === frame.frameId) {
+        this.applyRadarCrossfadeOpacity();
+      }
+    };
+    layer.on("load", markReady);
+    // Fallback readiness timer in case all tiles were empty/cached synchronously
+    setTimeout(markReady, 220);
+
+    return layer;
   },
 
   applyRadarCrossfadeOpacity() {
     if (!this.frames.length) return;
+    if (this._regionalPackBounds && this._regionalPackImages) {
+      this.renderRegionalRadarCanvas();
+      return;
+    }
     const activeIdx = Math.max(
       0,
       Math.min(this.frames.length - 1, Math.round(Number(this.currentIndex) || 0))
@@ -8071,11 +8325,22 @@ const dopplerRadarMap = {
     const targetRadarOpacity =
       this.layerMode === "wind" ? 0.0 : this.layerMode === "both" ? 0.84 : 0.94;
 
+    const isActiveReady = this._readyFrameIds.has(activeFrame.frameId);
+    if (isActiveReady) {
+      this._lastReadyFrameId = activeFrame.frameId;
+    }
+    const holdFallbackId =
+      !isActiveReady && this._lastReadyFrameId && this._lastReadyFrameId !== activeFrame.frameId
+        ? this._lastReadyFrameId
+        : null;
+
     Object.entries(this.tileLayers).forEach(([id, layer]) => {
       if (targetRadarOpacity <= 0) {
         layer.setOpacity(0.0);
+      } else if (id === activeFrame.frameId || id === holdFallbackId) {
+        layer.setOpacity(targetRadarOpacity);
       } else {
-        layer.setOpacity(id === activeFrame.frameId ? targetRadarOpacity : 0.0);
+        layer.setOpacity(0.0);
       }
     });
   },
@@ -8494,17 +8759,89 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
   const zCur = zusWeather?.current || null;
 
   const nowMs = Date.now();
+  const currentIso = String(c.time || "");
+  const currentHourPrefix = currentIso.slice(0, 13);
+  const current15Prefix = currentIso.slice(0, 15);
+
   let startHourIdx = 0;
   if (Array.isArray(h.time)) {
-    const found = h.time.findIndex((t) => new Date(t).getTime() >= nowMs - 3600000);
-    if (found >= 0) startHourIdx = found;
+    const foundByIso = currentHourPrefix
+      ? h.time.findIndex((t) => String(t).startsWith(currentHourPrefix))
+      : -1;
+    if (foundByIso >= 0) {
+      startHourIdx = foundByIso;
+    } else {
+      const found = h.time.findIndex((t) => new Date(t).getTime() >= nowMs - 3600000);
+      if (found >= 0) startHourIdx = found;
+    }
   }
 
   // Extract 60-minute precipitation curve from minutely_15 blended with 1km Züs Doppler trajectory
   let startM15Idx = 0;
   if (Array.isArray(m15.time)) {
-    const foundM15 = m15.time.findIndex((t) => new Date(t).getTime() >= nowMs - 900000);
-    if (foundM15 >= 0) startM15Idx = foundM15;
+    const foundM15ByIso = current15Prefix
+      ? m15.time.findIndex((t) => String(t) >= current15Prefix)
+      : -1;
+    if (foundM15ByIso >= 0) {
+      startM15Idx = foundM15ByIso;
+    } else {
+      const foundM15 = m15.time.findIndex((t) => new Date(t).getTime() >= nowMs - 900000);
+      if (foundM15 >= 0) startM15Idx = foundM15;
+    }
+  }
+
+  const zHourly = Array.isArray(zusWeather?.hourly) ? zusWeather.hourly : [];
+  const wmoFallbackRateMmHr = (wmo) => {
+    const code = Number(wmo || 0);
+    if (code === 96 || code === 99) return 6.2;
+    if (code === 95) return 4.2;
+    if (code === 82 || code === 65) return 5.8;
+    if (code === 67 || code === 75 || code === 86) return 4.2;
+    if (code === 63 || code === 81 || code === 73) return 2.4;
+    if (code === 55 || code === 57 || code === 66) return 1.6;
+    if (code === 61 || code === 80 || code === 71 || code === 85) return 1.1;
+    if (code === 53) return 0.75;
+    if (code === 51 || code === 56 || code === 77) return 0.42;
+    return 0;
+  };
+
+  const raw15Rates = [0, 1, 2, 3, 4].map((q) =>
+    Math.max(0, Number(m15.precipitation?.[startM15Idx + q] ?? 0) * 4)
+  );
+  let effective15Rates = raw15Rates;
+  if (Math.max(...raw15Rates, 0) < 0.08) {
+    const curWmo = Number(zCur?.observedWeatherCode ?? c.weather_code ?? 0);
+    const hWmo0 = Number(h.weather_code?.[startHourIdx] ?? curWmo);
+    const hWmo1 = Number(h.weather_code?.[startHourIdx + 1] ?? hWmo0);
+    const pop0 = Number(zHourly[0]?.precipitationChance ?? h.precipitation_probability?.[startHourIdx] ?? 0);
+    const pop1 = Number(zHourly[1]?.precipitationChance ?? h.precipitation_probability?.[startHourIdx + 1] ?? pop0);
+    const hPrecip0 = Number(zHourly[0]?.precipMm ?? h.precipitation?.[startHourIdx] ?? 0);
+    const hPrecip1 = Number(zHourly[1]?.precipMm ?? h.precipitation?.[startHourIdx + 1] ?? 0);
+
+    const rStart = Math.max(
+      raw15Rates[0] ?? 0,
+      Number(zCur?.precipMm ?? c.precipitation ?? 0),
+      curWmo >= 51 || hWmo0 >= 51 || pop0 >= 45 ? hPrecip0 : 0,
+      curWmo >= 51 ? wmoFallbackRateMmHr(curWmo) : 0
+    );
+    const rEnd = Math.max(
+      raw15Rates[4] ?? 0,
+      hWmo1 >= 51 || pop1 >= 45 || hPrecip1 >= 0.15 ? hPrecip1 : 0,
+      hWmo1 >= 51 && pop1 >= 45 ? wmoFallbackRateMmHr(hWmo1) : 0
+    );
+
+    if (rStart >= 0.08 && rEnd < 0.08) {
+      effective15Rates = [rStart, rStart * 0.78, rStart * 0.42, 0.03, 0];
+    } else if (rStart < 0.08 && rEnd >= 0.08) {
+      effective15Rates = [0, 0.02, rEnd * 0.36, rEnd * 0.76, rEnd];
+    } else if (rStart >= 0.08 && rEnd >= 0.08) {
+      const wave = [1.0, 0.92, 1.08, 0.94, 1.0];
+      effective15Rates = [0, 1, 2, 3, 4].map((q) => {
+        const f = q / 4;
+        const base = rStart * (1 - f) + rEnd * f;
+        return Math.max(0.12, base * wave[q]);
+      });
+    }
   }
 
   const dopRates =
@@ -8512,16 +8849,22 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       ? dopplerTel.minuteRates60m
       : [];
   const exact61Rates =
-    dopplerTel && dopplerTel.inConusGrid && Array.isArray(dopplerTel.minuteByMinuteRates) && dopplerTel.minuteByMinuteRates.length >= 61
+    dopplerTel &&
+    dopplerTel.inConusGrid &&
+    Array.isArray(dopplerTel.minuteByMinuteRates) &&
+    dopplerTel.minuteByMinuteRates.length >= 61 &&
+    (Math.max(...dopplerTel.minuteByMinuteRates, 0) >= 0.08 || Math.max(...effective15Rates, 0) < 0.08)
       ? dopplerTel.minuteByMinuteRates
       : null;
 
   // Build 13 5-minute trajectory steps (0..60m) blending 1km Züs Doppler with 15-min NWP model
   const fiveMinPoints = [];
   for (let s = 0; s <= 12; s++) {
-    const m15Idx = startM15Idx + Math.min(4, Math.floor(s / 3));
-    const mm15 = Number(m15.precipitation?.[m15Idx] ?? 0);
-    const modelRate = mm15 * 4;
+    const seg15 = Math.min(3, Math.floor(s / 3));
+    const frac15 = (s - seg15 * 3) / 3;
+    const r0 = effective15Rates[seg15] ?? 0;
+    const r1 = effective15Rates[seg15 + 1] ?? r0;
+    const modelRate = Math.max(0, r0 * (1 - frac15) + r1 * frac15);
     if (dopRates.length >= 13) {
       const dopRate = Number(dopRates[s] ?? 0);
       fiveMinPoints.push(Math.max(dopRate, dopRate * 0.85 + modelRate * 0.15));
@@ -8547,15 +8890,21 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
   }
 
   // Next 24 hours (assimilate ZüsAPI MOS bias-corrected & ground-truth hourly stream + multi-model min/max envelope)
-  const zHourly = Array.isArray(zusWeather?.hourly) ? zusWeather.hourly : [];
   const eh = rawEnsemble?.hourly || {};
   const em15 = rawEnsemble?.minutely_15 || {};
   const modelKeys = ["best_match", "ecmwf_ifs025", "gfs_seamless", "icon_seamless"];
 
   let startEm15Idx = startM15Idx;
   if (Array.isArray(em15.time)) {
-    const foundEm15 = em15.time.findIndex((t) => new Date(t).getTime() >= nowMs - 900000);
-    if (foundEm15 >= 0) startEm15Idx = foundEm15;
+    const foundEm15ByIso = current15Prefix
+      ? em15.time.findIndex((t) => String(t) >= current15Prefix)
+      : -1;
+    if (foundEm15ByIso >= 0) {
+      startEm15Idx = foundEm15ByIso;
+    } else {
+      const foundEm15 = em15.time.findIndex((t) => new Date(t).getTime() >= nowMs - 900000);
+      if (foundEm15 >= 0) startEm15Idx = foundEm15;
+    }
   }
 
   // Extract 61-minute per-model precipitation trajectories (0..60m) for the min/max estimation band
@@ -8566,10 +8915,10 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     const pts = [];
     for (let k = 0; k <= 4; k++) {
       const v15 = arr15?.[startEm15Idx + k];
-      if (v15 !== null && v15 !== undefined && !Number.isNaN(Number(v15))) {
+      if (v15 !== null && v15 !== undefined && !Number.isNaN(Number(v15)) && Number(v15) > 0) {
         pts.push(Math.max(0, Number(v15) * 4));
       } else {
-        const h0 = Number(arrH?.[startHourIdx] ?? m15.precipitation?.[startM15Idx] * 4 ?? 0);
+        const h0 = Number(arrH?.[startHourIdx] ?? effective15Rates[0] ?? 0);
         const h1 = Number(arrH?.[startHourIdx + 1] ?? h0);
         const f = k / 4;
         pts.push(Math.max(0, h0 * (1 - f) + h1 * f));
@@ -9269,7 +9618,7 @@ function playTilesAppearCascade(skyClass, solarPhase = "day") {
   if (wasLoading) {
     document.body.classList.add("tiles-entering");
     setTimeout(() => {
-      if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize();
+      if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize({ pan: false, animate: false });
       if (state.weather?.minuteRates) {
         renderNextHourNowcast(
           state.weather.minuteRates,
@@ -9280,7 +9629,7 @@ function playTilesAppearCascade(skyClass, solarPhase = "day") {
       }
     }, 80);
     setTimeout(() => {
-      if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize();
+      if (dopplerRadarMap.map) dopplerRadarMap.map.invalidateSize({ pan: false, animate: false });
     }, 380);
     setTimeout(() => {
       document.body.classList.remove("tiles-entering");
@@ -9563,7 +9912,7 @@ function renderNextHourNowcast(
 
   if (maxRate < threshold) {
     const nextPrecipProb = currentHour?.precipProb ?? 0;
-    headlineEl.textContent = "No precipitation for the hour.";
+    headlineEl.textContent = "No precipitation in next hour.";
     if (nowcastCard) nowcastCard.classList.add("is-dry");
     if (heroNowcastGrid) heroNowcastGrid.classList.add("is-dry");
     if (chartBox) chartBox.setAttribute("hidden", "");
@@ -9597,10 +9946,14 @@ function renderNextHourNowcast(
   if (heroNowcastGrid) heroNowcastGrid.classList.remove("is-dry");
   if (chartBox) chartBox.removeAttribute("hidden");
 
+  const pType = state.weather?.precipType || currentHour?.precipType || "rain";
+  const pNoun = pType === "snow" ? "snow" : pType === "sleet" ? "sleet" : "rain";
+  const pNounCap = pNoun.charAt(0).toUpperCase() + pNoun.slice(1);
+
   if (currentlyWet) {
     const stopIdx = minuteRates.findIndex((r, idx) => idx > 0 && r < threshold);
     const intensityLabel =
-      maxRate >= 6.0 ? "Heavy rain" : maxRate >= 2.0 ? "Moderate rain" : "Light rain";
+      maxRate >= 6.0 ? `Heavy ${pNoun}` : maxRate >= 2.0 ? `Moderate ${pNoun}` : `Light ${pNoun}`;
     if (stopIdx > 0) {
       headlineEl.textContent = `${intensityLabel} stopping in ${stopIdx} min.`;
     } else {
@@ -9615,15 +9968,24 @@ function renderNextHourNowcast(
     }
   } else {
     const intensityLabel =
-      maxRate >= 6.0 ? "Heavy rain" : maxRate >= 2.0 ? "Rain" : "Light rain";
-    headlineEl.textContent = `${intensityLabel} starting in ${firstWetIdx} min.`;
+      maxRate >= 6.0 ? `Heavy ${pNoun}` : maxRate >= 2.0 ? pNounCap : `Light ${pNoun}`;
+    const stopAfterStartIdx = minuteRates.findIndex(
+      (r, idx) => idx > firstWetIdx + 3 && r < threshold
+    );
+    if (stopAfterStartIdx > 0) {
+      headlineEl.textContent = `${intensityLabel} starting in ${firstWetIdx} min, stopping ${
+        stopAfterStartIdx - firstWetIdx
+      } min later.`;
+    } else {
+      headlineEl.textContent = `${intensityLabel} starting in ${firstWetIdx} min.`;
+    }
     if (subEl) {
       subEl.textContent =
         dopTel && dopTel.inConusGrid
           ? `1km Doppler trajectory (${dopTel.stormMotionCompass} at ${formatWind(
               dopTel.stormMotionKmh
-            )}) indicates approaching precipitation.`
-          : `60-minute radar trajectory indicates approaching precipitation.`;
+            )}) indicates approaching ${pNoun}.`
+          : `60-minute radar trajectory indicates approaching ${pNoun}.`;
     }
   }
 
@@ -10500,11 +10862,13 @@ function syncRadarCardHeight() {
   // Only measure when all 10-day accordions are collapsed so the height stays locked to the base 10-row height
   const hasOpenDay = dailyCard.querySelector(".day-accordion.open");
   if (!hasOpenDay) {
-    const h = Math.round(dailyCard.getBoundingClientRect().height);
+    const h = Math.round(dailyCard.offsetHeight || dailyCard.getBoundingClientRect().height);
     if (h >= 380) {
       radarCard.style.setProperty("--radar-card-height", `${h}px`);
       if (dopplerRadarMap.map && !dopplerRadarMap.isModalOpen) {
-        requestAnimationFrame(() => dopplerRadarMap.map.invalidateSize());
+        requestAnimationFrame(() =>
+          dopplerRadarMap.map.invalidateSize({ pan: false, animate: false })
+        );
       }
     }
   }
@@ -12646,6 +13010,6 @@ document.addEventListener("DOMContentLoaded", () => {
   acquireUserLocation(true);
 });
 
-</script>
+  </script>
 </body>
 </html>

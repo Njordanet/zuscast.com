@@ -2294,14 +2294,19 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   font-family: inherit !important;
 }
 
-/* Crisp Instant Frame Switching Between Doppler Radar Frames (Zero Ghosting/Smearing) */
+/* Crisp Instant Frame Switching Between Doppler Radar Frames (Zero Ghosting/Smearing & GPU Layer Resident) */
 .leaflet-tile-pane .leaflet-layer {
   transition: none !important;
+  will-change: opacity;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .leaflet-tile-pane canvas.leaflet-tile,
 .leaflet-tile-pane img.leaflet-tile {
   image-rendering: -webkit-optimize-contrast;
+  transition: none !important;
 }
 
 .leaflet-control-attribution {
