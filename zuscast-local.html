@@ -18,7 +18,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <meta name="zus-build-version" content="v1.2.0" />
+  <meta name="zus-build-version" content="v1.3.0" />
   <title>ZüsCast — Hyperlocal Weather &amp; Down-to-the-Minute Nowcast</title>
   <meta name="description" content="ZüsCast (zuscast.com) — Hyperlocal, down-to-the-minute weather intelligence with Liquid Glass aesthetics." />
   <meta name="theme-color" content="#1d63b8" id="theme-color-meta" />
@@ -1380,7 +1380,19 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   gap: 15px;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
+  z-index: 12;
+}
+
+.timeline-card:has(.metric-selector-dropdown.open) {
+  z-index: 45;
+}
+
+.timeline-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .timeline-spread-badge {
@@ -1615,37 +1627,45 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   transform: translateY(0);
 }
 
-/* Bottom Scrollable Metric Pill Selector — Certified Elastic Liquid Glass Capsule */
-.timeline-pill-bar {
+/* Full-Size Single-Button Metric Selector + Liquid Glass Popover Menu */
+.metric-selector-dropdown {
   position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 4px 4px 6px;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
+  flex-shrink: 0;
+  z-index: 35;
 }
 
-.timeline-pill-bar::-webkit-scrollbar {
-  display: none;
+.metric-selector-dropdown.open {
+  z-index: 95;
 }
 
-.mode-tab {
+.metric-selector-btn {
   position: relative;
-  z-index: 1;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(56, 189, 248, 0.32);
-  color: rgba(186, 230, 253, 0.9);
-  font-size: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(
+    145deg,
+    rgba(30, 52, 96, 0.56) 0%,
+    rgba(14, 26, 56, 0.68) 55%,
+    rgba(22, 40, 82, 0.62) 100%
+  );
+  backdrop-filter: blur(36px) saturate(195%);
+  -webkit-backdrop-filter: blur(36px) saturate(195%);
+  border: 1px solid rgba(125, 211, 252, 0.42);
+  color: #f8fafc;
+  font-size: 0.78rem;
   font-weight: 600;
-  padding: 7px 16px;
+  padding: 5.5px 13px 5.5px 10.5px;
   border-radius: var(--radius-pill);
   cursor: pointer;
   white-space: nowrap;
-  flex-shrink: 0;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.42),
+    inset 0 -1px 1px rgba(56, 189, 248, 0.16),
+    0 6px 16px -4px rgba(2, 6, 23, 0.55);
   transition:
-    color 0.22s ease,
     background 0.22s ease,
     border-color 0.22s ease,
     transform 0.22s var(--spring-bounce),
@@ -1653,31 +1673,218 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .mode-tab:hover {
-    background: rgba(56, 189, 248, 0.12);
-    border-color: rgba(56, 189, 248, 0.62);
-    color: #f0f9ff;
+  .metric-selector-btn:hover {
+    background: linear-gradient(
+      145deg,
+      rgba(56, 189, 248, 0.28) 0%,
+      rgba(20, 38, 76, 0.72) 55%,
+      rgba(99, 102, 241, 0.28) 100%
+    );
+    border-color: rgba(125, 211, 252, 0.74);
   }
 }
 
-.mode-tab:active {
-  transform: scale(0.95);
+.metric-selector-btn:active {
+  transform: scale(0.96);
 }
 
-.mode-tab.active {
+.metric-selector-dropdown.open .metric-selector-btn {
   background: linear-gradient(
     135deg,
     rgba(56, 189, 248, 0.38) 0%,
     rgba(14, 165, 233, 0.24) 52%,
     rgba(129, 140, 248, 0.32) 100%
   );
-  border-color: rgba(125, 211, 252, 0.72);
-  color: #ffffff;
-  text-shadow: 0 1px 8px rgba(14, 165, 233, 0.55);
+  border-color: rgba(125, 211, 252, 0.82);
   box-shadow:
     inset 0 1px 1px rgba(255, 255, 255, 0.58),
     inset 0 -1px 1px rgba(14, 165, 233, 0.24),
-    0 5px 14px -4px rgba(14, 165, 233, 0.42);
+    0 6px 18px -4px rgba(14, 165, 233, 0.45);
+}
+
+.metric-selector-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.metric-selector-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.metric-selector-label {
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+}
+
+.metric-selector-chevron {
+  font-size: 0.72rem;
+  color: rgba(186, 230, 253, 0.85);
+  line-height: 1;
+  transition: transform 0.22s var(--spring-bounce);
+}
+
+.metric-selector-dropdown.open .metric-selector-chevron {
+  transform: rotate(180deg);
+  color: #38bdf8;
+}
+
+.metric-selector-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 212px;
+  max-height: none;
+  overflow: visible;
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5px;
+  background: linear-gradient(
+    160deg,
+    rgba(18, 35, 72, 0.82) 0%,
+    rgba(8, 18, 42, 0.88) 54%,
+    rgba(16, 30, 64, 0.84) 100%
+  );
+  backdrop-filter: blur(44px) saturate(210%);
+  -webkit-backdrop-filter: blur(44px) saturate(210%);
+  border: 1px solid rgba(125, 211, 252, 0.44);
+  border-radius: 20px;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.46),
+    inset 0 -1px 1px rgba(56, 189, 248, 0.22),
+    0 22px 48px -8px rgba(2, 6, 23, 0.85),
+    0 0 24px -6px rgba(56, 189, 248, 0.26);
+  z-index: 100;
+  isolation: isolate;
+  transform-origin: top right;
+  animation: metricMenuPopIn 0.2s cubic-bezier(0.22, 1.15, 0.36, 1);
+}
+
+/* Chromatic Refractive Specular Rim on Liquid Glass Menu */
+.metric-selector-menu::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    140deg,
+    rgba(255, 255, 255, 0.52) 0%,
+    rgba(56, 189, 248, 0.28) 36%,
+    rgba(255, 255, 255, 0.05) 68%,
+    rgba(129, 140, 248, 0.34) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.metric-selector-menu[hidden] {
+  display: none !important;
+}
+
+@keyframes metricMenuPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.metric-option-btn {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 7.5px 11px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.94);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .metric-option-btn:hover {
+    background: rgba(56, 189, 248, 0.13);
+    border-color: rgba(56, 189, 248, 0.26);
+    color: #ffffff;
+  }
+}
+
+.metric-option-btn.active {
+  background: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.34) 0%,
+    rgba(14, 165, 233, 0.22) 52%,
+    rgba(129, 140, 248, 0.28) 100%
+  );
+  border-color: rgba(125, 211, 252, 0.68);
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow:
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.48),
+    0 4px 12px -4px rgba(14, 165, 233, 0.38);
+}
+
+.metric-option-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8.5px;
+  min-width: 0;
+}
+
+.metric-option-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.metric-option-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.metric-option-label {
+  white-space: nowrap;
+}
+
+.metric-option-check {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #7dd3fc;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.metric-option-btn.active .metric-option-check {
+  opacity: 1;
+  transform: scale(1);
 }
 
 /* Main Split Grid: 10-Day Interactive Forecast + Live Doppler Radar */
@@ -1696,8 +1903,13 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   height: auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   container-type: inline-size;
+  z-index: 10;
+}
+
+.daily-card:has(.metric-selector-dropdown.open) {
+  z-index: 45;
 }
 
 .daily-summary-banner {
@@ -1963,24 +2175,33 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   margin-bottom: 10px;
   border-width: 1px;
   pointer-events: auto;
+  overflow: visible;
 }
 
 .day-accordion.open .day-drawer-inner {
   transform: translateY(0) scale(1);
+  overflow: visible;
 }
 
 .day-drawer-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 10px;
+  flex-wrap: nowrap;
 }
 
 .day-drawer-summary {
   font-size: 0.8rem;
   color: var(--text-secondary);
   margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.day-metric-dropdown .metric-selector-btn {
+  font-size: 0.73rem;
+  padding: 4.5px 11px 4.5px 9.5px;
 }
 
 .day-spread-badge {
@@ -1992,32 +2213,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 .day-hourly-scroll {
-  padding: 10px 8px 8px;
-}
-
-.day-hourly-scroll .hourly-col-time {
-  font-size: 0.68rem;
-}
-
-.day-hourly-scroll .hourly-node-icon {
-  width: 21px;
-  height: 21px;
-  bottom: calc(100% + 3px);
-}
-
-.day-hourly-scroll .hourly-node-pop {
-  bottom: calc(100% + 25px);
-  font-size: 0.56rem;
-}
-
-.day-hourly-scroll .hourly-node-val {
-  font-size: 0.82rem;
-  padding: 1px 5px;
-}
-
-.day-hourly-scroll .hourly-node-spread {
-  font-size: 0.6rem;
-  padding: 1px 4px;
+  width: 100%;
 }
 
 .day-pill-bar {
@@ -4544,15 +4740,13 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     padding: 1px 3px;
   }
 
-  .timeline-pill-bar {
-    padding: 2px 2px 2px;
-    gap: 6px;
-    flex-shrink: 0;
+  .metric-selector-btn {
+    padding: 4.5px 10.5px 4.5px 8.5px;
+    font-size: 0.73rem;
   }
 
-  .mode-tab {
-    padding: 6px 13px;
-    font-size: 0.76rem;
+  .metric-selector-menu {
+    min-width: 198px;
   }
 
   .daily-row-btn {
@@ -5290,7 +5484,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 
     <!-- 24-Hour & 10-Day Interactive Connected Curve & Model Envelope Timeline -->
     <section class="timeline-card liquid-glass" aria-label="Hourly Forecast" id="timeline-card-section">
-      <div class="section-header">
+      <div class="section-header timeline-section-header">
         <span class="section-kicker">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
@@ -5298,25 +5492,33 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
           </svg>
           Hourly Forecast
         </span>
+
+        <!-- Single Metric Selector Button + Compact Glassmorphic Popover -->
+        <div class="metric-selector-dropdown" id="hourly-metric-dropdown">
+          <button
+            type="button"
+            class="metric-selector-btn"
+            id="hourly-metric-btn"
+            aria-haspopup="listbox"
+            aria-expanded="false"
+            aria-label="Select Hourly Metric"
+          >
+            <span class="metric-selector-icon" id="hourly-metric-icon" style="color: #2dd4bf;"></span>
+            <span class="metric-selector-label" id="hourly-metric-label">Temp</span>
+            <span class="metric-selector-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div
+            class="metric-selector-menu"
+            id="hourly-metric-menu"
+            role="listbox"
+            aria-label="Hourly Forecast Metrics"
+            hidden
+          ></div>
+        </div>
       </div>
 
       <!-- Interactive 24-Hour Connected Curve + Multi-Model Envelope Chart -->
       <div class="hourly-chart-scroll" id="hourly-scroll"></div>
-
-      <!-- Bottom Scrollable Metric Pill Selector -->
-      <div class="timeline-pill-bar" role="tablist" aria-label="Hourly Metric Selector" id="timeline-pill-bar">
-        <button type="button" class="mode-tab active" data-mode="temp">Temp</button>
-        <button type="button" class="mode-tab" data-mode="feels">Feels Like</button>
-        <button type="button" class="mode-tab" data-mode="precip">Precip Chance</button>
-        <button type="button" class="mode-tab" data-mode="precipAmount">Precip Amount</button>
-        <button type="button" class="mode-tab" data-mode="wind">Wind Speed</button>
-        <button type="button" class="mode-tab" data-mode="gusts">Wind Gusts</button>
-        <button type="button" class="mode-tab" data-mode="uv">UV Index</button>
-        <button type="button" class="mode-tab" data-mode="dew">Dew Point</button>
-        <button type="button" class="mode-tab" data-mode="clouds">Cloud Cover</button>
-        <button type="button" class="mode-tab" data-mode="visibility">Visibility</button>
-        <button type="button" class="mode-tab" data-mode="pressure">Pressure</button>
-      </div>
     </section>
     </div>
 
@@ -5583,7 +5785,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
         <span><strong>ZüsCast</strong> &bull; Down-to-the-minute hyperlocal weather intelligence.</span>
       </div>
       <div class="footer-right-controls">
-        <span class="footer-version-badge" id="footer-version-badge">v1.2.0</span>
+        <span class="footer-version-badge" id="footer-version-badge">v1.3.0</span>
         <div id="last-updated">Live Telemetry</div>
         <button type="button" id="unit-toggle-btn" class="liquid-glass-pill footer-unit-pill" aria-label="Toggle Imperial / Metric units">
           °F, mph
@@ -10138,6 +10340,100 @@ function getMobileHourlyStageHeight(scrollEl) {
   return Math.max(114, Math.min(156, Math.round(containerH)));
 }
 
+function buildMetricMenuItemsHTML(activeMode) {
+  return HOURLY_METRIC_PILLS.map((p) => {
+    const desc = getHourlyMetricDescriptor(p.mode);
+    const isActive = p.mode === activeMode;
+    return `
+      <button
+        type="button"
+        class="metric-option-btn${isActive ? " active" : ""}"
+        role="option"
+        aria-selected="${isActive}"
+        data-mode="${p.mode}"
+      >
+        <span class="metric-option-left">
+          <span class="metric-option-icon" style="color: ${desc.lineColor};">${getHourlyMetricIconSVG(p.mode)}</span>
+          <span class="metric-option-label">${p.label}</span>
+        </span>
+        <span class="metric-option-check" aria-hidden="true">✓</span>
+      </button>
+    `;
+  }).join("");
+}
+
+function closeAllMetricDropdowns(exceptDropdown = null) {
+  document.querySelectorAll(".metric-selector-dropdown.open").forEach((dd) => {
+    if (dd !== exceptDropdown) {
+      dd.classList.remove("open");
+      const btn = dd.querySelector(".metric-selector-btn");
+      const menu = dd.querySelector(".metric-selector-menu");
+      if (btn) btn.setAttribute("aria-expanded", "false");
+      if (menu) menu.setAttribute("hidden", "");
+    }
+  });
+}
+
+function syncMetricDropdownUI(dropdownEl, activeMode) {
+  if (!dropdownEl) return;
+  const pill =
+    HOURLY_METRIC_PILLS.find((p) => p.mode === activeMode) ||
+    HOURLY_METRIC_PILLS[0];
+  const desc = getHourlyMetricDescriptor(pill.mode);
+  const iconEl = dropdownEl.querySelector(".metric-selector-icon");
+  const labelEl = dropdownEl.querySelector(".metric-selector-label");
+  if (iconEl) {
+    iconEl.style.color = desc.lineColor;
+    iconEl.innerHTML = getHourlyMetricIconSVG(pill.mode);
+  }
+  if (labelEl) {
+    labelEl.textContent = pill.label;
+  }
+  dropdownEl.querySelectorAll(".metric-option-btn").forEach((opt) => {
+    const isMatch = opt.dataset.mode === pill.mode;
+    opt.classList.toggle("active", isMatch);
+    opt.setAttribute("aria-selected", String(isMatch));
+  });
+}
+
+function bindMetricDropdown(dropdownEl, initialMode, onSelect) {
+  if (!dropdownEl) return;
+  const btn = dropdownEl.querySelector(".metric-selector-btn");
+  const menu = dropdownEl.querySelector(".metric-selector-menu");
+  if (!btn || !menu) return;
+
+  menu.innerHTML = buildMetricMenuItemsHTML(initialMode);
+  syncMetricDropdownUI(dropdownEl, initialMode);
+
+  if (!dropdownEl._metricDropdownBound) {
+    dropdownEl._metricDropdownBound = true;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const willOpen = !dropdownEl.classList.contains("open");
+      closeAllMetricDropdowns(dropdownEl);
+      dropdownEl.classList.toggle("open", willOpen);
+      btn.setAttribute("aria-expanded", String(willOpen));
+      if (willOpen) {
+        menu.removeAttribute("hidden");
+      } else {
+        menu.setAttribute("hidden", "");
+      }
+    });
+
+    menu.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const opt = e.target.closest(".metric-option-btn");
+      if (!opt) return;
+      const mode = opt.dataset.mode || "temp";
+      syncMetricDropdownUI(dropdownEl, mode);
+      closeAllMetricDropdowns();
+      if (typeof onSelect === "function") {
+        onSelect(mode);
+      }
+    });
+  }
+}
+
 function renderHourlyTimeline(hourly) {
   const scroll = document.getElementById("hourly-scroll");
   if (!scroll || !hourly || !hourly.length) return;
@@ -10155,17 +10451,10 @@ function renderHourlyTimeline(hourly) {
     contextLabel: "24-Hour & 10-Day Timeline",
     onSelectMode: (newMode) => {
       state.hourlyMode = newMode;
-      const topPillBar = document.getElementById("timeline-pill-bar");
-      if (topPillBar) {
-        topPillBar.querySelectorAll(".mode-tab").forEach((t) => {
-          const isMatch = t.dataset.mode === newMode;
-          t.classList.toggle("active", isMatch);
-          if (isMatch && typeof t.scrollIntoView === "function") {
-            t.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-          }
-        });
-        syncLiquidPillGlider(topPillBar);
-      }
+      syncMetricDropdownUI(
+        document.getElementById("hourly-metric-dropdown"),
+        newMode
+      );
       if (state.weather?.hourly) {
         renderHourlyTimeline(state.weather.hourly);
       }
@@ -10173,7 +10462,10 @@ function renderHourlyTimeline(hourly) {
   });
 
   scroll.scrollLeft = prevScrollLeft;
-  syncLiquidPillGlider(document.getElementById("timeline-pill-bar"));
+  syncMetricDropdownUI(
+    document.getElementById("hourly-metric-dropdown"),
+    state.hourlyMode
+  );
 
   if (!scroll._hourlyResizeBound && typeof ResizeObserver !== "undefined") {
     scroll._hourlyResizeBound = true;
@@ -10295,12 +10587,10 @@ function renderDailyForecast(daily) {
     )} and overnight low of ${formatTemp(dItem.tempMin, true)}.`;
 
     const activeDayMode = state.dailyModes[idx] || "temp";
-    const pillsHtml = HOURLY_METRIC_PILLS.map(
-      (p) =>
-        `<button type="button" class="mode-tab day-mode-tab ${
-          p.mode === activeDayMode ? "active" : ""
-        }" data-mode="${p.mode}">${p.label}</button>`
-    ).join("");
+    const activeDayPill =
+      HOURLY_METRIC_PILLS.find((p) => p.mode === activeDayMode) ||
+      HOURLY_METRIC_PILLS[0];
+    const activeDayDesc = getHourlyMetricDescriptor(activeDayPill.mode);
 
     wrapper.innerHTML = `
       <button type="button" class="daily-row-btn" aria-expanded="false">
@@ -10328,17 +10618,33 @@ function renderDailyForecast(daily) {
         <div class="day-drawer-inner">
           <div class="day-drawer-top">
             <div class="day-drawer-summary">${dayNarrative}</div>
+            <div class="metric-selector-dropdown day-metric-dropdown">
+              <button
+                type="button"
+                class="metric-selector-btn day-metric-btn"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-label="Select ${dayName} Hourly Metric"
+              >
+                <span class="metric-selector-icon" style="color: ${activeDayDesc.lineColor};">${getHourlyMetricIconSVG(activeDayPill.mode)}</span>
+                <span class="metric-selector-label">${activeDayPill.label}</span>
+                <span class="metric-selector-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div
+                class="metric-selector-menu day-metric-menu"
+                role="listbox"
+                aria-label="${dayName} Hourly Metrics"
+                hidden
+              ></div>
+            </div>
           </div>
           <div class="hourly-chart-scroll day-hourly-scroll"></div>
-          <div class="timeline-pill-bar day-pill-bar" role="tablist" aria-label="${dayName} Hourly Metric Selector">
-            ${pillsHtml}
-          </div>
         </div>
       </div>
     `;
 
     const dayScrollEl = wrapper.querySelector(".day-hourly-scroll");
-    const dayPillBarEl = wrapper.querySelector(".day-pill-bar");
+    const dayDropdownEl = wrapper.querySelector(".day-metric-dropdown");
     const dayHours = Array.isArray(dItem.hours) ? dItem.hours : [];
     const fullDayLabel =
       idx === 0
@@ -10349,24 +10655,21 @@ function renderDailyForecast(daily) {
             day: "numeric",
           });
 
-    // Compact 24-hour chart inside each day drawer (constrained to card width with internal scroll)
+    // Mirror Hourly Forecast chart inside each 10-day drawer
+    const isMobileDay = window.innerWidth <= 640;
     const dayChartOpts = {
       showNowOnFirst: idx === 0,
       showDayDividers: idx === 0,
-      colW: 54,
-      H: 154,
+      colW: isMobileDay ? getMobileHourlyColWidth(dayScrollEl) : 74,
+      H: isMobileDay ? 114 : 196,
       contextLabel: `10-Day Forecast • ${fullDayLabel}`,
       onSelectMode: (newMode) => {
         state.dailyModes[idx] = newMode;
-        wrapper.querySelectorAll(".day-mode-tab").forEach((t) => {
-          const isMatch = t.dataset.mode === newMode;
-          t.classList.toggle("active", isMatch);
-          if (isMatch && typeof t.scrollIntoView === "function") {
-            t.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-          }
-        });
-        syncLiquidPillGlider(dayPillBarEl);
+        syncMetricDropdownUI(dayDropdownEl, newMode);
         const prevLeft = dayScrollEl.scrollLeft;
+        const mobileNow = window.innerWidth <= 640;
+        dayChartOpts.colW = mobileNow ? getMobileHourlyColWidth(dayScrollEl) : 74;
+        dayChartOpts.H = mobileNow ? 114 : 196;
         renderHourlyCurveIntoContainer(
           dayScrollEl,
           dayHours,
@@ -10384,29 +10687,25 @@ function renderDailyForecast(daily) {
       dayChartOpts
     );
 
-    wrapper.querySelectorAll(".day-mode-tab").forEach((tab) => {
-      tab.addEventListener("click", () => {
-        wrapper
-          .querySelectorAll(".day-mode-tab")
-          .forEach((t) => t.classList.remove("active"));
-        tab.classList.add("active");
-        syncLiquidPillGlider(dayPillBarEl);
-        const mode = tab.dataset.mode || "temp";
-        state.dailyModes[idx] = mode;
-        const prevLeft = dayScrollEl.scrollLeft;
-        renderHourlyCurveIntoContainer(
-          dayScrollEl,
-          dayHours,
-          mode,
-          dayChartOpts
-        );
-        dayScrollEl.scrollLeft = prevLeft;
-      });
+    bindMetricDropdown(dayDropdownEl, activeDayMode, (mode) => {
+      state.dailyModes[idx] = mode;
+      const prevLeft = dayScrollEl.scrollLeft;
+      const mobileNow = window.innerWidth <= 640;
+      dayChartOpts.colW = mobileNow ? getMobileHourlyColWidth(dayScrollEl) : 74;
+      dayChartOpts.H = mobileNow ? 114 : 196;
+      renderHourlyCurveIntoContainer(
+        dayScrollEl,
+        dayHours,
+        mode,
+        dayChartOpts
+      );
+      dayScrollEl.scrollLeft = prevLeft;
     });
 
     const rowBtn = wrapper.querySelector(".daily-row-btn");
     rowBtn.addEventListener("click", () => {
       const willOpen = !wrapper.classList.contains("open");
+      closeAllMetricDropdowns();
       // Single-accordion behavior: close any other open day first
       list.querySelectorAll(".day-accordion.open").forEach((other) => {
         if (other !== wrapper) {
@@ -10417,9 +10716,6 @@ function renderDailyForecast(daily) {
       });
       wrapper.classList.toggle("open", willOpen);
       rowBtn.setAttribute("aria-expanded", String(willOpen));
-      if (willOpen) {
-        requestAnimationFrame(() => syncLiquidPillGlider(dayPillBarEl));
-      }
     });
 
     list.appendChild(wrapper);
@@ -10492,17 +10788,10 @@ function jumpToTimelineMetric(mode) {
   const targetMode = validModes.has(mode) ? mode : "temp";
   state.hourlyMode = targetMode;
 
-  const pillBar = document.getElementById("timeline-pill-bar");
-  if (pillBar) {
-    pillBar.querySelectorAll(".mode-tab").forEach((t) => {
-      const isMatch = t.dataset.mode === targetMode;
-      t.classList.toggle("active", isMatch);
-      if (isMatch && typeof t.scrollIntoView === "function") {
-        t.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-      }
-    });
-    syncLiquidPillGlider(pillBar);
-  }
+  syncMetricDropdownUI(
+    document.getElementById("hourly-metric-dropdown"),
+    targetMode
+  );
 
   if (state.weather?.hourly) {
     renderHourlyTimeline(state.weather.hourly);
@@ -12153,27 +12442,29 @@ function setupControls() {
     dopplerRadarMap.renderTelemetryStrip(dopplerRadarMap.telemetry);
   });
 
-  // 24-Hour Timeline Mode Tabs (Top Chart)
-  const topPillBar = document.getElementById("timeline-pill-bar");
-  document.querySelectorAll("#timeline-pill-bar .mode-tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      document
-        .querySelectorAll("#timeline-pill-bar .mode-tab")
-        .forEach((t) => t.classList.remove("active"));
-      tab.classList.add("active");
-      syncLiquidPillGlider(topPillBar);
-      state.hourlyMode = tab.dataset.mode || "temp";
-      if (state.weather) {
-        renderHourlyTimeline(state.weather.hourly);
-      }
-    });
+  // 24-Hour Timeline Metric Dropdown (Top Chart)
+  const topMetricDropdown = document.getElementById("hourly-metric-dropdown");
+  bindMetricDropdown(topMetricDropdown, state.hourlyMode || "temp", (mode) => {
+    state.hourlyMode = mode;
+    if (state.weather) {
+      renderHourlyTimeline(state.weather.hourly);
+    }
   });
 
-  requestAnimationFrame(() => syncLiquidPillGlider(topPillBar));
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".metric-selector-dropdown")) {
+      closeAllMetricDropdowns();
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeAllMetricDropdowns();
+    }
+  });
+
   window.addEventListener(
     "resize",
     () => {
-      syncLiquidPillGlider(topPillBar);
       syncRadarCardHeight();
       const scroll = document.getElementById("hourly-scroll");
       const targetColW =
@@ -12186,9 +12477,6 @@ function setupControls() {
       ) {
         renderHourlyTimeline(state.weather.hourly);
       }
-      document
-        .querySelectorAll(".day-accordion.open .day-pill-bar")
-        .forEach((bar) => syncLiquidPillGlider(bar));
     },
     { passive: true }
   );

@@ -4384,6 +4384,100 @@ function getMobileHourlyStageHeight(scrollEl) {
   return Math.max(114, Math.min(156, Math.round(containerH)));
 }
 
+function buildMetricMenuItemsHTML(activeMode) {
+  return HOURLY_METRIC_PILLS.map((p) => {
+    const desc = getHourlyMetricDescriptor(p.mode);
+    const isActive = p.mode === activeMode;
+    return `
+      <button
+        type="button"
+        class="metric-option-btn${isActive ? " active" : ""}"
+        role="option"
+        aria-selected="${isActive}"
+        data-mode="${p.mode}"
+      >
+        <span class="metric-option-left">
+          <span class="metric-option-icon" style="color: ${desc.lineColor};">${getHourlyMetricIconSVG(p.mode)}</span>
+          <span class="metric-option-label">${p.label}</span>
+        </span>
+        <span class="metric-option-check" aria-hidden="true">✓</span>
+      </button>
+    `;
+  }).join("");
+}
+
+function closeAllMetricDropdowns(exceptDropdown = null) {
+  document.querySelectorAll(".metric-selector-dropdown.open").forEach((dd) => {
+    if (dd !== exceptDropdown) {
+      dd.classList.remove("open");
+      const btn = dd.querySelector(".metric-selector-btn");
+      const menu = dd.querySelector(".metric-selector-menu");
+      if (btn) btn.setAttribute("aria-expanded", "false");
+      if (menu) menu.setAttribute("hidden", "");
+    }
+  });
+}
+
+function syncMetricDropdownUI(dropdownEl, activeMode) {
+  if (!dropdownEl) return;
+  const pill =
+    HOURLY_METRIC_PILLS.find((p) => p.mode === activeMode) ||
+    HOURLY_METRIC_PILLS[0];
+  const desc = getHourlyMetricDescriptor(pill.mode);
+  const iconEl = dropdownEl.querySelector(".metric-selector-icon");
+  const labelEl = dropdownEl.querySelector(".metric-selector-label");
+  if (iconEl) {
+    iconEl.style.color = desc.lineColor;
+    iconEl.innerHTML = getHourlyMetricIconSVG(pill.mode);
+  }
+  if (labelEl) {
+    labelEl.textContent = pill.label;
+  }
+  dropdownEl.querySelectorAll(".metric-option-btn").forEach((opt) => {
+    const isMatch = opt.dataset.mode === pill.mode;
+    opt.classList.toggle("active", isMatch);
+    opt.setAttribute("aria-selected", String(isMatch));
+  });
+}
+
+function bindMetricDropdown(dropdownEl, initialMode, onSelect) {
+  if (!dropdownEl) return;
+  const btn = dropdownEl.querySelector(".metric-selector-btn");
+  const menu = dropdownEl.querySelector(".metric-selector-menu");
+  if (!btn || !menu) return;
+
+  menu.innerHTML = buildMetricMenuItemsHTML(initialMode);
+  syncMetricDropdownUI(dropdownEl, initialMode);
+
+  if (!dropdownEl._metricDropdownBound) {
+    dropdownEl._metricDropdownBound = true;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const willOpen = !dropdownEl.classList.contains("open");
+      closeAllMetricDropdowns(dropdownEl);
+      dropdownEl.classList.toggle("open", willOpen);
+      btn.setAttribute("aria-expanded", String(willOpen));
+      if (willOpen) {
+        menu.removeAttribute("hidden");
+      } else {
+        menu.setAttribute("hidden", "");
+      }
+    });
+
+    menu.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const opt = e.target.closest(".metric-option-btn");
+      if (!opt) return;
+      const mode = opt.dataset.mode || "temp";
+      syncMetricDropdownUI(dropdownEl, mode);
+      closeAllMetricDropdowns();
+      if (typeof onSelect === "function") {
+        onSelect(mode);
+      }
+    });
+  }
+}
+
 function renderHourlyTimeline(hourly) {
   const scroll = document.getElementById("hourly-scroll");
   if (!scroll || !hourly || !hourly.length) return;
@@ -4401,17 +4495,10 @@ function renderHourlyTimeline(hourly) {
     contextLabel: "24-Hour & 10-Day Timeline",
     onSelectMode: (newMode) => {
       state.hourlyMode = newMode;
-      const topPillBar = document.getElementById("timeline-pill-bar");
-      if (topPillBar) {
-        topPillBar.querySelectorAll(".mode-tab").forEach((t) => {
-          const isMatch = t.dataset.mode === newMode;
-          t.classList.toggle("active", isMatch);
-          if (isMatch && typeof t.scrollIntoView === "function") {
-            t.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-          }
-        });
-        syncLiquidPillGlider(topPillBar);
-      }
+      syncMetricDropdownUI(
+        document.getElementById("hourly-metric-dropdown"),
+        newMode
+      );
       if (state.weather?.hourly) {
         renderHourlyTimeline(state.weather.hourly);
       }
@@ -4419,7 +4506,10 @@ function renderHourlyTimeline(hourly) {
   });
 
   scroll.scrollLeft = prevScrollLeft;
-  syncLiquidPillGlider(document.getElementById("timeline-pill-bar"));
+  syncMetricDropdownUI(
+    document.getElementById("hourly-metric-dropdown"),
+    state.hourlyMode
+  );
 
   if (!scroll._hourlyResizeBound && typeof ResizeObserver !== "undefined") {
     scroll._hourlyResizeBound = true;
@@ -4541,12 +4631,10 @@ function renderDailyForecast(daily) {
     )} and overnight low of ${formatTemp(dItem.tempMin, true)}.`;
 
     const activeDayMode = state.dailyModes[idx] || "temp";
-    const pillsHtml = HOURLY_METRIC_PILLS.map(
-      (p) =>
-        `<button type="button" class="mode-tab day-mode-tab ${
-          p.mode === activeDayMode ? "active" : ""
-        }" data-mode="${p.mode}">${p.label}</button>`
-    ).join("");
+    const activeDayPill =
+      HOURLY_METRIC_PILLS.find((p) => p.mode === activeDayMode) ||
+      HOURLY_METRIC_PILLS[0];
+    const activeDayDesc = getHourlyMetricDescriptor(activeDayPill.mode);
 
     wrapper.innerHTML = `
       <button type="button" class="daily-row-btn" aria-expanded="false">
@@ -4574,17 +4662,33 @@ function renderDailyForecast(daily) {
         <div class="day-drawer-inner">
           <div class="day-drawer-top">
             <div class="day-drawer-summary">${dayNarrative}</div>
+            <div class="metric-selector-dropdown day-metric-dropdown">
+              <button
+                type="button"
+                class="metric-selector-btn day-metric-btn"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-label="Select ${dayName} Hourly Metric"
+              >
+                <span class="metric-selector-icon" style="color: ${activeDayDesc.lineColor};">${getHourlyMetricIconSVG(activeDayPill.mode)}</span>
+                <span class="metric-selector-label">${activeDayPill.label}</span>
+                <span class="metric-selector-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div
+                class="metric-selector-menu day-metric-menu"
+                role="listbox"
+                aria-label="${dayName} Hourly Metrics"
+                hidden
+              ></div>
+            </div>
           </div>
           <div class="hourly-chart-scroll day-hourly-scroll"></div>
-          <div class="timeline-pill-bar day-pill-bar" role="tablist" aria-label="${dayName} Hourly Metric Selector">
-            ${pillsHtml}
-          </div>
         </div>
       </div>
     `;
 
     const dayScrollEl = wrapper.querySelector(".day-hourly-scroll");
-    const dayPillBarEl = wrapper.querySelector(".day-pill-bar");
+    const dayDropdownEl = wrapper.querySelector(".day-metric-dropdown");
     const dayHours = Array.isArray(dItem.hours) ? dItem.hours : [];
     const fullDayLabel =
       idx === 0
@@ -4595,24 +4699,21 @@ function renderDailyForecast(daily) {
             day: "numeric",
           });
 
-    // Compact 24-hour chart inside each day drawer (constrained to card width with internal scroll)
+    // Mirror Hourly Forecast chart inside each 10-day drawer
+    const isMobileDay = window.innerWidth <= 640;
     const dayChartOpts = {
       showNowOnFirst: idx === 0,
       showDayDividers: idx === 0,
-      colW: 54,
-      H: 154,
+      colW: isMobileDay ? getMobileHourlyColWidth(dayScrollEl) : 74,
+      H: isMobileDay ? 114 : 196,
       contextLabel: `10-Day Forecast • ${fullDayLabel}`,
       onSelectMode: (newMode) => {
         state.dailyModes[idx] = newMode;
-        wrapper.querySelectorAll(".day-mode-tab").forEach((t) => {
-          const isMatch = t.dataset.mode === newMode;
-          t.classList.toggle("active", isMatch);
-          if (isMatch && typeof t.scrollIntoView === "function") {
-            t.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-          }
-        });
-        syncLiquidPillGlider(dayPillBarEl);
+        syncMetricDropdownUI(dayDropdownEl, newMode);
         const prevLeft = dayScrollEl.scrollLeft;
+        const mobileNow = window.innerWidth <= 640;
+        dayChartOpts.colW = mobileNow ? getMobileHourlyColWidth(dayScrollEl) : 74;
+        dayChartOpts.H = mobileNow ? 114 : 196;
         renderHourlyCurveIntoContainer(
           dayScrollEl,
           dayHours,
@@ -4630,29 +4731,25 @@ function renderDailyForecast(daily) {
       dayChartOpts
     );
 
-    wrapper.querySelectorAll(".day-mode-tab").forEach((tab) => {
-      tab.addEventListener("click", () => {
-        wrapper
-          .querySelectorAll(".day-mode-tab")
-          .forEach((t) => t.classList.remove("active"));
-        tab.classList.add("active");
-        syncLiquidPillGlider(dayPillBarEl);
-        const mode = tab.dataset.mode || "temp";
-        state.dailyModes[idx] = mode;
-        const prevLeft = dayScrollEl.scrollLeft;
-        renderHourlyCurveIntoContainer(
-          dayScrollEl,
-          dayHours,
-          mode,
-          dayChartOpts
-        );
-        dayScrollEl.scrollLeft = prevLeft;
-      });
+    bindMetricDropdown(dayDropdownEl, activeDayMode, (mode) => {
+      state.dailyModes[idx] = mode;
+      const prevLeft = dayScrollEl.scrollLeft;
+      const mobileNow = window.innerWidth <= 640;
+      dayChartOpts.colW = mobileNow ? getMobileHourlyColWidth(dayScrollEl) : 74;
+      dayChartOpts.H = mobileNow ? 114 : 196;
+      renderHourlyCurveIntoContainer(
+        dayScrollEl,
+        dayHours,
+        mode,
+        dayChartOpts
+      );
+      dayScrollEl.scrollLeft = prevLeft;
     });
 
     const rowBtn = wrapper.querySelector(".daily-row-btn");
     rowBtn.addEventListener("click", () => {
       const willOpen = !wrapper.classList.contains("open");
+      closeAllMetricDropdowns();
       // Single-accordion behavior: close any other open day first
       list.querySelectorAll(".day-accordion.open").forEach((other) => {
         if (other !== wrapper) {
@@ -4663,9 +4760,6 @@ function renderDailyForecast(daily) {
       });
       wrapper.classList.toggle("open", willOpen);
       rowBtn.setAttribute("aria-expanded", String(willOpen));
-      if (willOpen) {
-        requestAnimationFrame(() => syncLiquidPillGlider(dayPillBarEl));
-      }
     });
 
     list.appendChild(wrapper);
@@ -4738,17 +4832,10 @@ function jumpToTimelineMetric(mode) {
   const targetMode = validModes.has(mode) ? mode : "temp";
   state.hourlyMode = targetMode;
 
-  const pillBar = document.getElementById("timeline-pill-bar");
-  if (pillBar) {
-    pillBar.querySelectorAll(".mode-tab").forEach((t) => {
-      const isMatch = t.dataset.mode === targetMode;
-      t.classList.toggle("active", isMatch);
-      if (isMatch && typeof t.scrollIntoView === "function") {
-        t.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-      }
-    });
-    syncLiquidPillGlider(pillBar);
-  }
+  syncMetricDropdownUI(
+    document.getElementById("hourly-metric-dropdown"),
+    targetMode
+  );
 
   if (state.weather?.hourly) {
     renderHourlyTimeline(state.weather.hourly);
@@ -6399,27 +6486,29 @@ function setupControls() {
     dopplerRadarMap.renderTelemetryStrip(dopplerRadarMap.telemetry);
   });
 
-  // 24-Hour Timeline Mode Tabs (Top Chart)
-  const topPillBar = document.getElementById("timeline-pill-bar");
-  document.querySelectorAll("#timeline-pill-bar .mode-tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      document
-        .querySelectorAll("#timeline-pill-bar .mode-tab")
-        .forEach((t) => t.classList.remove("active"));
-      tab.classList.add("active");
-      syncLiquidPillGlider(topPillBar);
-      state.hourlyMode = tab.dataset.mode || "temp";
-      if (state.weather) {
-        renderHourlyTimeline(state.weather.hourly);
-      }
-    });
+  // 24-Hour Timeline Metric Dropdown (Top Chart)
+  const topMetricDropdown = document.getElementById("hourly-metric-dropdown");
+  bindMetricDropdown(topMetricDropdown, state.hourlyMode || "temp", (mode) => {
+    state.hourlyMode = mode;
+    if (state.weather) {
+      renderHourlyTimeline(state.weather.hourly);
+    }
   });
 
-  requestAnimationFrame(() => syncLiquidPillGlider(topPillBar));
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".metric-selector-dropdown")) {
+      closeAllMetricDropdowns();
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeAllMetricDropdowns();
+    }
+  });
+
   window.addEventListener(
     "resize",
     () => {
-      syncLiquidPillGlider(topPillBar);
       syncRadarCardHeight();
       const scroll = document.getElementById("hourly-scroll");
       const targetColW =
@@ -6432,9 +6521,6 @@ function setupControls() {
       ) {
         renderHourlyTimeline(state.weather.hourly);
       }
-      document
-        .querySelectorAll(".day-accordion.open .day-pill-bar")
-        .forEach((bar) => syncLiquidPillGlider(bar));
     },
     { passive: true }
   );

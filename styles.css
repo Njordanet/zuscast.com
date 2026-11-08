@@ -1313,7 +1313,19 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   gap: 15px;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
+  z-index: 12;
+}
+
+.timeline-card:has(.metric-selector-dropdown.open) {
+  z-index: 45;
+}
+
+.timeline-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .timeline-spread-badge {
@@ -1548,37 +1560,45 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   transform: translateY(0);
 }
 
-/* Bottom Scrollable Metric Pill Selector — Certified Elastic Liquid Glass Capsule */
-.timeline-pill-bar {
+/* Full-Size Single-Button Metric Selector + Liquid Glass Popover Menu */
+.metric-selector-dropdown {
   position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 4px 4px 6px;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
+  flex-shrink: 0;
+  z-index: 35;
 }
 
-.timeline-pill-bar::-webkit-scrollbar {
-  display: none;
+.metric-selector-dropdown.open {
+  z-index: 95;
 }
 
-.mode-tab {
+.metric-selector-btn {
   position: relative;
-  z-index: 1;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(56, 189, 248, 0.32);
-  color: rgba(186, 230, 253, 0.9);
-  font-size: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(
+    145deg,
+    rgba(30, 52, 96, 0.56) 0%,
+    rgba(14, 26, 56, 0.68) 55%,
+    rgba(22, 40, 82, 0.62) 100%
+  );
+  backdrop-filter: blur(36px) saturate(195%);
+  -webkit-backdrop-filter: blur(36px) saturate(195%);
+  border: 1px solid rgba(125, 211, 252, 0.42);
+  color: #f8fafc;
+  font-size: 0.78rem;
   font-weight: 600;
-  padding: 7px 16px;
+  padding: 5.5px 13px 5.5px 10.5px;
   border-radius: var(--radius-pill);
   cursor: pointer;
   white-space: nowrap;
-  flex-shrink: 0;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.42),
+    inset 0 -1px 1px rgba(56, 189, 248, 0.16),
+    0 6px 16px -4px rgba(2, 6, 23, 0.55);
   transition:
-    color 0.22s ease,
     background 0.22s ease,
     border-color 0.22s ease,
     transform 0.22s var(--spring-bounce),
@@ -1586,31 +1606,218 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .mode-tab:hover {
-    background: rgba(56, 189, 248, 0.12);
-    border-color: rgba(56, 189, 248, 0.62);
-    color: #f0f9ff;
+  .metric-selector-btn:hover {
+    background: linear-gradient(
+      145deg,
+      rgba(56, 189, 248, 0.28) 0%,
+      rgba(20, 38, 76, 0.72) 55%,
+      rgba(99, 102, 241, 0.28) 100%
+    );
+    border-color: rgba(125, 211, 252, 0.74);
   }
 }
 
-.mode-tab:active {
-  transform: scale(0.95);
+.metric-selector-btn:active {
+  transform: scale(0.96);
 }
 
-.mode-tab.active {
+.metric-selector-dropdown.open .metric-selector-btn {
   background: linear-gradient(
     135deg,
     rgba(56, 189, 248, 0.38) 0%,
     rgba(14, 165, 233, 0.24) 52%,
     rgba(129, 140, 248, 0.32) 100%
   );
-  border-color: rgba(125, 211, 252, 0.72);
-  color: #ffffff;
-  text-shadow: 0 1px 8px rgba(14, 165, 233, 0.55);
+  border-color: rgba(125, 211, 252, 0.82);
   box-shadow:
     inset 0 1px 1px rgba(255, 255, 255, 0.58),
     inset 0 -1px 1px rgba(14, 165, 233, 0.24),
-    0 5px 14px -4px rgba(14, 165, 233, 0.42);
+    0 6px 18px -4px rgba(14, 165, 233, 0.45);
+}
+
+.metric-selector-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.metric-selector-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.metric-selector-label {
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+}
+
+.metric-selector-chevron {
+  font-size: 0.72rem;
+  color: rgba(186, 230, 253, 0.85);
+  line-height: 1;
+  transition: transform 0.22s var(--spring-bounce);
+}
+
+.metric-selector-dropdown.open .metric-selector-chevron {
+  transform: rotate(180deg);
+  color: #38bdf8;
+}
+
+.metric-selector-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 212px;
+  max-height: none;
+  overflow: visible;
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5px;
+  background: linear-gradient(
+    160deg,
+    rgba(18, 35, 72, 0.82) 0%,
+    rgba(8, 18, 42, 0.88) 54%,
+    rgba(16, 30, 64, 0.84) 100%
+  );
+  backdrop-filter: blur(44px) saturate(210%);
+  -webkit-backdrop-filter: blur(44px) saturate(210%);
+  border: 1px solid rgba(125, 211, 252, 0.44);
+  border-radius: 20px;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.46),
+    inset 0 -1px 1px rgba(56, 189, 248, 0.22),
+    0 22px 48px -8px rgba(2, 6, 23, 0.85),
+    0 0 24px -6px rgba(56, 189, 248, 0.26);
+  z-index: 100;
+  isolation: isolate;
+  transform-origin: top right;
+  animation: metricMenuPopIn 0.2s cubic-bezier(0.22, 1.15, 0.36, 1);
+}
+
+/* Chromatic Refractive Specular Rim on Liquid Glass Menu */
+.metric-selector-menu::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    140deg,
+    rgba(255, 255, 255, 0.52) 0%,
+    rgba(56, 189, 248, 0.28) 36%,
+    rgba(255, 255, 255, 0.05) 68%,
+    rgba(129, 140, 248, 0.34) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.metric-selector-menu[hidden] {
+  display: none !important;
+}
+
+@keyframes metricMenuPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.metric-option-btn {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 7.5px 11px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.94);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .metric-option-btn:hover {
+    background: rgba(56, 189, 248, 0.13);
+    border-color: rgba(56, 189, 248, 0.26);
+    color: #ffffff;
+  }
+}
+
+.metric-option-btn.active {
+  background: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.34) 0%,
+    rgba(14, 165, 233, 0.22) 52%,
+    rgba(129, 140, 248, 0.28) 100%
+  );
+  border-color: rgba(125, 211, 252, 0.68);
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow:
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.48),
+    0 4px 12px -4px rgba(14, 165, 233, 0.38);
+}
+
+.metric-option-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8.5px;
+  min-width: 0;
+}
+
+.metric-option-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.metric-option-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.metric-option-label {
+  white-space: nowrap;
+}
+
+.metric-option-check {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #7dd3fc;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.metric-option-btn.active .metric-option-check {
+  opacity: 1;
+  transform: scale(1);
 }
 
 /* Main Split Grid: 10-Day Interactive Forecast + Live Doppler Radar */
@@ -1629,8 +1836,13 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   height: auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   container-type: inline-size;
+  z-index: 10;
+}
+
+.daily-card:has(.metric-selector-dropdown.open) {
+  z-index: 45;
 }
 
 .daily-summary-banner {
@@ -1896,24 +2108,33 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   margin-bottom: 10px;
   border-width: 1px;
   pointer-events: auto;
+  overflow: visible;
 }
 
 .day-accordion.open .day-drawer-inner {
   transform: translateY(0) scale(1);
+  overflow: visible;
 }
 
 .day-drawer-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 10px;
+  flex-wrap: nowrap;
 }
 
 .day-drawer-summary {
   font-size: 0.8rem;
   color: var(--text-secondary);
   margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.day-metric-dropdown .metric-selector-btn {
+  font-size: 0.73rem;
+  padding: 4.5px 11px 4.5px 9.5px;
 }
 
 .day-spread-badge {
@@ -1925,32 +2146,7 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 .day-hourly-scroll {
-  padding: 10px 8px 8px;
-}
-
-.day-hourly-scroll .hourly-col-time {
-  font-size: 0.68rem;
-}
-
-.day-hourly-scroll .hourly-node-icon {
-  width: 21px;
-  height: 21px;
-  bottom: calc(100% + 3px);
-}
-
-.day-hourly-scroll .hourly-node-pop {
-  bottom: calc(100% + 25px);
-  font-size: 0.56rem;
-}
-
-.day-hourly-scroll .hourly-node-val {
-  font-size: 0.82rem;
-  padding: 1px 5px;
-}
-
-.day-hourly-scroll .hourly-node-spread {
-  font-size: 0.6rem;
-  padding: 1px 4px;
+  width: 100%;
 }
 
 .day-pill-bar {
@@ -4477,15 +4673,13 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
     padding: 1px 3px;
   }
 
-  .timeline-pill-bar {
-    padding: 2px 2px 2px;
-    gap: 6px;
-    flex-shrink: 0;
+  .metric-selector-btn {
+    padding: 4.5px 10.5px 4.5px 8.5px;
+    font-size: 0.73rem;
   }
 
-  .mode-tab {
-    padding: 6px 13px;
-    font-size: 0.76rem;
+  .metric-selector-menu {
+    min-width: 198px;
   }
 
   .daily-row-btn {
