@@ -4917,10 +4917,21 @@ function buildMetricMenuItemsHTML(activeMode) {
   }).join("");
 }
 
+function syncDropdownParentElevation(dropdownEl, isOpen) {
+  if (!dropdownEl) return;
+  [".day-accordion", ".daily-card", ".timeline-card", ".mobile-first-screen"].forEach((sel) => {
+    const ancestor = dropdownEl.closest(sel);
+    if (ancestor) {
+      ancestor.classList.toggle("has-open-dropdown", isOpen);
+    }
+  });
+}
+
 function closeAllMetricDropdowns(exceptDropdown = null) {
   document.querySelectorAll(".metric-selector-dropdown.open").forEach((dd) => {
     if (dd !== exceptDropdown) {
       dd.classList.remove("open");
+      syncDropdownParentElevation(dd, false);
       const btn = dd.querySelector(".metric-selector-btn");
       const menu = dd.querySelector(".metric-selector-menu");
       if (btn) btn.setAttribute("aria-expanded", "false");
@@ -4967,6 +4978,7 @@ function bindMetricDropdown(dropdownEl, initialMode, onSelect) {
       const willOpen = !dropdownEl.classList.contains("open");
       closeAllMetricDropdowns(dropdownEl);
       dropdownEl.classList.toggle("open", willOpen);
+      syncDropdownParentElevation(dropdownEl, willOpen);
       btn.setAttribute("aria-expanded", String(willOpen));
       if (willOpen) {
         menu.removeAttribute("hidden");
@@ -6548,7 +6560,9 @@ function bindSheetSwipeDismiss(sheetId, grabberId, closeFn) {
     ) {
       return;
     }
-    const isGrabber = grabber && grabber.contains(e.target);
+    const isGrabber =
+      (grabber && grabber.contains(e.target)) ||
+      Boolean(e.target.closest(".sheet-grabber-bar, .tile-modal-header"));
     if (!isGrabber && sheet.scrollTop > 2) return;
     startY = touch.clientY;
     currentDY = 0;
