@@ -2,6 +2,16 @@
 
 All notable changes to `zuscast.com` will be documented in this file.
 
+## [v1.4.0] - 2026-11-09
+
+### Full ZüsAPI Recursive Alignment Integration & Hourly Curve Icon Sync
+- **End-to-End ZüsAPI Recursive Alignment (`app.js`)**:
+  - Switched the 10-Day Forecast (`daily`), Multi-Model Ensemble (`ensembleModels`), Hourly Uncertainty Bounds (`computeBounds`), and all secondary telemetry (`uvIndex`, `cape`, `pm25`, `liftedIndex`) to consume ZüsAPI's Diurnal Harmonic MOS + Multi-Horizon RLS + IDERW Station Assimilation engine first.
+  - Added dual-host resilience (`api.zuscast.com` + LAN fallback) and full dashboard re-rendering (`renderDashboard()`) when ZüsAPI completes after the initial fast-render window.
+- **Header, Hourly Strip & Modal Icon Synchronization (`app.js`)**:
+  - Anchored `hourly[0]` ("NOW") to the exact header state (`temperature`, `feelsLike`, `wmoCode`, `condition`, `isNight`, `solarPhase`, `cloudCover`) and prioritized local `h.time` timestamps for solar day/night icon resolution.
+  - Updated `renderHourlyCurveIntoContainer` in-place morphing to refresh `.hourly-node-icon` SVGs on every update so hourly curve icons always match the header and hourly detail modal.
+
 ## [v1.3.3] - 2026-11-09
 
 ### Metric Selector Dropdown Stacking & Clipping Fix

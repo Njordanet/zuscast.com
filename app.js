@@ -2854,7 +2854,7 @@ async function loadWeatherForCurrentLocation() {
       timezone: "auto",
     });
 
-    const fetchWithTimeout = (url, ms = 2200) => {
+    const fetchWithTimeout = (url, ms = 3600) => {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), ms);
       return fetch(url, { signal: ctrl.signal })
@@ -2868,14 +2868,21 @@ async function loadWeatherForCurrentLocation() {
         });
     };
 
-    const zusWeatherPromise = fetchWithTimeout(
-      `${ZUS_API_BASE}/weather?lat=${latitude.toFixed(4)}&lon=${longitude.toFixed(
-        4
-      )}&city=${encodeURIComponent(name)}`,
-      2200
+    const zusQuery = `/weather?lat=${latitude.toFixed(4)}&lon=${longitude.toFixed(
+      4
+    )}&city=${encodeURIComponent(name)}`;
+    const zusWeatherPromise = fetchWithTimeout(`${ZUS_API_BASE}${zusQuery}`, 3600).then(
+      (res) => {
+        if (res) return res;
+        const fallbackBase =
+          ZUS_API_HOST === ZUS_API_HTTPS_HOST
+            ? `${ZUS_API_LAN_HOST}/api/v1`
+            : `${ZUS_API_HTTPS_HOST}/api/v1`;
+        return fetchWithTimeout(`${fallbackBase}${zusQuery}`, 2600);
+      }
     );
 
-    const raceTimeout = (p, ms = 1600) =>
+    const raceTimeout = (p, ms = 2800) =>
       Promise.race([p, new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
 
     const [fResp, aqiResp, ensResp, dopplerTel, zusWeather] = await Promise.all([
@@ -2888,12 +2895,14 @@ async function loadWeatherForCurrentLocation() {
       fetch(`https://api.open-meteo.com/v1/forecast?${ensembleParams.toString()}`).catch(
         () => null
       ),
-      raceTimeout(dopplerPromise, 1600),
-      raceTimeout(zusWeatherPromise, 1600),
+      raceTimeout(dopplerPromise, 2200),
+      raceTimeout(zusWeatherPromise, 2800),
     ]);
 
-    if (!fResp || !fResp.ok) throw new Error(`HTTP ${fResp ? fResp.status : "ERR"}`);
-    const rawForecast = await fResp.json();
+    if ((!fResp || !fResp.ok) && !zusWeather) {
+      throw new Error(`HTTP ${fResp ? fResp.status : "ERR"}`);
+    }
+    const rawForecast = fResp && fResp.ok ? await fResp.json() : {};
     const rawAqi = aqiResp && aqiResp.ok ? await aqiResp.json() : null;
     const rawEnsemble = ensResp && ensResp.ok ? await ensResp.json() : null;
 
@@ -2912,27 +2921,27 @@ async function loadWeatherForCurrentLocation() {
     renderDashboard();
     dopplerRadarMap.renderTelemetryStrip(mergedDoppler);
 
-    // If dopplerPromise or zusWeatherPromise finished after the 1.6s fast-render budget, enrich seamlessly
+    // If dopplerPromise or zusWeatherPromise finished after the initial race budget, re-render full dashboard with ZüsAPI alignment
     Promise.all([dopplerPromise.catch(() => null), zusWeatherPromise]).then(
       ([lateDoppler, lateZus]) => {
-        const latestTel = lateZus?.dopplerTelemetry || lateDoppler;
-        if (latestTel && latestTel !== mergedDoppler) {
-          dopplerRadarMap.telemetry = latestTel;
-          dopplerRadarMap.renderTelemetryStrip(latestTel);
+        const effectiveZus = lateZus || zusWeather;
+        const latestTel = effectiveZus?.dopplerTelemetry || lateDoppler || mergedDoppler;
+        const zusJustArrived = Boolean(lateZus && !zusWeather);
+        const telChanged = Boolean(latestTel && latestTel !== mergedDoppler);
+        if (zusJustArrived || telChanged) {
+          if (latestTel) {
+            dopplerRadarMap.telemetry = latestTel;
+            dopplerRadarMap.renderTelemetryStrip(latestTel);
+          }
           state.weather = parseWeatherData(
             rawForecast,
             rawAqi,
             rawEnsemble,
             latestTel,
-            lateZus || zusWeather
+            effectiveZus
           );
           if (state.weather) {
-            renderNextHourNowcast(
-              state.weather.minuteRates,
-              state.weather.hourly?.[0],
-              state.weather.minuteRatesMin,
-              state.weather.minuteRatesMax
-            );
+            renderDashboard();
           }
         }
       }
@@ -3233,8 +3242,15 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     return { isNight, solarPhase, rise: bounds.rise, set: bounds.set };
   };
 
+  const zusTempBiasOffset =
+    zHourly.length > 0 &&
+    zHourly[0]?.temperature !== undefined &&
+    h.temperature_2m?.[startHourIdx] !== undefined
+      ? Number(zHourly[0].temperature) - Number(h.temperature_2m[startHourIdx])
+      : 0;
+
   const buildHourPoint = (idx, zh = null) => {
-    const tStr = String(h.time[idx] || "");
+    const tStr = String(h.time?.[idx] || zh?.time || "");
     const dateKey = tStr.slice(0, 10);
     const hourNum = Number(tStr.slice(11, 13)) || 0;
     const minNum = Number(tStr.slice(14, 16)) || 0;
@@ -3244,8 +3260,17 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       h.is_day?.[idx]
     );
 
-    const temperature = Number(zh?.temperature ?? h.temperature_2m?.[idx] ?? c.temperature_2m ?? 0);
-    const feelsLike = Number(zh?.feelsLike ?? h.apparent_temperature?.[idx] ?? temperature);
+    const rawAlignedTemp =
+      h.temperature_2m?.[idx] !== undefined && h.temperature_2m?.[idx] !== null
+        ? Number(h.temperature_2m[idx]) + zusTempBiasOffset
+        : Number(c.temperature_2m ?? 0) + zusTempBiasOffset;
+    const rawAlignedFeels =
+      h.apparent_temperature?.[idx] !== undefined && h.apparent_temperature?.[idx] !== null
+        ? Number(h.apparent_temperature[idx]) + zusTempBiasOffset
+        : rawAlignedTemp;
+
+    const temperature = Number(zh?.temperature ?? rawAlignedTemp);
+    const feelsLike = Number(zh?.feelsLike ?? rawAlignedFeels);
     const wmoCode = Number(zh?.wmoCode ?? h.weather_code?.[idx] ?? 0);
     const precipProb = Number(zh?.precipitationChance ?? h.precipitation_probability?.[idx] ?? 0);
     const precipMm = Number(zh?.precipMm ?? h.precipitation?.[idx] ?? 0);
@@ -3257,7 +3282,12 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       zh?.windGusts ?? h.wind_gusts_10m?.[idx] ?? Math.max(windSpeed * 1.3, windSpeed + 4)
     );
     const uvIndex = Math.max(0, Number(zh?.uvIndex ?? h.uv_index?.[idx] ?? 0));
-    const dewPoint = Number(zh?.dewPoint ?? h.dew_point_2m?.[idx] ?? temperature - 4);
+    const dewPoint = Number(
+      zh?.dewPoint ??
+        (h.dew_point_2m?.[idx] !== undefined && h.dew_point_2m?.[idx] !== null
+          ? Number(h.dew_point_2m[idx]) + zusTempBiasOffset
+          : temperature - 4)
+    );
     const humidity = Number(
       zh?.humidity ??
       h.relative_humidity_2m?.[idx] ??
@@ -3316,32 +3346,31 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
 
     const tempB = computeBounds(
       temperature,
-      [...extractModelVals("temperature_2m", idx), zh?.tempMin, zh?.tempMax].filter(
+      (zh ? [zh.tempMin, zh.tempMax] : extractModelVals("temperature_2m", idx)).filter(
         (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
       ),
       1.1
     );
     const feelsB = computeBounds(
       feelsLike,
-      [...extractModelVals("apparent_temperature", idx), zh?.feelsMin, zh?.feelsMax].filter(
+      (zh ? [zh.feelsMin, zh.feelsMax] : extractModelVals("apparent_temperature", idx)).filter(
         (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
       ),
       1.3
     );
     const popB = computeBounds(
       precipProb,
-      [
-        ...extractModelVals("precipitation_probability", idx),
-        zh?.precipProbMin,
-        zh?.precipProbMax,
-      ].filter((v) => v !== null && v !== undefined && !Number.isNaN(Number(v))),
+      (zh
+        ? [zh.precipProbMin, zh.precipProbMax]
+        : extractModelVals("precipitation_probability", idx)
+      ).filter((v) => v !== null && v !== undefined && !Number.isNaN(Number(v))),
       12,
       0,
       100
     );
     const prMmB = computeBounds(
       precipMm,
-      [...extractModelVals("precipitation", idx), zh?.precipMmMin, zh?.precipMmMax].filter(
+      (zh ? [zh.precipMmMin, zh.precipMmMax] : extractModelVals("precipitation", idx)).filter(
         (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
       ),
       precipMm > 0.05 ? Math.max(0.25, precipMm * 0.35) : 0.12,
@@ -3349,7 +3378,7 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     );
     const windB = computeBounds(
       windSpeed,
-      [...extractModelVals("wind_speed_10m", idx), zh?.windMin, zh?.windMax].filter(
+      (zh ? [zh.windMin, zh.windMax] : extractModelVals("wind_speed_10m", idx)).filter(
         (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
       ),
       Math.max(2.5, windSpeed * 0.18),
@@ -3357,7 +3386,7 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     );
     const gustB = computeBounds(
       windGusts,
-      [...extractModelVals("wind_gusts_10m", idx), zh?.gustMin, zh?.gustMax].filter(
+      (zh ? [zh.gustMin, zh.gustMax] : extractModelVals("wind_gusts_10m", idx)).filter(
         (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
       ),
       Math.max(3.8, windGusts * 0.2),
@@ -3365,7 +3394,7 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     );
     const uvB = computeBounds(
       uvIndex,
-      [...extractModelVals("uv_index", idx), zh?.uvMin, zh?.uvMax].filter(
+      (zh ? [zh.uvMin, zh.uvMax] : extractModelVals("uv_index", idx)).filter(
         (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
       ),
       uvIndex > 0.2 ? Math.max(0.4, uvIndex * 0.16) : 0.0,
@@ -3374,14 +3403,14 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     );
     const dewB = computeBounds(
       dewPoint,
-      [...extractModelVals("dew_point_2m", idx), zh?.dewMin, zh?.dewMax].filter(
+      (zh ? [zh.dewMin, zh.dewMax] : extractModelVals("dew_point_2m", idx)).filter(
         (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
       ),
       1.0
     );
     const cloudB = computeBounds(
       cloudCover,
-      [...extractModelVals("cloud_cover", idx), zh?.cloudMin, zh?.cloudMax].filter(
+      (zh ? [zh.cloudMin, zh.cloudMax] : extractModelVals("cloud_cover", idx)).filter(
         (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
       ),
       10,
@@ -3390,7 +3419,7 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     );
     const visB = computeBounds(
       visibilityKm,
-      [...extractModelVals("visibility", idx, 0.001), zh?.visMin, zh?.visMax].filter(
+      (zh ? [zh.visMin, zh.visMax] : extractModelVals("visibility", idx, 0.001)).filter(
         (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
       ),
       Math.max(1.2, visibilityKm * 0.14),
@@ -3399,7 +3428,7 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     );
     const pressB = computeBounds(
       pressure,
-      [...extractModelVals("pressure_msl", idx), zh?.pressMin, zh?.pressMax].filter(
+      (zh ? [zh.pressMin, zh.pressMax] : extractModelVals("pressure_msl", idx)).filter(
         (v) => v !== null && v !== undefined && !Number.isNaN(Number(v))
       ),
       1.2,
@@ -3408,7 +3437,7 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     );
 
     return {
-      time: new Date(h.time[idx]),
+      time: new Date(h.time?.[idx] || zh?.time || Date.now()),
       dateKey,
       hourNum,
       isNight: hourSolar.isNight,
@@ -3453,12 +3482,13 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       pressure,
       pressMin: pressB.min,
       pressMax: pressB.max,
+      capeJkg: Number(zh?.capeJkg ?? h.cape?.[idx] ?? 0),
     };
   };
 
   // Build full 10-day hourly dataset (all 240 hours) + forward 10-day stream starting at current hour
   const allHourly = [];
-  const totalHourLen = Array.isArray(h.time) ? h.time.length : 0;
+  const totalHourLen = Array.isArray(h.time) && h.time.length > 0 ? h.time.length : zHourly.length;
   for (let idx = 0; idx < totalHourLen; idx++) {
     const zOffset = idx - startHourIdx;
     const zh = zOffset >= 0 && zOffset < zHourly.length ? zHourly[zOffset] : null;
@@ -3467,13 +3497,13 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
 
   const hourly = allHourly.slice(startHourIdx);
 
-  // 10-Day Forecast (each day includes its 24-hour slice for the expandable day chart)
+  // 10-Day Forecast (consumed from ZüsAPI RLS + Diurnal Harmonic MOS blend, with Open-Meteo fallback)
   const zDaily = Array.isArray(zusWeather?.daily) ? zusWeather.daily : [];
   const daily = [];
-  const dayLen = Math.min(d.time?.length || 0, 10);
+  const dayLen = Math.min(Math.max(d.time?.length || 0, zDaily.length), 10);
   for (let i = 0; i < dayLen; i++) {
-    const dayKey = String(d.time[i]);
     const zd = i < zDaily.length ? zDaily[i] : null;
+    const dayKey = String(d.time?.[i] || zd?.date || "").slice(0, 10);
     let dayHours =
       i === 0
         ? hourly.slice(0, 24)
@@ -3505,103 +3535,198 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       }
     }
 
-    let dayCondition = conditionFromWMO(d.weather_code[i]);
+    const dayWmo = Number(zd?.wmoCode ?? d.weather_code?.[i] ?? 0);
+    const dayPop = Number(zd?.precipitationChance ?? d.precipitation_probability_max?.[i] ?? 0);
+    const dayPsum = Number(zd?.precipSumMm ?? d.precipitation_sum?.[i] ?? 0);
+    let dayCondition = conditionFromWMO(dayWmo);
     if (
       precipType === "sleet" &&
-      (d.precipitation_probability_max?.[i] >= 25 ||
-        d.precipitation_sum?.[i] > 0.1 ||
-        [56, 57, 66, 67, 77].includes(Number(d.weather_code[i])))
+      (dayPop >= 25 || dayPsum > 0.1 || [56, 57, 66, 67, 77].includes(dayWmo))
     ) {
       dayCondition = SKY_CONDITIONS.sleet;
     }
 
     daily.push({
-      date: new Date(`${d.time[i]}T12:00:00`),
+      date: new Date(`${dayKey}T12:00:00`),
       dateKey: dayKey,
-      wmoCode: d.weather_code[i],
+      wmoCode: dayWmo,
       condition: dayCondition,
-      tempMin: d.temperature_2m_min[i],
-      tempMax: d.temperature_2m_max[i],
-      precipProb: d.precipitation_probability_max?.[i] ?? 0,
-      precipSumMm: d.precipitation_sum?.[i] ?? 0,
+      tempMin: Number(zd?.minTemperature ?? d.temperature_2m_min?.[i] ?? 0),
+      tempMax: Number(zd?.maxTemperature ?? d.temperature_2m_max?.[i] ?? 0),
+      precipProb: dayPop,
+      precipSumMm: dayPsum,
       precipType,
       snowAccumulationCm,
-      uvMax: d.uv_index_max?.[i] ?? 5,
-      windMax: d.wind_speed_10m_max?.[i] ?? 10,
-      windDir: d.wind_direction_10m_dominant?.[i] ?? 180,
-      sunrise: d.sunrise?.[i] ?? null,
-      sunset: d.sunset?.[i] ?? null,
+      snowToLiquidRatio: Number(zd?.snowToLiquidRatio ?? 10),
+      uvMax: Number(zd?.uvIndexMax ?? d.uv_index_max?.[i] ?? 5),
+      windMax: Number(zd?.windSpeedMax ?? d.wind_speed_10m_max?.[i] ?? 10),
+      windDir: Number(zd?.windDirectionDominant ?? d.wind_direction_10m_dominant?.[i] ?? 180),
+      sunrise: zd?.sunrise ?? d.sunrise?.[i] ?? null,
+      sunset: zd?.sunset ?? d.sunset?.[i] ?? null,
       hours: dayHours,
     });
   }
 
-  // Parse Multi-Model Ensemble (from hourly model arrays at current hour)
+  // Parse Multi-Model Ensemble (preferring ZüsAPI RLS + Diurnal Harmonic MOS modelWeights)
   const eIdx = Math.min(startHourIdx, 23);
-  const rawEnsembleModels = [
-    {
-      name: "HRRR / Best Match",
-      tag: "High-Res",
-      temp: eh.temperature_2m_best_match?.[eIdx] ?? c.temperature_2m,
-      precip: eh.precipitation_best_match?.[eIdx] ?? c.precipitation ?? 0,
-      precipProb:
-        eh.precipitation_probability_best_match?.[eIdx] ??
-        h.precipitation_probability?.[startHourIdx] ??
-        0,
-      wind: eh.wind_speed_10m_best_match?.[eIdx] ?? c.wind_speed_10m ?? 0,
+  const zWeights = Array.isArray(zusWeather?.modelWeights) ? zusWeather.modelWeights : [];
+  const modelMetaMap = {
+    HRRR: {
+      name: "NOAA HRRR 3km",
+      tag: "High-Res CONUS",
+      rawTemp: eh.temperature_2m_best_match?.[eIdx],
+      rawPop: eh.precipitation_probability_best_match?.[eIdx],
+      rawWind: eh.wind_speed_10m_best_match?.[eIdx],
     },
-    {
+    ECMWF: {
       name: "ECMWF IFS 0.25°",
-      tag: "European",
-      temp: eh.temperature_2m_ecmwf_ifs025?.[eIdx] ?? c.temperature_2m,
-      precip: eh.precipitation_ecmwf_ifs025?.[eIdx] ?? c.precipitation ?? 0,
-      precipProb:
-        eh.precipitation_probability_ecmwf_ifs025?.[eIdx] ??
-        h.precipitation_probability?.[startHourIdx] ??
-        0,
-      wind: eh.wind_speed_10m_ecmwf_ifs025?.[eIdx] ?? c.wind_speed_10m ?? 0,
+      tag: "European Global",
+      rawTemp: eh.temperature_2m_ecmwf_ifs025?.[eIdx],
+      rawPop: eh.precipitation_probability_ecmwf_ifs025?.[eIdx],
+      rawWind: eh.wind_speed_10m_ecmwf_ifs025?.[eIdx],
     },
-    {
+    GFS: {
       name: "NOAA GFS",
       tag: "US Global",
-      temp: eh.temperature_2m_gfs_seamless?.[eIdx] ?? c.temperature_2m,
-      precip: eh.precipitation_gfs_seamless?.[eIdx] ?? c.precipitation ?? 0,
-      precipProb:
-        eh.precipitation_probability_gfs_seamless?.[eIdx] ??
-        h.precipitation_probability?.[startHourIdx] ??
-        0,
-      wind: eh.wind_speed_10m_gfs_seamless?.[eIdx] ?? c.wind_speed_10m ?? 0,
+      rawTemp: eh.temperature_2m_gfs_seamless?.[eIdx],
+      rawPop: eh.precipitation_probability_gfs_seamless?.[eIdx],
+      rawWind: eh.wind_speed_10m_gfs_seamless?.[eIdx],
     },
-    {
+    ICON: {
       name: "DWD ICON",
       tag: "German Global",
-      temp: eh.temperature_2m_icon_seamless?.[eIdx] ?? c.temperature_2m,
-      precip: eh.precipitation_icon_seamless?.[eIdx] ?? c.precipitation ?? 0,
-      precipProb:
-        eh.precipitation_probability_icon_seamless?.[eIdx] ??
-        h.precipitation_probability?.[startHourIdx] ??
-        0,
-      wind: eh.wind_speed_10m_icon_seamless?.[eIdx] ?? c.wind_speed_10m ?? 0,
+      rawTemp: eh.temperature_2m_icon_seamless?.[eIdx],
+      rawPop: eh.precipitation_probability_icon_seamless?.[eIdx],
+      rawWind: eh.wind_speed_10m_icon_seamless?.[eIdx],
     },
-  ];
+    GEM: {
+      name: "CMC GEM",
+      tag: "Canadian Global",
+      rawTemp: null,
+      rawPop: null,
+      rawWind: null,
+    },
+  };
+
+  let rawEnsembleModels;
+  if (zWeights.length > 0) {
+    rawEnsembleModels = zWeights.map((mw) => {
+      const meta = modelMetaMap[mw.modelName] || {
+        name: mw.modelName,
+        tag: "RLS Model",
+        rawTemp: null,
+        rawPop: null,
+        rawWind: null,
+      };
+      const diurnalBias = Number(mw.diurnalBiasNowCelsius ?? mw.biasCelsius ?? 0);
+      const fallbackTemp =
+        meta.rawTemp !== null && meta.rawTemp !== undefined
+          ? Number(meta.rawTemp) - diurnalBias
+          : Number(zCur?.temperature ?? zHourly[0]?.temperature ?? c.temperature_2m ?? 0);
+      const modelTemp =
+        mw.currentTempCelsius !== null && mw.currentTempCelsius !== undefined
+          ? Number(mw.currentTempCelsius)
+          : fallbackTemp;
+      const modelPop =
+        mw.currentPrecipProb !== null && mw.currentPrecipProb !== undefined
+          ? Number(mw.currentPrecipProb)
+          : Number(meta.rawPop ?? zHourly[0]?.precipitationChance ?? 0);
+      const modelWind =
+        mw.currentWindKmh !== null && mw.currentWindKmh !== undefined
+          ? Number(mw.currentWindKmh)
+          : Number(meta.rawWind ?? zCur?.windSpeed ?? 0);
+      return {
+        modelId: mw.modelName,
+        name: meta.name,
+        tag: `${Math.round(Number(mw.weight ?? 0.25) * 100)}% RLS Weight`,
+        temp: modelTemp,
+        precip: 0,
+        precipProb: modelPop,
+        wind: modelWind,
+        rlsWeight: Number(mw.weight ?? 0.25),
+        weightShort: Number(mw.weightShort ?? mw.weight ?? 0.25),
+        weightMed: Number(mw.weightMed ?? mw.weight ?? 0.25),
+        weightExt: Number(mw.weightExt ?? mw.weight ?? 0.25),
+        accuracyPercent: Number(mw.accuracyPercent ?? 94),
+        maeCelsius: Number(mw.maeCelsius ?? 0.8),
+        biasCelsius: Number(mw.biasCelsius ?? 0),
+        diurnalBiasNowCelsius: diurnalBias,
+        samplesVerified: Number(mw.samplesVerified ?? 1),
+      };
+    });
+  } else {
+    rawEnsembleModels = [
+      {
+        name: "HRRR / Best Match",
+        tag: "High-Res",
+        temp: eh.temperature_2m_best_match?.[eIdx] ?? c.temperature_2m,
+        precip: eh.precipitation_best_match?.[eIdx] ?? c.precipitation ?? 0,
+        precipProb:
+          eh.precipitation_probability_best_match?.[eIdx] ??
+          h.precipitation_probability?.[startHourIdx] ??
+          0,
+        wind: eh.wind_speed_10m_best_match?.[eIdx] ?? c.wind_speed_10m ?? 0,
+      },
+      {
+        name: "ECMWF IFS 0.25°",
+        tag: "European",
+        temp: eh.temperature_2m_ecmwf_ifs025?.[eIdx] ?? c.temperature_2m,
+        precip: eh.precipitation_ecmwf_ifs025?.[eIdx] ?? c.precipitation ?? 0,
+        precipProb:
+          eh.precipitation_probability_ecmwf_ifs025?.[eIdx] ??
+          h.precipitation_probability?.[startHourIdx] ??
+          0,
+        wind: eh.wind_speed_10m_ecmwf_ifs025?.[eIdx] ?? c.wind_speed_10m ?? 0,
+      },
+      {
+        name: "NOAA GFS",
+        tag: "US Global",
+        temp: eh.temperature_2m_gfs_seamless?.[eIdx] ?? c.temperature_2m,
+        precip: eh.precipitation_gfs_seamless?.[eIdx] ?? c.precipitation ?? 0,
+        precipProb:
+          eh.precipitation_probability_gfs_seamless?.[eIdx] ??
+          h.precipitation_probability?.[startHourIdx] ??
+          0,
+        wind: eh.wind_speed_10m_gfs_seamless?.[eIdx] ?? c.wind_speed_10m ?? 0,
+      },
+      {
+        name: "DWD ICON",
+        tag: "German Global",
+        temp: eh.temperature_2m_icon_seamless?.[eIdx] ?? c.temperature_2m,
+        precip: eh.precipitation_icon_seamless?.[eIdx] ?? c.precipitation ?? 0,
+        precipProb:
+          eh.precipitation_probability_icon_seamless?.[eIdx] ??
+          h.precipitation_probability?.[startHourIdx] ??
+          0,
+        wind: eh.wind_speed_10m_icon_seamless?.[eIdx] ?? c.wind_speed_10m ?? 0,
+      },
+    ];
+  }
 
   const validTemps = rawEnsembleModels
     .map((m) => m.temp)
     .filter((t) => t !== null && t !== undefined && !Number.isNaN(t));
-  const meanTempC =
-    validTemps.length > 0
-      ? validTemps.reduce((acc, v) => acc + v, 0) / validTemps.length
-      : c.temperature_2m ?? 0;
+  const consensusRefTempC = Number(
+    zHourly[0]?.temperature ??
+      zCur?.temperature ??
+      (validTemps.length > 0
+        ? validTemps.reduce((acc, v) => acc + v, 0) / validTemps.length
+        : c.temperature_2m ?? 0)
+  );
   const meanPop =
     rawEnsembleModels.reduce((acc, m) => acc + Number(m.precipProb ?? 0), 0) /
-    rawEnsembleModels.length;
+    Math.max(1, rawEnsembleModels.length);
 
   const ensembleModels = rawEnsembleModels.map((m) => {
-    const deltaC = Number(m.temp ?? meanTempC) - meanTempC;
+    const deltaC = Number(m.temp ?? consensusRefTempC) - consensusRefTempC;
     const popDiff = Math.abs(Number(m.precipProb ?? 0) - meanPop);
-    const alignmentPct = Math.max(
-      74,
-      Math.min(100, Math.round(100 - Math.abs(deltaC) * 6.2 - popDiff * 0.14))
-    );
+    const alignmentPct =
+      m.accuracyPercent !== undefined
+        ? Math.max(74, Math.min(100, Math.round(m.accuracyPercent)))
+        : Math.max(
+            74,
+            Math.min(100, Math.round(100 - Math.abs(deltaC) * 6.2 - popDiff * 0.14))
+          );
     return {
       ...m,
       deltaC,
@@ -3616,18 +3741,16 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
   const confidencePct =
     zCur?.consensusScore ?? Math.max(82, Math.min(99, Math.round(100 - spreadC * 4.5)));
 
-  // Determine observed WMO weather code (assimilating ZüsAPI METAR/Doppler ground truth)
-  let effectiveWmo = zCur?.observedWeatherCode ?? c.weather_code ?? 0;
+  // Determine observed WMO weather code (assimilating ZüsAPI RLS + METAR/Doppler ground truth)
+  let effectiveWmo = Number(
+    zCur?.observedWeatherCode ?? zHourly[0]?.wmoCode ?? c.weather_code ?? 0
+  );
   if (effectiveWmo < 51 && minuteRates[0] >= 0.15) {
     effectiveWmo = minuteRates[0] >= 4.0 ? 65 : minuteRates[0] >= 0.8 ? 61 : 51;
   }
-  if (hourly.length > 0 && effectiveWmo >= 51 && hourly[0].wmoCode < 51) {
-    hourly[0].wmoCode = effectiveWmo;
-    hourly[0].precipProb = Math.max(hourly[0].precipProb, 80);
-  }
 
   const currentHourPt = hourly[0] || null;
-  const curTimeStr = String(c.time || h.time?.[startHourIdx] || "");
+  const curTimeStr = String(c.time || h.time?.[startHourIdx] || zCur?.timestamp || "");
   const curDateKey = curTimeStr.slice(0, 10) || daily[0]?.dateKey || "";
   const curHourFrac = parseIsoHourFrac(curTimeStr, currentHourPt?.hourNum ?? 12);
   const currentSolar = getSolarStateFor(
@@ -3636,27 +3759,38 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     c.is_day ?? h.is_day?.[startHourIdx]
   );
 
-  const currentUv =
-    c.uv_index ??
-    currentHourPt?.uvIndex ??
-    h.uv_index?.[startHourIdx] ??
-    0;
-  const currentVisKm =
+  const currentUv = Number(
+    zCur?.uvIndex ??
+      currentHourPt?.uvIndex ??
+      c.uv_index ??
+      h.uv_index?.[startHourIdx] ??
+      0
+  );
+  const currentVisKm = Number(
     zCur?.visibility ??
-    (c.visibility !== undefined && c.visibility !== null
-      ? c.visibility / 1000
-      : null) ??
-    currentHourPt?.visibilityKm ??
-    (h.visibility?.[startHourIdx] ?? 10000) / 1000;
+      currentHourPt?.visibilityKm ??
+      (c.visibility !== undefined && c.visibility !== null
+        ? c.visibility / 1000
+        : null) ??
+      (h.visibility?.[startHourIdx] ?? 10000) / 1000
+  );
 
-  const currentTemp = zCur?.temperature ?? c.temperature_2m ?? currentHourPt?.temperature ?? 0;
-  const currentHumidity = Number(zCur?.humidity ?? c.relative_humidity_2m ?? currentHourPt?.humidity ?? 50);
-  const currentDewPoint =
+  const currentTemp = Number(
+    zCur?.temperature ?? currentHourPt?.temperature ?? c.temperature_2m ?? 0
+  );
+  const currentFeelsLike = Number(
+    zCur?.feelsLike ?? currentHourPt?.feelsLike ?? c.apparent_temperature ?? currentTemp
+  );
+  const currentHumidity = Number(
+    zCur?.humidity ?? currentHourPt?.humidity ?? c.relative_humidity_2m ?? 50
+  );
+  const currentDewPoint = Number(
     zCur?.dewPoint ??
-    c.dew_point_2m ??
-    currentHourPt?.dewPoint ??
-    h.dew_point_2m?.[startHourIdx] ??
-    currentTemp - (100 - currentHumidity) / 5;
+      currentHourPt?.dewPoint ??
+      c.dew_point_2m ??
+      h.dew_point_2m?.[startHourIdx] ??
+      currentTemp - (100 - currentHumidity) / 5
+  );
   const currentWetBulb =
     zCur?.wetBulbTemperature !== undefined && zCur?.wetBulbTemperature !== null
       ? Number(zCur.wetBulbTemperature)
@@ -3694,41 +3828,97 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     currentCond = SKY_CONDITIONS.sleet;
   }
 
+  const currentPressure = Number(
+    zCur?.airPressure ??
+      currentHourPt?.pressure ??
+      c.pressure_msl ??
+      c.surface_pressure ??
+      1013
+  );
+  const currentWindSpeed = Number(
+    zCur?.windSpeed ?? currentHourPt?.windSpeed ?? c.wind_speed_10m ?? 0
+  );
+  const currentWindDir = Number(
+    zCur?.windDirection ?? currentHourPt?.windDirection ?? c.wind_direction_10m ?? 0
+  );
+  const currentWindGusts = Number(
+    zCur?.windGust ??
+      currentHourPt?.windGusts ??
+      c.wind_gusts_10m ??
+      currentWindSpeed * 1.25
+  );
+  const currentCloudCover = Number(
+    zCur?.cloudCover ?? currentHourPt?.cloudCover ?? c.cloud_cover ?? 0
+  );
+
+  // Anchor hourly[0] ("NOW") to the exact header state so NOW and Header never diverge
+  if (hourly.length > 0) {
+    hourly[0].temperature = currentTemp;
+    hourly[0].tempMin = Math.min(hourly[0].tempMin ?? currentTemp, currentTemp);
+    hourly[0].tempMax = Math.max(hourly[0].tempMax ?? currentTemp, currentTemp);
+    hourly[0].feelsLike = currentFeelsLike;
+    hourly[0].feelsMin = Math.min(hourly[0].feelsMin ?? currentFeelsLike, currentFeelsLike);
+    hourly[0].feelsMax = Math.max(hourly[0].feelsMax ?? currentFeelsLike, currentFeelsLike);
+    hourly[0].wmoCode = effectiveWmo;
+    hourly[0].condition = currentCond;
+    hourly[0].isNight = currentSolar.isNight;
+    hourly[0].solarPhase = currentSolar.solarPhase;
+    hourly[0].cloudCover = currentCloudCover;
+    hourly[0].humidity = currentHumidity;
+    hourly[0].dewPoint = currentDewPoint;
+    hourly[0].wetBulbC = currentWetBulb;
+    hourly[0].precipType = currentPrecipType;
+    hourly[0].windSpeed = currentWindSpeed;
+    hourly[0].windGusts = currentWindGusts;
+    hourly[0].windDirection = currentWindDir;
+    hourly[0].pressure = currentPressure;
+    hourly[0].visibilityKm = currentVisKm;
+    hourly[0].uvIndex = currentUv;
+    if (effectiveWmo >= 51) {
+      hourly[0].precipProb = Math.max(hourly[0].precipProb, 80);
+    }
+  }
+
   return {
     elevation: zCur?.elevationMeters ?? raw.elevation ?? 0,
     temperature: currentTemp,
-    feelsLike: zCur?.feelsLike ?? c.apparent_temperature ?? currentHourPt?.feelsLike ?? 0,
+    feelsLike: currentFeelsLike,
     humidity: currentHumidity,
     dewPoint: currentDewPoint,
     wetBulbC: currentWetBulb,
     precipType: currentPrecipType,
     condition: currentCond,
-    pressure: zCur?.airPressure ?? c.pressure_msl ?? c.surface_pressure ?? currentHourPt?.pressure ?? 1013,
-    windSpeed: zCur?.windSpeed ?? c.wind_speed_10m ?? currentHourPt?.windSpeed ?? 0,
-    windDirection: zCur?.windDirection ?? c.wind_direction_10m ?? 0,
-    windGusts:
-      zCur?.windGust ??
-      c.wind_gusts_10m ??
-      currentHourPt?.windGusts ??
-      (c.wind_speed_10m ?? 0) * 1.25,
-    cloudCover: zCur?.cloudCover ?? c.cloud_cover ?? currentHourPt?.cloudCover ?? 0,
+    pressure: currentPressure,
+    windSpeed: currentWindSpeed,
+    windDirection: currentWindDir,
+    windGusts: currentWindGusts,
+    cloudCover: currentCloudCover,
     wmoCode: effectiveWmo,
     isNight: currentSolar.isNight,
     solarPhase: currentSolar.solarPhase,
     localHourFrac: curHourFrac,
-    tempMax: zCur?.tempMax ?? daily[0]?.tempMax ?? c.temperature_2m,
-    tempMin: zCur?.tempMin ?? daily[0]?.tempMin ?? c.temperature_2m,
+    tempMax: Math.max(
+      Number(zCur?.tempMax ?? daily[0]?.tempMax ?? currentTemp),
+      currentTemp
+    ),
+    tempMin: Math.min(
+      Number(zCur?.tempMin ?? daily[0]?.tempMin ?? currentTemp),
+      currentTemp
+    ),
     uvIndex: currentUv,
-    uvMaxToday: daily[0]?.uvMax ?? currentUv,
+    uvMaxToday: Math.max(Number(daily[0]?.uvMax ?? currentUv), currentUv),
     sunrise: daily[0]?.sunrise ?? null,
     sunset: daily[0]?.sunset ?? null,
     visibilityKm: currentVisKm,
-    cape: c.cape ?? h.cape?.[startHourIdx] ?? 0,
-    usAqi: zCur?.usAqi ?? rawAqi?.current?.us_aqi ?? 28,
-    pm25: rawAqi?.current?.pm2_5 ?? 6.2,
+    cape: Number(zCur?.capeJkg ?? currentHourPt?.capeJkg ?? c.cape ?? h.cape?.[startHourIdx] ?? 0),
+    liftedIndex: Number(zCur?.liftedIndex ?? 2.0),
+    usAqi: Number(zCur?.usAqi ?? rawAqi?.current?.us_aqi ?? 28),
+    pm25: Number(zCur?.pm25 ?? rawAqi?.current?.pm2_5 ?? 6.2),
     ozone: zCur?.ozone ?? rawAqi?.current?.ozone ?? null,
     localStationName: zCur?.localStationName ?? null,
     localStationWx: zCur?.localStationWx ?? null,
+    dominantModel: zCur?.dominantModel ?? null,
+    nearbyStations: Array.isArray(zusWeather?.nearbyStations) ? zusWeather.nearbyStations : [],
     minuteRates,
     minuteRatesMin,
     minuteRatesMax,
@@ -4678,17 +4868,22 @@ function renderHourlyCurveIntoContainer(
       lowerPathEl.setAttribute("stroke", desc.bandStroke);
       mainPathEl.setAttribute("stroke", desc.lineColor);
 
-      // Update node positions (animated via CSS spring transition) and labels
+      // Update node positions (animated via CSS spring transition), icons, and labels
       hourly.forEach((item, idx) => {
         const col = cols[idx];
         const s = series[idx];
         const pt = mainPts[idx];
+        const cond = item.condition || conditionFromWMO(item.wmoCode);
         const node = col.querySelector(".hourly-point-node");
+        const iconEl = col.querySelector(".hourly-node-icon");
         const valEl = col.querySelector(".hourly-node-val");
         const spreadEl = col.querySelector(".hourly-node-spread");
         const popEl = col.querySelector(".hourly-node-pop");
 
         if (node) node.style.top = `${pt.y.toFixed(1)}px`;
+        if (iconEl) {
+          iconEl.innerHTML = getWeatherSVG(cond.icon, Boolean(item.isNight));
+        }
         if (valEl) valEl.textContent = desc.formatNode(s.val);
         if (spreadEl) {
           spreadEl.textContent = desc.formatSpread(Math.max(0, s.max - s.min));
