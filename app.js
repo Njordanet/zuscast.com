@@ -3217,15 +3217,17 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     return hh + mm / 60;
   };
 
+  const zDailyEarly = Array.isArray(zusWeather?.daily) ? zusWeather.daily : [];
   const solarMap = {};
-  if (Array.isArray(d.time)) {
-    for (let i = 0; i < d.time.length; i++) {
-      const dKey = String(d.time[i]);
-      solarMap[dKey] = {
-        rise: parseIsoHourFrac(d.sunrise?.[i], 6.25),
-        set: parseIsoHourFrac(d.sunset?.[i], 18.5),
-      };
-    }
+  const maxSolarDays = Math.max(d.time?.length || 0, zDailyEarly.length);
+  for (let i = 0; i < maxSolarDays; i++) {
+    const zd = i < zDailyEarly.length ? zDailyEarly[i] : null;
+    const dKey = String(d.time?.[i] || zd?.date || "").slice(0, 10);
+    if (!dKey) continue;
+    solarMap[dKey] = {
+      rise: parseIsoHourFrac(zd?.sunrise ?? d.sunrise?.[i], 6.25),
+      set: parseIsoHourFrac(zd?.sunset ?? d.sunset?.[i], 18.5),
+    };
   }
 
   const getSolarStateFor = (dateKey, hourFrac, rawIsDay) => {
@@ -3897,6 +3899,12 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     isNight: currentSolar.isNight,
     solarPhase: currentSolar.solarPhase,
     localHourFrac: curHourFrac,
+    utcOffsetSeconds:
+      zusWeather?.utcOffsetSeconds !== undefined && zusWeather?.utcOffsetSeconds !== null
+        ? Number(zusWeather.utcOffsetSeconds)
+        : raw?.utc_offset_seconds !== undefined && raw?.utc_offset_seconds !== null
+        ? Number(raw.utc_offset_seconds)
+        : null,
     tempMax: Math.max(
       Number(zCur?.tempMax ?? daily[0]?.tempMax ?? currentTemp),
       currentTemp
@@ -4045,9 +4053,20 @@ function renderDashboard() {
   )} &bull; Low ${formatTemp(w.tempMin)}`;
 
   // Hero 4-Column Micro Strip (Wind, AQI, Humidex, UV Index)
+  const microWindLabelEl = document.getElementById("micro-wind-label");
+  if (microWindLabelEl) {
+    const windUnitLabel = state.useImperial ? "MPH" : "KM/H";
+    microWindLabelEl.innerHTML = `Wind <span class="micro-header-unit">&middot; ${windUnitLabel}</span>`;
+  }
   const microWindEl = document.getElementById("micro-wind");
   if (microWindEl) {
-    microWindEl.textContent = formatWind(w.windSpeed);
+    const windVal =
+      w.windSpeed === null || w.windSpeed === undefined || Number.isNaN(w.windSpeed)
+        ? "--"
+        : state.useImperial
+        ? String(Math.round(w.windSpeed * 0.621371))
+        : String(Math.round(w.windSpeed));
+    microWindEl.textContent = windVal;
   }
   const microWindBadgeEl = document.getElementById("micro-wind-badge");
   if (microWindBadgeEl) {
@@ -4173,12 +4192,10 @@ function renderDashboard() {
   }
   document.getElementById("detail-wind-dir").textContent = `Gusts to ${formatWind(
     w.windGusts
-  )} from ${compassDirection(w.windDirection)} (${w.windDirection}°)`;
+  )}`;
   const windBadgeEl = document.getElementById("detail-wind-badge");
   if (windBadgeEl) {
-    windBadgeEl.textContent = `${compassDirection(w.windDirection)} ${Math.round(
-      w.windDirection ?? 0
-    )}°`;
+    windBadgeEl.textContent = compassDirection(w.windDirection);
   }
 
   document.getElementById("detail-humidity").textContent = `${Math.round(w.humidity)}%`;
@@ -4186,16 +4203,12 @@ function renderDashboard() {
   if (humDotEl) {
     humDotEl.style.left = `${Math.min(100, Math.max(4, w.humidity))}%`;
   }
-  const wetBulbStr =
-    w.wetBulbC !== null && w.wetBulbC !== undefined
-      ? ` · Wet bulb ${formatTemp(w.wetBulbC)}`
-      : "";
   document.getElementById("detail-dewpoint").textContent = `Dew point ${formatTemp(
     w.dewPoint
-  )}${wetBulbStr} — ${muggyDescription(w.dewPoint)}`;
+  )}`;
   const humBadgeEl = document.getElementById("detail-humidity-badge");
   if (humBadgeEl) {
-    humBadgeEl.textContent = `Dew ${formatTemp(w.dewPoint)}`;
+    humBadgeEl.textContent = muggyDescription(w.dewPoint);
   }
 
   const visVal = state.useImperial
@@ -4206,9 +4219,9 @@ function renderDashboard() {
   if (visDotEl) {
     visDotEl.style.left = `${Math.min(100, Math.max(4, (w.visibilityKm / 16) * 100))}%`;
   }
-  document.getElementById("detail-clouds").textContent = `Cloud cover: ${Math.round(
+  document.getElementById("detail-clouds").textContent = `${Math.round(
     w.cloudCover
-  )}% • Elev: ${Math.round(w.elevation)}m`;
+  )}% cloud cover`;
   const visBadgeEl = document.getElementById("detail-visibility-badge");
   if (visBadgeEl) {
     visBadgeEl.textContent =
@@ -4222,20 +4235,25 @@ function renderDashboard() {
   }
 
   if (w.sunrise && w.sunset) {
-    const srDate = new Date(w.sunrise);
-    const ssDate = new Date(w.sunset);
-    const sr = srDate.toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    const ss = ssDate.toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    const parseClockParts = (iso) => {
+      if (!iso || typeof iso !== "string") return null;
+      const tIdx = iso.indexOf("T");
+      const timePart = tIdx >= 0 ? iso.slice(tIdx + 1) : iso;
+      const [hStr, mStr] = timePart.split(":");
+      const h = Number(hStr);
+      const m = Number((mStr || "00").slice(0, 2));
+      if (Number.isNaN(h) || Number.isNaN(m)) return null;
+      const ampm = h >= 12 ? "PM" : "AM";
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      const mPad = m < 10 ? `0${m}` : `${m}`;
+      return { label: `${h12}:${mPad} ${ampm}`, frac: h + m / 60 };
+    };
+    const srParts = parseClockParts(w.sunrise);
+    const ssParts = parseClockParts(w.sunset);
+    const sr = srParts ? srParts.label : "--:--";
+    const ss = ssParts ? ssParts.label : "--:--";
     document.getElementById("detail-sunrise").textContent = sr;
-    document.getElementById(
-      "detail-sunset"
-    ).textContent = `Sunset ${ss} • CAPE ${Math.round(w.cape)} J/kg`;
+    document.getElementById("detail-sunset").textContent = `Sunset ${ss}`;
     const solarBadgeEl = document.getElementById("detail-solar-badge");
     if (solarBadgeEl) {
       const ssCompact = ss
@@ -4245,10 +4263,15 @@ function renderDashboard() {
     }
 
     const solarDotEl = document.getElementById("solar-dot");
-    if (solarDotEl) {
-      const nowMs = Date.now();
-      const spanMs = Math.max(1, ssDate.getTime() - srDate.getTime());
-      const pct = ((nowMs - srDate.getTime()) / spanMs) * 100;
+    if (solarDotEl && srParts && ssParts) {
+      let nowLocalFrac = w.localHourFrac ?? 12;
+      if (typeof w.utcOffsetSeconds === "number" && !Number.isNaN(w.utcOffsetSeconds)) {
+        const locDate = new Date(Date.now() + w.utcOffsetSeconds * 1000);
+        nowLocalFrac =
+          locDate.getUTCHours() + locDate.getUTCMinutes() / 60 + locDate.getUTCSeconds() / 3600;
+      }
+      const spanHrs = Math.max(0.25, ssParts.frac - srParts.frac);
+      const pct = ((nowLocalFrac - srParts.frac) / spanHrs) * 100;
       solarDotEl.style.left = `${Math.min(96, Math.max(4, Number.isFinite(pct) ? pct : 50))}%`;
     }
   }
@@ -6072,15 +6095,26 @@ function openTileDetailModal(tileType) {
     }
 
     case "solar": {
-      const sr = w.sunrise
-        ? new Date(w.sunrise).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-        : "--:--";
-      const ss = w.sunset
-        ? new Date(w.sunset).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-        : "--:--";
+      const parseClockParts = (iso) => {
+        if (!iso || typeof iso !== "string") return null;
+        const tIdx = iso.indexOf("T");
+        const timePart = tIdx >= 0 ? iso.slice(tIdx + 1) : iso;
+        const [hStr, mStr] = timePart.split(":");
+        const h = Number(hStr);
+        const m = Number((mStr || "00").slice(0, 2));
+        if (Number.isNaN(h) || Number.isNaN(m)) return null;
+        const ampm = h >= 12 ? "PM" : "AM";
+        const h12 = h % 12 === 0 ? 12 : h % 12;
+        const mPad = m < 10 ? `0${m}` : `${m}`;
+        return { label: `${h12}:${mPad} ${ampm}`, totalMin: h * 60 + m };
+      };
+      const srParts = parseClockParts(w.sunrise);
+      const ssParts = parseClockParts(w.sunset);
+      const sr = srParts ? srParts.label : "--:--";
+      const ss = ssParts ? ssParts.label : "--:--";
       let dayLenStr = "--";
-      if (w.sunrise && w.sunset) {
-        const diffMin = Math.round((new Date(w.sunset) - new Date(w.sunrise)) / 60000);
+      if (srParts && ssParts) {
+        const diffMin = ssParts.totalMin - srParts.totalMin;
         if (diffMin > 0) {
           dayLenStr = `${Math.floor(diffMin / 60)}h ${diffMin % 60}m`;
         }

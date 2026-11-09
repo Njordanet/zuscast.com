@@ -2,6 +2,14 @@
 
 All notable changes to `zuscast.com` will be documented in this file.
 
+## [v1.4.1] - 2026-11-09
+
+### Location-Tied Solar Ephemeris & Streamlined Telemetry Tile Sub-Captions (`app.js`)
+- **Location-Local Sunrise/Sunset & Solar Progress (`app.js`)**:
+  - Updated `solarMap`, the Sunrise/Sunset telemetry card, and the Solar detail modal to parse location-local ISO clock times (`YYYY-MM-DDTHH:MM`) directly without browser-timezone shifting, and computed `#solar-dot` progress in the selected city's local time (`utcOffsetSeconds`).
+- **Streamlined Top-Level Tile Sub-Captions (`app.js`)**:
+  - Simplified Wind, Humidity, Visibility, and Sunrise sub-captions to top-level summaries without cluttered secondary numbers.
+
 ## [v1.4.0] - 2026-11-09
 
 ### Full ZüsAPI Recursive Alignment Integration & Hourly Curve Icon Sync

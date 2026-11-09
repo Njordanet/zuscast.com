@@ -1094,6 +1094,13 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
   text-overflow: ellipsis;
 }
 
+.micro-header-unit {
+  font-size: 0.88em;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.64);
+  letter-spacing: 0.03em;
+}
+
 .micro-bottom-row {
   display: flex;
   align-items: center;
