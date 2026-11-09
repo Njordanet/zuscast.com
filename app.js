@@ -677,12 +677,111 @@ const dopplerRadarMap = {
       fillOpacity: 0.95,
     }).addTo(this.map);
 
-    // In expanded modal: click anywhere to probe 1km Doppler grid. In inline card: click opens expanded modal.
-    this.map.on("click", (e) => {
+    // In inline card: click opens expanded modal.
+    // In expanded modal: press-and-hold (~500ms) probes point; single tap dismisses an active probe.
+    const mapContainer = this.map.getContainer();
+    let holdTimer = null;
+    let holdStartPt = null;
+    let holdFired = false;
+    let lastHoldTs = 0;
+
+    const cancelHold = () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
+      holdStartPt = null;
+    };
+
+    const isControlTarget = (target) =>
+      Boolean(
+        target &&
+          target.closest &&
+          (target.closest("#radar-controls-bar") ||
+            target.closest("#radar-map-controls") ||
+            target.closest("#radar-probe-toast") ||
+            target.closest("#radar-hud-left"))
+      );
+
+    const startHold = (clientX, clientY, target) => {
+      if (!this.isModalOpen || !this.map || isControlTarget(target)) return;
+      cancelHold();
+      holdFired = false;
+      const rect = mapContainer.getBoundingClientRect();
+      holdStartPt = { x: clientX - rect.left, y: clientY - rect.top };
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        if (!holdStartPt || !this.isModalOpen || !this.map) return;
+        holdFired = true;
+        lastHoldTs = Date.now();
+        const ll = this.map.containerPointToLatLng([holdStartPt.x, holdStartPt.y]);
+        if (ll) {
+          this.probePoint(ll.lat, ll.lng);
+        }
+      }, 500);
+    };
+
+    const moveHold = (clientX, clientY) => {
+      if (!holdTimer || !holdStartPt) return;
+      const rect = mapContainer.getBoundingClientRect();
+      const dx = clientX - rect.left - holdStartPt.x;
+      const dy = clientY - rect.top - holdStartPt.y;
+      if (dx * dx + dy * dy > 64) {
+        cancelHold();
+      }
+    };
+
+    mapContainer.addEventListener(
+      "touchstart",
+      (e) => {
+        if (!e.touches || e.touches.length !== 1) {
+          cancelHold();
+          return;
+        }
+        startHold(e.touches[0].clientX, e.touches[0].clientY, e.target);
+      },
+      { passive: true }
+    );
+    mapContainer.addEventListener(
+      "touchmove",
+      (e) => {
+        if (!e.touches || e.touches.length !== 1) {
+          cancelHold();
+          return;
+        }
+        moveHold(e.touches[0].clientX, e.touches[0].clientY);
+      },
+      { passive: true }
+    );
+    mapContainer.addEventListener("touchend", cancelHold, { passive: true });
+    mapContainer.addEventListener("touchcancel", cancelHold, { passive: true });
+
+    mapContainer.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      startHold(e.clientX, e.clientY, e.target);
+    });
+    mapContainer.addEventListener("mousemove", (e) => {
+      moveHold(e.clientX, e.clientY);
+    });
+    mapContainer.addEventListener("mouseup", cancelHold);
+    mapContainer.addEventListener("mouseleave", cancelHold);
+    mapContainer.addEventListener("contextmenu", (e) => {
+      if (this.isModalOpen) e.preventDefault();
+    });
+
+    this.map.on("movestart zoomstart dragstart", cancelHold);
+
+    this.map.on("click", () => {
       if (!this.isModalOpen) {
         this.openModal();
-      } else {
-        this.probePoint(e.latlng.lat, e.latlng.lng);
+        return;
+      }
+      if (holdFired || Date.now() - lastHoldTs < 450) {
+        holdFired = false;
+        return;
+      }
+      if (this.probedCoords) {
+        this.clearProbe();
       }
     });
 
@@ -1846,39 +1945,58 @@ const dopplerRadarMap = {
     if (!textEl) return;
 
     const frame = this.frames[this.currentIndex] || { offsetMinutes: 0 };
-    const windSample = this.sampleWindField(lat, lon, Number(frame.offsetMinutes || 0));
-    const windStr = formatWind(windSample.speedKmh);
-    const gustStr = formatWind(windSample.gustKmh);
+    const offsetMin = Number(frame.offsetMinutes || 0);
+    const windSample = this.sampleWindField(lat, lon, offsetMin);
 
-    if (this.layerMode === "wind") {
-      textEl.textContent = `Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): ${windStr} ${windSample.windFromCompass} (Gusts ${gustStr}) • ${windSample.beaufort}`;
-      return;
+    const baseLat = state.location?.latitude ?? lat;
+    const baseLon = state.location?.longitude ?? lon;
+    const baseTempC = state.weather?.temperature ?? 20;
+    const dLat = lat - baseLat;
+    const dLon = lon - baseLon;
+    const estTempC = baseTempC - dLat * 0.65 + Math.sin(dLon * 5) * 0.4;
+
+    const surf = this.probedSurface;
+    const tempC = typeof surf?.tempC === "number" ? surf.tempC : estTempC;
+    const windKmh = typeof surf?.windSpeedKmh === "number" ? surf.windSpeedKmh : windSample.speedKmh;
+    const windCompass = surf?.windCompass || windSample.windFromCompass;
+
+    const tempStr = formatTemp(tempC, true);
+    const windStr = `${formatWind(windKmh)} ${windCompass}`;
+
+    let precipCategory = "Clear";
+    let rateMmHr = 0;
+
+    if (tel && typeof tel.currentDbz === "number" && tel.currentDbz >= 10) {
+      precipCategory =
+        tel.intensityCategory && tel.intensityCategory !== "Clear"
+          ? tel.intensityCategory
+          : this.classifyDbz(tel.currentDbz);
+      rateMmHr =
+        typeof tel.precipRateMmHr === "number" && tel.precipRateMmHr > 0
+          ? tel.precipRateMmHr
+          : this.mmHrFromDbz(tel.currentDbz);
+    } else if (typeof surf?.precipMm === "number" && surf.precipMm > 0) {
+      rateMmHr = surf.precipMm;
+      precipCategory = rateMmHr >= 7.5 ? "Heavy Rain" : rateMmHr >= 2.5 ? "Moderate Rain" : "Light Rain";
     }
 
-    if (tel && tel.inConusGrid) {
-      const rateStr = state.useImperial
-        ? `${(tel.precipRateMmHr / 25.4).toFixed(2)} in/hr`
-        : `${tel.precipRateMmHr.toFixed(1)} mm/hr`;
-      if (this.layerMode === "both") {
-        textEl.textContent = `Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): ${windStr} ${windSample.windFromCompass} (Gusts ${gustStr}) • ${tel.currentDbz.toFixed(1)} dBZ (${tel.intensityCategory})`;
-      } else {
-        textEl.textContent = `Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): ${tel.currentDbz.toFixed(
-          1
-        )} dBZ (${tel.intensityCategory}) • ${rateStr} • 35km Peak ${tel.maxDbzNearby.toFixed(
-          0
-        )} dBZ`;
-      }
-    } else {
-      textEl.textContent =
-        this.layerMode === "both"
-          ? `Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): ${windStr} ${windSample.windFromCompass} (Gusts ${gustStr})`
-          : `Probe (${lat.toFixed(2)}°, ${lon.toFixed(2)}°): Outside 1km CONUS grid • Wind ${windStr} ${windSample.windFromCompass}`;
+    let precipStatusStr = "Clear";
+    if (precipCategory !== "Clear" && rateMmHr > 0) {
+      const rateFormatted = state.useImperial
+        ? `${Math.max(0.01, Number((rateMmHr / 25.4).toFixed(2))).toFixed(2)} in/hr`
+        : `${Math.max(0.1, Number(rateMmHr.toFixed(1))).toFixed(1)} mm/hr`;
+      precipStatusStr = `${precipCategory} • ${rateFormatted}`;
     }
+
+    const latLabel = `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? "N" : "S"}`;
+    const lonLabel = `${Math.abs(lon).toFixed(2)}°${lon >= 0 ? "E" : "W"}`;
+    textEl.textContent = `${latLabel}, ${lonLabel}  •  Temp ${tempStr}  •  Wind ${windStr}  •  Precip: ${precipStatusStr}`;
   },
 
   async probePoint(lat, lon) {
     if (!this.map) return;
     this.probedCoords = { lat, lon };
+    this.probedSurface = null;
     if (!this.probeMarker) {
       this.probeMarker = L.circleMarker([lat, lon], {
         radius: 6,
@@ -1892,35 +2010,60 @@ const dopplerRadarMap = {
     }
 
     const toastEl = document.getElementById("radar-probe-toast");
-    const textEl = document.getElementById("radar-probe-text");
     if (toastEl) toastEl.removeAttribute("hidden");
-    if (textEl) {
-      textEl.textContent = `Probing 1km grid at ${lat.toFixed(3)}°, ${lon.toFixed(3)}°...`;
-    }
+    this.updateProbeToastText(lat, lon, null);
 
-    if (this.layerMode === "wind") {
-      this.probedTelemetry = this.telemetry;
-      this.updateProbeToastText(lat, lon, this.telemetry);
-      this.renderTelemetryStrip(this.telemetry);
+    const fetchSurfacePromise = (async () => {
+      try {
+        const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(
+          4
+        )}&longitude=${lon.toFixed(
+          4
+        )}&current=temperature_2m,precipitation,wind_speed_10m,wind_direction_10m&temperature_unit=celsius&wind_speed_unit=kmh&precipitation_unit=mm`;
+        const omResp = await fetch(omUrl);
+        if (omResp.ok) {
+          const omData = await omResp.json();
+          const cur = omData?.current;
+          if (cur && typeof cur.temperature_2m === "number") {
+            return {
+              tempC: cur.temperature_2m,
+              windSpeedKmh: Math.max(0, Number(cur.wind_speed_10m ?? 0)),
+              windCompass: compassDirection(Number(cur.wind_direction_10m ?? 0)),
+              precipMm: Math.max(0, Number(cur.precipitation ?? 0)),
+            };
+          }
+        }
+      } catch (_) {}
+      return null;
+    })();
+
+    const fetchRadarPromise = (async () => {
+      if (this.layerMode === "wind") return this.telemetry;
+      try {
+        const resp = await fetch(
+          `${ZUS_API_BASE}/radar/point?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`
+        );
+        if (resp.ok) {
+          return await resp.json();
+        }
+      } catch (_) {
+        // Fallback to HTTPS 1km NEXRAD tile sampling when on https://zuscast.com
+      }
+      return await this.sampleHttpsNexradTelemetry(lat, lon);
+    })();
+
+    const [surface, tel] = await Promise.all([fetchSurfacePromise, fetchRadarPromise]);
+
+    // Guard against stale async completion if user cleared or moved probe
+    if (
+      !this.probedCoords ||
+      Math.abs(this.probedCoords.lat - lat) > 0.0001 ||
+      Math.abs(this.probedCoords.lon - lon) > 0.0001
+    ) {
       return;
     }
 
-    let tel = null;
-    try {
-      const resp = await fetch(
-        `${ZUS_API_BASE}/radar/point?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`
-      );
-      if (resp.ok) {
-        tel = await resp.json();
-      }
-    } catch (_) {
-      // Fallback to HTTPS 1km NEXRAD tile sampling when on https://zuscast.com
-    }
-
-    if (!tel) {
-      tel = await this.sampleHttpsNexradTelemetry(lat, lon);
-    }
-
+    this.probedSurface = surface;
     this.probedTelemetry = tel;
     this.updateProbeToastText(lat, lon, tel);
     this.renderTelemetryStrip(tel);
@@ -1929,6 +2072,7 @@ const dopplerRadarMap = {
   clearProbe() {
     this.probedCoords = null;
     this.probedTelemetry = null;
+    this.probedSurface = null;
     if (this.probeMarker && this.map) {
       this.map.removeLayer(this.probeMarker);
       this.probeMarker = null;
