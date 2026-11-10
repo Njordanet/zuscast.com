@@ -2,6 +2,12 @@
 
 All notable changes to `zuscast.com` will be documented in this file.
 
+## [v1.5.0] - 2026-11-10
+
+### Dedicated App Store Privacy Policy (`/privacy`) & Customer Support (`/support`) Pages
+- **Standalone Privacy Policy & Terms (`/privacy`, `/privacy.html`)**: Published dedicated, plain-English Privacy Policy and Terms of Use pages covering ephemeral GPS usage, zero ad trackers, 100% on-device settings, and coarse-grid push notifications.
+- **Standalone Customer Support & Help Center (`/support`, `/support.html`)**: Published dedicated Support Center with iOS 27 widget setup instructions, unit customization FAQ, and direct email support.
+
 ## [v1.4.1] - 2026-11-09
 
 ### Location-Tied Solar Ephemeris & Streamlined Telemetry Tile Sub-Captions (`app.js`)
