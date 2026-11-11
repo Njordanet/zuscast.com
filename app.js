@@ -3747,7 +3747,7 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
   let effectiveWmo = Number(
     zCur?.observedWeatherCode ?? zHourly[0]?.wmoCode ?? c.weather_code ?? 0
   );
-  if (effectiveWmo < 51 && minuteRates[0] >= 0.15) {
+  if (effectiveWmo < 51 && minuteRates[0] >= 0.35) {
     effectiveWmo = minuteRates[0] >= 4.0 ? 65 : minuteRates[0] >= 0.8 ? 61 : 51;
   }
 

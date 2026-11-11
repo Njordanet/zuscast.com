@@ -2,6 +2,12 @@
 
 All notable changes to `zuscast.com` will be documented in this file.
 
+## [v1.5.1] - 2026-11-11
+
+### Dry Overcast Sky Condition & Next-Hour Precipitation Calibration (`app.js`)
+- **Confirmed Precipitation Rate Threshold (`app.js`)**:
+  - Updated sky condition resolution so faint high-cloud radar echoes never override dry overcast or partly cloudy conditions unless surface stations or active precipitation rates confirm rain reaching the ground.
+
 ## [v1.5.0] - 2026-11-10
 
 ### Dedicated App Store Privacy Policy (`/privacy`) & Customer Support (`/support`) Pages
