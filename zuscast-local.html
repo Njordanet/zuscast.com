@@ -18,7 +18,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <meta name="zus-build-version" content="v1.6.0" />
+  <meta name="zus-build-version" content="v1.6.1" />
   <title>ZüsCast — Hyperlocal Weather &amp; Down-to-the-Minute Nowcast</title>
   <meta name="description" content="ZüsCast (zuscast.com) — Hyperlocal, down-to-the-minute weather intelligence with Liquid Glass aesthetics." />
   <meta name="theme-color" content="#1d63b8" id="theme-color-meta" />
@@ -2908,43 +2908,97 @@ body.tiles-entering .site-footer { animation-delay: 0.42s; }
 }
 
 .radar-horizon-pill {
+  appearance: none;
   display: none;
+  position: relative;
   align-items: center;
-  background: rgba(15, 23, 42, 0.48);
-  border: 1px solid rgba(186, 230, 253, 0.28);
+  width: 74px;
+  height: 32px;
+  padding: 3px;
   border-radius: 999px;
-  padding: 2px;
+  background: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.12) 0%,
+    rgba(16, 28, 52, 0.42) 55%,
+    rgba(10, 18, 36, 0.34) 100%
+  );
+  backdrop-filter: blur(22px) saturate(195%);
+  -webkit-backdrop-filter: blur(22px) saturate(195%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 6px 16px rgba(2, 6, 18, 0.32),
+    inset 0 1px 1px rgba(255, 255, 255, 0.38),
+    inset 0 -1px 0.5px rgba(125, 211, 252, 0.22);
   flex-shrink: 0;
   margin-top: 4px;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.16s var(--spring-bounce), border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 #radar-map-frame.is-modal .radar-horizon-pill:not([hidden]) {
   display: inline-flex;
 }
 
-.radar-horizon-btn {
-  appearance: none;
-  border: 1px solid transparent;
-  background: transparent;
-  color: rgba(203, 213, 225, 0.82);
+.radar-horizon-pill:hover {
+  border-color: rgba(186, 230, 253, 0.56);
+  box-shadow:
+    0 6px 18px rgba(2, 6, 18, 0.38),
+    0 0 12px rgba(56, 189, 248, 0.18),
+    inset 0 1px 1px rgba(255, 255, 255, 0.46),
+    inset 0 -1px 0.5px rgba(125, 211, 252, 0.28);
+}
+
+.radar-horizon-pill:active {
+  transform: scale(0.95);
+}
+
+.radar-horizon-thumb {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  width: 33px;
+  height: 26px;
+  border-radius: 999px;
+  background: linear-gradient(
+    135deg,
+    rgba(88, 199, 255, 0.44) 0%,
+    rgba(56, 189, 248, 0.22) 55%,
+    rgba(255, 255, 255, 0.26) 100%
+  );
+  border: 1px solid rgba(186, 230, 253, 0.76);
+  box-shadow:
+    0 2px 10px rgba(56, 189, 248, 0.35),
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.58),
+    inset 0 -1px 0.5px rgba(125, 211, 252, 0.32);
+  pointer-events: none;
+  transition: transform 0.26s var(--spring-bounce);
+}
+
+.radar-horizon-pill.is-ten .radar-horizon-thumb {
+  transform: translateX(33px);
+}
+
+.radar-horizon-opt {
+  position: relative;
+  z-index: 1;
+  width: 33px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(203, 213, 225, 0.84);
   font-size: 0.68rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  padding: 3.5px 9px;
-  border-radius: 999px;
-  cursor: pointer;
-  line-height: 1.1;
-  transition: all 0.16s ease;
+  letter-spacing: 0.015em;
+  line-height: 1;
+  pointer-events: none;
+  transition: color 0.16s ease;
 }
 
-.radar-horizon-btn:hover {
-  color: #f8fafc;
-}
-
-.radar-horizon-btn.active {
-  background: rgba(56, 189, 248, 0.34);
-  border-color: rgba(186, 230, 253, 0.68);
+.radar-horizon-opt.active {
   color: #ffffff;
   font-weight: 800;
 }
@@ -5002,9 +5056,22 @@ html:not(.sky-phase-twilight):not(.sky-phase-night) .detail-card-top .section-ki
     font-size: 0.82rem;
   }
 
-  .radar-horizon-btn {
+  .radar-horizon-pill {
+    width: 70px;
+    height: 32px;
+  }
+
+  .radar-horizon-thumb,
+  .radar-horizon-opt {
+    width: 31px;
+  }
+
+  .radar-horizon-pill.is-ten .radar-horizon-thumb {
+    transform: translateX(31px);
+  }
+
+  .radar-horizon-opt {
     font-size: 0.64rem;
-    padding: 3.5px 8px;
   }
 
   /* M3: Keep 6 Telemetry Cards & 4 Ensemble Cards in Apple Weather 2-Column Bento Grid on Phones */
@@ -5776,10 +5843,18 @@ html:not(.sky-phase-twilight):not(.sky-phase-night) .detail-card-top .section-ki
                     <span class="radar-tick radar-tick-end" style="left: 100%">+2h</span>
                   </div>
                 </div>
-                <div class="radar-horizon-pill" id="radar-horizon-pill" role="tablist" aria-label="Radar forecast horizon">
-                  <button type="button" class="radar-horizon-btn active" data-horizon="2" role="tab" aria-selected="true">2h</button>
-                  <button type="button" class="radar-horizon-btn" data-horizon="10" role="tab" aria-selected="false">10h</button>
-                </div>
+                <button
+                  type="button"
+                  class="radar-horizon-pill"
+                  id="radar-horizon-pill"
+                  role="switch"
+                  aria-checked="false"
+                  aria-label="Toggle between 2-hour and 10-hour radar forecast"
+                >
+                  <span class="radar-horizon-thumb" aria-hidden="true"></span>
+                  <span class="radar-horizon-opt active" data-horizon="2">2h</span>
+                  <span class="radar-horizon-opt" data-horizon="10">10h</span>
+                </button>
               </div>
             </div>
           </div>
@@ -5928,7 +6003,7 @@ html:not(.sky-phase-twilight):not(.sky-phase-night) .detail-card-top .section-ki
         <span><strong>ZüsCast</strong> &bull; Down-to-the-minute hyperlocal weather intelligence.</span>
       </div>
       <div class="footer-right-controls">
-        <span class="footer-version-badge" id="footer-version-badge">v1.6.0</span>
+        <span class="footer-version-badge" id="footer-version-badge">v1.6.1</span>
         <div id="last-updated">Live Telemetry</div>
         <button type="button" id="unit-toggle-btn" class="liquid-glass-pill footer-unit-pill" aria-label="Toggle Imperial / Metric units">
           °F, mph
@@ -7017,16 +7092,14 @@ const dopplerRadarMap = {
     const horizonPill = document.getElementById("radar-horizon-pill");
     if (horizonPill) {
       horizonPill.addEventListener("click", (e) => {
-        const btn = e.target && e.target.closest ? e.target.closest(".radar-horizon-btn") : null;
-        if (!btn) return;
         e.stopPropagation();
-        const nextHr = Number(btn.dataset.horizon) === 10 ? 10 : 2;
-        if (nextHr === this.modalHorizonHours) return;
+        const nextHr = this.modalHorizonHours === 10 ? 2 : 10;
         this.modalHorizonHours = nextHr;
-        horizonPill.querySelectorAll(".radar-horizon-btn").forEach((b) => {
-          const active = Number(b.dataset.horizon) === nextHr;
-          b.classList.toggle("active", active);
-          b.setAttribute("aria-selected", String(active));
+        const isTen = nextHr === 10;
+        horizonPill.classList.toggle("is-ten", isTen);
+        horizonPill.setAttribute("aria-checked", String(isTen));
+        horizonPill.querySelectorAll(".radar-horizon-opt").forEach((opt) => {
+          opt.classList.toggle("active", Number(opt.dataset.horizon) === nextHr);
         });
         this.applyHorizonFilter(true);
         this.syncModalTitleAndKickers();

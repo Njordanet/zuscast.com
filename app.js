@@ -918,16 +918,14 @@ const dopplerRadarMap = {
     const horizonPill = document.getElementById("radar-horizon-pill");
     if (horizonPill) {
       horizonPill.addEventListener("click", (e) => {
-        const btn = e.target && e.target.closest ? e.target.closest(".radar-horizon-btn") : null;
-        if (!btn) return;
         e.stopPropagation();
-        const nextHr = Number(btn.dataset.horizon) === 10 ? 10 : 2;
-        if (nextHr === this.modalHorizonHours) return;
+        const nextHr = this.modalHorizonHours === 10 ? 2 : 10;
         this.modalHorizonHours = nextHr;
-        horizonPill.querySelectorAll(".radar-horizon-btn").forEach((b) => {
-          const active = Number(b.dataset.horizon) === nextHr;
-          b.classList.toggle("active", active);
-          b.setAttribute("aria-selected", String(active));
+        const isTen = nextHr === 10;
+        horizonPill.classList.toggle("is-ten", isTen);
+        horizonPill.setAttribute("aria-checked", String(isTen));
+        horizonPill.querySelectorAll(".radar-horizon-opt").forEach((opt) => {
+          opt.classList.toggle("active", Number(opt.dataset.horizon) === nextHr);
         });
         this.applyHorizonFilter(true);
         this.syncModalTitleAndKickers();

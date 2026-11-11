@@ -2,6 +2,12 @@
 
 All notable changes to `zuscast.com` will be documented in this file.
 
+## [v1.6.1] - 2026-11-11
+
+### Liquid Glass `2h | 10h` Full-Pill Switch (`index.html`, `styles.css`, `app.js`)
+- **Full-Pill Tap-Anywhere Toggle & Spring Liquid Glass Thumb**:
+  - Upgraded the **`2h | 10h`** radar horizon selector into a single Liquid Glass switch with specular rim highlights and a spring-animated sliding thumb that toggles between 2 hours and 10 hours when tapped anywhere on the pill.
+
 ## [v1.6.0] - 2026-11-11
 
 ### 10-Hour Radar Forecast Horizon, `2h | 10h` Toggle & Floating Scrubber Clock (`index.html`, `styles.css`, `app.js`)
