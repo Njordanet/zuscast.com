@@ -2,6 +2,16 @@
 
 All notable changes to `zuscast.com` will be documented in this file.
 
+## [v1.6.0] - 2026-11-11
+
+### 10-Hour Radar Forecast Horizon, `2h | 10h` Toggle & Floating Scrubber Clock (`index.html`, `styles.css`, `app.js`)
+- **Surface-Calibrated 2-Minute HD Radar & 10-Hour Future Forecast**:
+  - Upgraded precipitation radar to surface-verified 2-minute updates with sub-pixel smooth storm contours and extended future storm tracking out to **10 hours**.
+- **`2h | 10h` Horizon Toggle & Nowcast Default (`index.html`, `styles.css`, `app.js`)**:
+  - Added a **`2h | 10h`** segmented horizon toggle inside the expanded full-screen Radar view (defaulting to `2h`), while keeping the inline Nowcast page radar card focused on the next 2 hours with a wider scrubber bar.
+- **Floating Scrubber Clock Bubble (`index.html`, `styles.css`, `app.js`)**:
+  - Replaced the static right-side timestamp text with a compact, edge-clamped clock pop-up pill that glides directly above the scrubber dot across all frames.
+
 ## [v1.5.1] - 2026-11-11
 
 ### Dry Overcast Sky Condition & Next-Hour Precipitation Calibration (`app.js`)

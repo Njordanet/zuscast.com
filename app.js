@@ -587,7 +587,9 @@ const dopplerRadarMap = {
   _baseLayer: null,
   _labelLayer: null,
   activeFrameId: null,
+  allFrames: [],
   frames: [],
+  modalHorizonHours: 2,
   currentIndex: 0,
   isPlaying: false,
   playTimer: null,
@@ -902,15 +904,38 @@ const dopplerRadarMap = {
         this.setFrameIndex(Number(e.target.value));
       });
     }
-    const tickLive = document.getElementById("radar-tick-live");
-    if (tickLive) {
-      tickLive.addEventListener("click", (e) => {
+    const ticksWrap = document.getElementById("radar-scrubber-ticks");
+    if (ticksWrap) {
+      ticksWrap.addEventListener("click", (e) => {
+        const liveTarget = e.target && e.target.closest ? e.target.closest(".tick-live") : null;
+        if (!liveTarget) return;
         e.stopPropagation();
         this.stopPlay();
         const liveIdx = this.frames.findIndex((f) => f.offsetMinutes === 0);
         if (liveIdx >= 0) this.setFrameIndex(liveIdx);
       });
     }
+    const horizonPill = document.getElementById("radar-horizon-pill");
+    if (horizonPill) {
+      horizonPill.addEventListener("click", (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest(".radar-horizon-btn") : null;
+        if (!btn) return;
+        e.stopPropagation();
+        const nextHr = Number(btn.dataset.horizon) === 10 ? 10 : 2;
+        if (nextHr === this.modalHorizonHours) return;
+        this.modalHorizonHours = nextHr;
+        horizonPill.querySelectorAll(".radar-horizon-btn").forEach((b) => {
+          const active = Number(b.dataset.horizon) === nextHr;
+          b.classList.toggle("active", active);
+          b.setAttribute("aria-selected", String(active));
+        });
+        this.applyHorizonFilter(true);
+        this.syncModalTitleAndKickers();
+      });
+    }
+    window.addEventListener("resize", () => {
+      this.updateScrubberBubble();
+    });
     if (zoomInBtn) {
       zoomInBtn.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1088,22 +1113,23 @@ const dopplerRadarMap = {
           ? "Radar & Wind Flow"
           : "Radar";
     }
+    const activeHr = this.isModalOpen ? this.modalHorizonHours || 2 : 2;
     if (modalKickerEl) {
       const kickerLabel =
         this.layerMode === "wind"
           ? "ZÜS 10M SURFACE STREAMLINES & GUST FIELD"
           : this.layerMode === "both"
           ? "ZÜS 1KM DOPPLER + 10M WIND COMPOSITE"
-          : "ZÜS 1KM DOPPLER & 2-HOUR NOWCAST";
+          : `ZÜS 1KM DOPPLER & ${activeHr}-HOUR FORECAST`;
       modalKickerEl.innerHTML = `<span class="radar-live-dot"></span> <span>${kickerLabel}</span>`;
     }
     if (titleEl) {
       const suffix =
         this.layerMode === "wind"
-          ? "Live Wind Flow & 2h Forecast"
+          ? `Live Wind Flow & ${activeHr}h Forecast`
           : this.layerMode === "both"
           ? "Radar + Wind Flow Composite"
-          : "Live Radar & 2h Nowcast";
+          : `Live Radar & ${activeHr}h Forecast`;
       titleEl.textContent = `${city} • ${suffix}`;
     }
   },
@@ -1497,6 +1523,7 @@ const dopplerRadarMap = {
     modalSlot.appendChild(frameEl);
     frameEl.classList.add("is-modal");
     this.setMapInteractive(true);
+    this.applyHorizonFilter(true);
 
     modal.classList.remove("closing");
     modal.removeAttribute("hidden");
@@ -1506,6 +1533,7 @@ const dopplerRadarMap = {
       if (this.map) this.map.invalidateSize({ pan: false, animate: false });
       this.resizeWindCanvas();
       this.resetWindParticles();
+      this.updateScrubberBubble();
       if (this.layerMode === "wind" || this.layerMode === "both") {
         this.drawWindCanvasFrame(false);
       }
@@ -1530,6 +1558,7 @@ const dopplerRadarMap = {
       frameEl.classList.remove("is-modal");
       inlineSlot.appendChild(frameEl);
     }
+    this.applyHorizonFilter(true);
 
     if (this.map && state.location) {
       this.map.setView([state.location.latitude, state.location.longitude], this.baseZoom, {
@@ -1538,6 +1567,7 @@ const dopplerRadarMap = {
       this.map.invalidateSize({ pan: false, animate: false });
       this.resizeWindCanvas();
       this.resetWindParticles();
+      this.updateScrubberBubble();
       if (this.layerMode === "wind" || this.layerMode === "both") {
         this.drawWindCanvasFrame(false);
       }
@@ -1545,6 +1575,7 @@ const dopplerRadarMap = {
         if (this.map) this.map.invalidateSize({ pan: false, animate: false });
         this.resizeWindCanvas();
         this.resetWindParticles();
+        this.updateScrubberBubble();
         if (this.layerMode === "wind" || this.layerMode === "both") {
           this.drawWindCanvasFrame(false);
         }
@@ -1884,7 +1915,7 @@ const dopplerRadarMap = {
             const imageData = ctx.getImageData(0, 0, 256, 256);
             const d = imageData.data;
             const decay = frame.isFuture
-              ? Math.max(0.76, 1.0 - (frame.offsetMinutes / 120.0) * 0.18)
+              ? Math.max(0.78, 1.0 - (frame.offsetMinutes / 600.0) * 0.16)
               : 1.0;
 
             if (frame.isRainViewer) {
@@ -2088,19 +2119,46 @@ const dopplerRadarMap = {
     const baseTs = liveFrame?.timestamp || Math.floor(Date.now() / 1000);
     const fallbackUrl =
       options.tileUrlTemplate ||
-      "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png";
+      "https://api.zuscast.com/api/v1/radar/tiles/latest/{z}/{x}/{y}.png?v=11";
     const maxNativeZoom = options.maxNativeZoom || liveFrame?.maxNativeZoom || 8;
     const isRainViewer = Boolean(options.isRainViewer || liveFrame?.isRainViewer);
-    const futureTargets = [
-      { offset: 15, label: "+15m" },
-      { offset: 30, label: "+30m" },
-      { offset: 45, label: "+45m" },
-      { offset: 60, label: "+1h" },
-      { offset: 75, label: "+1h 15m" },
-      { offset: 90, label: "+1h 30m" },
-      { offset: 105, label: "+1h 45m" },
-      { offset: 120, label: "+2h" },
-    ];
+    const maxExistingOffset = Math.max(0, ...frames.map((f) => Number(f.offsetMinutes) || 0));
+    const useTenHour = Boolean(options.isConusTenHour || maxExistingOffset > 120);
+    const futureTargets = useTenHour
+      ? [
+          { offset: 15, label: "+15m" },
+          { offset: 30, label: "+30m" },
+          { offset: 45, label: "+45m" },
+          { offset: 60, label: "+1h" },
+          { offset: 90, label: "+1h 30m" },
+          { offset: 120, label: "+2h" },
+          { offset: 150, label: "+2h 30m" },
+          { offset: 180, label: "+3h" },
+          { offset: 210, label: "+3h 30m" },
+          { offset: 240, label: "+4h" },
+          { offset: 270, label: "+4h 30m" },
+          { offset: 300, label: "+5h" },
+          { offset: 330, label: "+5h 30m" },
+          { offset: 360, label: "+6h" },
+          { offset: 390, label: "+6h 30m" },
+          { offset: 420, label: "+7h" },
+          { offset: 450, label: "+7h 30m" },
+          { offset: 480, label: "+8h" },
+          { offset: 510, label: "+8h 30m" },
+          { offset: 540, label: "+9h" },
+          { offset: 570, label: "+9h 30m" },
+          { offset: 600, label: "+10h" },
+        ]
+      : [
+          { offset: 15, label: "+15m" },
+          { offset: 30, label: "+30m" },
+          { offset: 45, label: "+45m" },
+          { offset: 60, label: "+1h" },
+          { offset: 75, label: "+1h 15m" },
+          { offset: 90, label: "+1h 30m" },
+          { offset: 105, label: "+1h 45m" },
+          { offset: 120, label: "+2h" },
+        ];
     const existingOffsets = new Set(frames.map((f) => Number(f.offsetMinutes)));
     const out = [...frames];
     futureTargets.forEach((ft) => {
@@ -2111,10 +2169,12 @@ const dopplerRadarMap = {
           label: ft.label,
           offsetMinutes: ft.offset,
           isFuture: true,
-          useZusCanvasLut: true,
+          useZusCanvasLut: !useTenHour,
           isRainViewer,
           maxNativeZoom,
-          tileUrlTemplate: fallbackUrl,
+          tileUrlTemplate: useTenHour
+            ? `https://api.zuscast.com/api/v1/radar/tiles/nowcast_p${ft.offset}m/{z}/{x}/{y}.png?v=11`
+            : fallbackUrl,
         });
       }
     });
@@ -2145,7 +2205,7 @@ const dopplerRadarMap = {
     if (inConus) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 4500);
+        const timeout = setTimeout(() => controller.abort(), 8000);
         const [manifestResp, packResp] = await Promise.all([
           fetch(`${ZUS_API_BASE}/radar/manifest?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`, {
             signal: controller.signal,
@@ -2193,12 +2253,15 @@ const dopplerRadarMap = {
                 f.tileUrlTemplate.startsWith("http://")
                   ? "https://" + f.tileUrlTemplate.slice("http://".length)
                   : f.tileUrlTemplate
-              ).replace(/\?v=\d+/, "?v=9"),
+              ).replace(/\?v=\d+/, "?v=11"),
             }));
-            this.frames = this.ensureTwoHourNowcastFrames(normalizedFrames, { maxNativeZoom: 8 });
+            this.allFrames = this.ensureTwoHourNowcastFrames(normalizedFrames, {
+              maxNativeZoom: 8,
+              isConusTenHour: true,
+            });
             this.telemetry = data.localTelemetry || null;
             this.cacheStats = data.cacheStats || null;
-            this.rebuildLayers();
+            this.applyHorizonFilter(false);
             this.renderTelemetryStrip(data.localTelemetry);
             return data.localTelemetry;
           }
@@ -2208,40 +2271,54 @@ const dopplerRadarMap = {
       }
     }
 
-    // 2. HTTPS 1km CONUS NEXRAD + 8-Bit Züs Storm LUT Engine (with +2h in 15m steps)
+    // 2. HTTPS 1km CONUS ZüsAPI Tile Fallback (-45m to +10h)
     if (inConus) {
-      const nowSec = Math.floor(Math.floor(Date.now() / 1000) / 300) * 300;
+      const nowSec = Math.floor(Math.floor(Date.now() / 1000) / 120) * 120;
       const steps = [
-        { id: "m45m", suffix: "-m45m", offset: -45, label: "-45m", future: false },
-        { id: "m35m", suffix: "-m35m", offset: -35, label: "-35m", future: false },
-        { id: "m25m", suffix: "-m25m", offset: -25, label: "-25m", future: false },
-        { id: "m15m", suffix: "-m15m", offset: -15, label: "-15m", future: false },
-        { id: "m05m", suffix: "-m05m", offset: -5, label: "-5m", future: false },
-        { id: "latest", suffix: "", offset: 0, label: "LIVE", future: false },
-        { id: "p15m", suffix: "", offset: 15, label: "+15m", future: true },
-        { id: "p30m", suffix: "", offset: 30, label: "+30m", future: true },
-        { id: "p45m", suffix: "", offset: 45, label: "+45m", future: true },
-        { id: "p60m", suffix: "", offset: 60, label: "+1h", future: true },
-        { id: "p75m", suffix: "", offset: 75, label: "+1h 15m", future: true },
-        { id: "p90m", suffix: "", offset: 90, label: "+1h 30m", future: true },
-        { id: "p105m", suffix: "", offset: 105, label: "+1h 45m", future: true },
-        { id: "p120m", suffix: "", offset: 120, label: "+2h", future: true },
+        { id: "past_45m", offset: -45, label: "-45m", future: false },
+        { id: "past_30m", offset: -30, label: "-30m", future: false },
+        { id: "past_20m", offset: -20, label: "-20m", future: false },
+        { id: "past_10m", offset: -10, label: "-10m", future: false },
+        { id: "past_5m", offset: -5, label: "-5m", future: false },
+        { id: "latest", offset: 0, label: "LIVE", future: false },
+        { id: "nowcast_p15m", offset: 15, label: "+15m", future: true },
+        { id: "nowcast_p30m", offset: 30, label: "+30m", future: true },
+        { id: "nowcast_p45m", offset: 45, label: "+45m", future: true },
+        { id: "nowcast_p60m", offset: 60, label: "+1h", future: true },
+        { id: "nowcast_p90m", offset: 90, label: "+1h 30m", future: true },
+        { id: "nowcast_p120m", offset: 120, label: "+2h", future: true },
+        { id: "nowcast_p150m", offset: 150, label: "+2h 30m", future: true },
+        { id: "nowcast_p180m", offset: 180, label: "+3h", future: true },
+        { id: "nowcast_p210m", offset: 210, label: "+3h 30m", future: true },
+        { id: "nowcast_p240m", offset: 240, label: "+4h", future: true },
+        { id: "nowcast_p270m", offset: 270, label: "+4h 30m", future: true },
+        { id: "nowcast_p300m", offset: 300, label: "+5h", future: true },
+        { id: "nowcast_p330m", offset: 330, label: "+5h 30m", future: true },
+        { id: "nowcast_p360m", offset: 360, label: "+6h", future: true },
+        { id: "nowcast_p390m", offset: 390, label: "+6h 30m", future: true },
+        { id: "nowcast_p420m", offset: 420, label: "+7h", future: true },
+        { id: "nowcast_p450m", offset: 450, label: "+7h 30m", future: true },
+        { id: "nowcast_p480m", offset: 480, label: "+8h", future: true },
+        { id: "nowcast_p510m", offset: 510, label: "+8h 30m", future: true },
+        { id: "nowcast_p540m", offset: 540, label: "+9h", future: true },
+        { id: "nowcast_p570m", offset: 570, label: "+9h 30m", future: true },
+        { id: "nowcast_p600m", offset: 600, label: "+10h", future: true },
       ];
 
-      this.frames = steps.map((s) => ({
+      this.allFrames = steps.map((s) => ({
         frameId: s.id,
         timestamp: nowSec + s.offset * 60,
         label: s.label,
         offsetMinutes: s.offset,
         isFuture: s.future,
-        useZusCanvasLut: true,
+        useZusCanvasLut: false,
         maxNativeZoom: 8,
-        tileUrlTemplate: `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${s.suffix}/{z}/{x}/{y}.png`,
+        tileUrlTemplate: `https://api.zuscast.com/api/v1/radar/tiles/${s.id}/{z}/{x}/{y}.png?v=11`,
       }));
 
       const httpsTel = await this.sampleHttpsNexradTelemetry(lat, lon);
       this.telemetry = httpsTel;
-      this.rebuildLayers();
+      this.applyHorizonFilter(false);
       this.renderTelemetryStrip(httpsTel);
       return httpsTel;
     }
@@ -2279,7 +2356,7 @@ const dopplerRadarMap = {
           };
         });
 
-        this.frames = liveTileUrl
+        this.allFrames = liveTileUrl
           ? this.ensureTwoHourNowcastFrames(baseFrames, {
               tileUrlTemplate: liveTileUrl,
               maxNativeZoom: 7,
@@ -2287,11 +2364,50 @@ const dopplerRadarMap = {
             })
           : baseFrames;
         this.telemetry = null;
-        this.rebuildLayers();
+        this.applyHorizonFilter(false);
         this.renderTelemetryStrip(null);
       }
     } catch (_) {}
     return null;
+  },
+
+  applyHorizonFilter(preserveOffset = true) {
+    if (!Array.isArray(this.allFrames) || !this.allFrames.length) return;
+    const maxAvailMin = Math.max(0, ...this.allFrames.map((f) => Number(f.offsetMinutes) || 0));
+    const horizonPill = document.getElementById("radar-horizon-pill");
+    if (horizonPill) {
+      if (maxAvailMin > 120) {
+        horizonPill.removeAttribute("hidden");
+      } else {
+        horizonPill.setAttribute("hidden", "");
+      }
+    }
+
+    const prevOffset = preserveOffset ? Number(this.currentOffsetMinutes || 0) : 0;
+    const effectiveHours = this.isModalOpen && maxAvailMin > 120 ? this.modalHorizonHours || 2 : 2;
+    const maxMin = effectiveHours * 60;
+    const subset = this.allFrames.filter((f) => Number(f.offsetMinutes || 0) <= maxMin);
+    this.frames = subset.length > 0 ? subset : [...this.allFrames];
+    this.rebuildLayers(preserveOffset ? Math.min(prevOffset, maxMin) : null);
+  },
+
+  updateScrubberBubble() {
+    const slider = document.getElementById("radar-frame-slider");
+    const bubble = document.getElementById("radar-time-bubble");
+    const caret = document.getElementById("radar-time-bubble-caret");
+    if (!slider || !bubble || !this.frames.length) return;
+    const trackW = slider.clientWidth || 180;
+    const maxIdx = Math.max(1, this.frames.length - 1);
+    const ratio = Math.max(0, Math.min(1, (Number(this.currentIndex) || 0) / maxIdx));
+    const thumbR = 8;
+    const dotX = thumbR + ratio * Math.max(0, trackW - thumbR * 2);
+    const bubbleW = bubble.offsetWidth || 58;
+    const leftPx = Math.max(0, Math.min(Math.max(0, trackW - bubbleW), dotX - bubbleW / 2));
+    const caretPx = Math.max(8, Math.min(bubbleW - 8, dotX - leftPx));
+    bubble.style.left = `${leftPx.toFixed(1)}px`;
+    if (caret) {
+      caret.style.left = `${(caretPx - 3).toFixed(1)}px`;
+    }
   },
 
   preloadViewportTiles(lat, lon, zoom = 8) {
@@ -2412,7 +2528,7 @@ const dopplerRadarMap = {
     }
   },
 
-  rebuildLayers() {
+  rebuildLayers(targetOffsetMin = null) {
     if (!this.map) return;
     Object.values(this.tileLayers).forEach((layer) => {
       if (this.map.hasLayer(layer)) this.map.removeLayer(layer);
@@ -2424,29 +2540,85 @@ const dopplerRadarMap = {
     let liveIdx = this.frames.findIndex((f) => f.offsetMinutes === 0);
     if (liveIdx < 0) liveIdx = Math.max(0, this.frames.length - 1);
 
+    let initialIdx = liveIdx;
+    if (typeof targetOffsetMin === "number") {
+      let bestDiff = Infinity;
+      this.frames.forEach((f, idx) => {
+        const d = Math.abs((Number(f.offsetMinutes) || 0) - targetOffsetMin);
+        if (d < bestDiff) {
+          bestDiff = d;
+          initialIdx = idx;
+        }
+      });
+    }
+
+    const maxIdx = Math.max(1, this.frames.length - 1);
     const slider = document.getElementById("radar-frame-slider");
     if (slider) {
-      const maxIdx = Math.max(1, this.frames.length - 1);
       slider.max = String(maxIdx);
       const livePct = ((liveIdx / maxIdx) * 100).toFixed(1);
       slider.style.setProperty("--live-pct", `${livePct}%`);
     }
 
+    const ticksEl = document.getElementById("radar-scrubber-ticks");
+    if (ticksEl && this.frames.length > 1) {
+      const maxFutureMin = Math.max(0, ...this.frames.map((f) => Number(f.offsetMinutes) || 0));
+      const targets =
+        maxFutureMin >= 240
+          ? [
+              { min: -45, label: "-45m" },
+              { min: 0, label: "LIVE" },
+              { min: 120, label: "+2h" },
+              { min: 300, label: "+5h" },
+              { min: 600, label: "+10h" },
+            ]
+          : [
+              { min: -45, label: "-45m" },
+              { min: 0, label: "LIVE" },
+              { min: 60, label: "+1h" },
+              { min: 120, label: "+2h" },
+            ];
+      ticksEl.innerHTML = targets
+        .map((t, idx) => {
+          let bestIdx = 0;
+          let bestDiff = Infinity;
+          this.frames.forEach((f, fIdx) => {
+            const d = Math.abs((Number(f.offsetMinutes) || 0) - t.min);
+            if (d < bestDiff) {
+              bestDiff = d;
+              bestIdx = fIdx;
+            }
+          });
+          const pct = ((bestIdx / maxIdx) * 100).toFixed(1);
+          const posClass =
+            idx === 0
+              ? " radar-tick-start"
+              : idx === targets.length - 1
+              ? " radar-tick-end"
+              : "";
+          if (t.min === 0) {
+            return `<span class="radar-tick tick-live${posClass}" id="radar-tick-live" style="left: ${pct}%" title="Jump to LIVE">LIVE</span>`;
+          }
+          return `<span class="radar-tick${posClass}" style="left: ${pct}%">${t.label}</span>`;
+        })
+        .join("");
+    }
+
     // If 100%-decoded Regional Pack is active, render directly on the single persistent <canvas>
     if (this._regionalPackBounds && this._regionalPackImages) {
-      this.setFrameIndex(liveIdx);
+      this.setFrameIndex(initialIdx);
       this.renderRegionalRadarCanvas();
       return;
     }
 
-    // Eagerly mount LIVE frame first, then pre-mount all remaining timeline frames in background
-    const liveFrame = this.frames[liveIdx];
-    if (liveFrame) {
-      this.tileLayers[liveFrame.frameId] = this.createLayerForFrame(liveFrame);
-      this._lastReadyFrameId = liveFrame.frameId;
+    // Eagerly mount target frame first, then pre-mount all remaining timeline frames in background
+    const startFrame = this.frames[initialIdx] || this.frames[liveIdx];
+    if (startFrame) {
+      this.tileLayers[startFrame.frameId] = this.createLayerForFrame(startFrame);
+      this._lastReadyFrameId = startFrame.frameId;
     }
 
-    this.setFrameIndex(liveIdx);
+    this.setFrameIndex(initialIdx);
 
     if (state.location) {
       this.preloadViewportTiles(
@@ -2585,16 +2757,21 @@ const dopplerRadarMap = {
       slider.classList.toggle("is-future", isFutureFrame);
     }
 
-    const frameClock = frame.timestamp
-      ? new Date(frame.timestamp * 1000).toLocaleTimeString([], {
-          hour: "numeric",
-          minute: "2-digit",
-        })
-      : "";
+    const clockDate =
+      offsetMin === 0
+        ? new Date()
+        : frame.timestamp
+        ? new Date(frame.timestamp * 1000)
+        : new Date(Date.now() + offsetMin * 60000);
+    const frameClock = clockDate.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
     const frameLabel = frame.label || this.formatInterpolatedOffsetLabel(offsetMin);
 
     const pillEl = document.getElementById("radar-frame-label");
-    const timeEl = document.getElementById("radar-time-readout");
+    const bubbleEl = document.getElementById("radar-time-bubble");
+    const bubbleTextEl = document.getElementById("radar-time-bubble-text");
     if (pillEl) {
       pillEl.textContent = isFutureFrame
         ? `${frameLabel} NOWCAST (${frameClock})`
@@ -2603,10 +2780,13 @@ const dopplerRadarMap = {
         : `${frameLabel} (${frameClock})`;
       pillEl.classList.toggle("future", isFutureFrame);
     }
-    if (timeEl) {
-      timeEl.textContent = frameClock ? `${frameClock} (${frameLabel})` : frameLabel;
-      timeEl.classList.toggle("future", isFutureFrame);
+    if (bubbleTextEl) {
+      bubbleTextEl.textContent = frameClock;
     }
+    if (bubbleEl) {
+      bubbleEl.classList.toggle("future", isFutureFrame);
+    }
+    this.updateScrubberBubble();
 
     if (this.layerMode === "wind" || this.layerMode === "both") {
       this.renderTelemetryStrip(this.probedTelemetry || this.telemetry);
@@ -2645,7 +2825,7 @@ const dopplerRadarMap = {
       this.setFrameIndex(0);
     }
 
-    const stepDelayMs = 540;
+    const stepDelayMs = this.frames.length > 16 ? 380 : 540;
     const endHoldMs = 950;
     let nextStepAt = performance.now() + stepDelayMs;
 
@@ -4606,9 +4786,32 @@ function getHourlyMetricDescriptor(mode) {
         lineColor: "#60a5fa",
         bandFill: "rgba(96, 165, 250, 0.24)",
         bandStroke: "rgba(96, 165, 250, 0.48)",
-        extract: (h) => ({ val: h.precipMm, min: h.precipMmMin, max: h.precipMmMax }),
-        formatNode: (v) =>
-          imp ? `${(v / 25.4).toFixed(2)}"` : `${v.toFixed(1)}mm`,
+        extract: (h) => {
+          const hasTraceRisk = h.precipMm > 0.01 || h.precipProb >= 20;
+          if (!hasTraceRisk) {
+            return { val: 0, min: 0, max: 0 };
+          }
+          const effVal = h.precipMm >= 0.127 ? h.precipMm : Math.max(h.precipMm, 0.08);
+          const fallback = h.precipMm >= 0.127 ? Math.max(0.25, h.precipMm * 0.35) : 0.16;
+          return {
+            val: effVal,
+            min: h.precipMmMin ?? Math.max(0, h.precipMm - fallback),
+            max: h.precipMmMax && h.precipMmMax > effVal ? h.precipMmMax : effVal + fallback,
+          };
+        },
+        formatNode: (v, h) => {
+          const rawMm = h?.precipMm ?? v;
+          const prob = h?.precipProb ?? 0;
+          if (imp) {
+            const inches = rawMm / 25.4;
+            if (inches >= 0.005) return `${inches.toFixed(2)}"`;
+            if (rawMm > 0.01 || prob >= 20) return "Trace";
+            return '0"';
+          }
+          if (rawMm >= 0.05) return `${rawMm.toFixed(1)}mm`;
+          if (rawMm > 0.01 || prob >= 20) return "Trace";
+          return "0mm";
+        },
         formatFull: (v) => formatPrecipAmount(v),
         formatSpread: (s) =>
           imp
@@ -4834,8 +5037,21 @@ function renderHourlyCurveIntoContainer(
   const desc = getHourlyMetricDescriptor(mode);
   const series = hourly.map((item) => desc.extract(item));
 
-  const allMin = Math.min(...series.map((s) => s.min));
-  const allMax = Math.max(...series.map((s) => s.max));
+  const isZeroFloorMode =
+    mode === "precipAmount" || mode === "precip" || mode === "uv";
+  const allMin = isZeroFloorMode
+    ? 0
+    : Math.min(...series.map((s) => s.min));
+  const rawMax = Math.max(...series.map((s) => s.max));
+  const minSpan =
+    mode === "precipAmount"
+      ? 2.5
+      : mode === "precip"
+      ? 50
+      : mode === "uv"
+      ? 4
+      : 0.0001;
+  const allMax = Math.max(allMin + minSpan, rawMax);
   const rawSpan = Math.max(0.0001, allMax - allMin);
 
   const W = hourly.length * colW;
@@ -4859,7 +5075,8 @@ function renderHourlyCurveIntoContainer(
     const yMain = valueToY(s.val);
     let yUp = valueToY(s.max);
     let yLow = valueToY(s.min);
-    if (Math.abs(yLow - yUp) < 8) {
+    const hasSpread = !isZeroFloorMode || s.max - s.min > 0.005;
+    if (hasSpread && Math.abs(yLow - yUp) < 8) {
       yUp = Math.max(yTop - 6, yMain - 4.5);
       yLow = Math.min(yBottom + 6, yMain + 4.5);
     }
@@ -4907,7 +5124,7 @@ function renderHourlyCurveIntoContainer(
         if (iconEl) {
           iconEl.innerHTML = getWeatherSVG(cond.icon, Boolean(item.isNight));
         }
-        if (valEl) valEl.textContent = desc.formatNode(s.val);
+        if (valEl) valEl.textContent = desc.formatNode(s.val, item);
         if (spreadEl) {
           spreadEl.textContent = desc.formatSpread(Math.max(0, s.max - s.min));
         }
@@ -5057,7 +5274,7 @@ function renderHourlyCurveIntoContainer(
       <div class="hourly-point-node" style="top: ${pt.y.toFixed(1)}px">
         ${showPopBadge}
         <div class="hourly-node-icon">${getWeatherSVG(cond.icon, Boolean(item.isNight))}</div>
-        <div class="hourly-node-val">${desc.formatNode(s.val)}</div>
+        <div class="hourly-node-val">${desc.formatNode(s.val, item)}</div>
         <div class="hourly-node-spread">${desc.formatSpread(hoverSpread)}</div>
       </div>
     `;
