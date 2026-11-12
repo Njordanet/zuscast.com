@@ -3679,15 +3679,26 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
 
   // 10-Day Forecast (consumed from ZüsAPI RLS + Diurnal Harmonic MOS blend, with Open-Meteo fallback)
   const zDaily = Array.isArray(zusWeather?.daily) ? zusWeather.daily : [];
+  const zDailyByDate = new Map();
+  for (const zdItem of zDaily) {
+    const zk = String(zdItem?.date || "").slice(0, 10);
+    if (zk && !zDailyByDate.has(zk)) {
+      zDailyByDate.set(zk, zdItem);
+    }
+  }
   const daily = [];
   const dayLen = Math.min(Math.max(d.time?.length || 0, zDaily.length), 10);
   for (let i = 0; i < dayLen; i++) {
-    const zd = i < zDaily.length ? zDaily[i] : null;
-    const dayKey = String(d.time?.[i] || zd?.date || "").slice(0, 10);
+    const fallbackZd = i < zDaily.length && !zDaily[i]?.date ? zDaily[i] : null;
+    const dayKey = String(d.time?.[i] || zDaily[i]?.date || "").slice(0, 10);
+    const zd = zDailyByDate.get(dayKey) || fallbackZd;
+    const calHours = allHourly.filter((pt) => pt.dateKey === dayKey);
     let dayHours =
       i === 0
-        ? hourly.slice(0, 24)
-        : allHourly.filter((pt) => pt.dateKey === dayKey);
+        ? calHours.length >= 6
+          ? calHours
+          : hourly.slice(0, 24)
+        : calHours;
     if (!dayHours.length) {
       dayHours = allHourly.slice(i * 24, (i + 1) * 24);
     }
@@ -3716,7 +3727,11 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     }
 
     const dayWmo = Number(zd?.wmoCode ?? d.weather_code?.[i] ?? 0);
-    const dayPop = Number(zd?.precipitationChance ?? d.precipitation_probability_max?.[i] ?? 0);
+    const rawDayPop = Number(zd?.precipitationChance ?? d.precipitation_probability_max?.[i] ?? 0);
+    const sliceMaxPop = calHours.length
+      ? Math.max(...calHours.map((pt) => Number(pt.precipProb ?? 0)))
+      : 0;
+    const dayPop = Math.max(rawDayPop, sliceMaxPop);
     const dayPsum = Number(zd?.precipSumMm ?? d.precipitation_sum?.[i] ?? 0);
     let dayCondition = conditionFromWMO(dayWmo);
     if (
@@ -3726,13 +3741,23 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       dayCondition = SKY_CONDITIONS.sleet;
     }
 
+    const rawDayMin = Number(zd?.minTemperature ?? d.temperature_2m_min?.[i] ?? 0);
+    const rawDayMax = Number(zd?.maxTemperature ?? d.temperature_2m_max?.[i] ?? 0);
+    const calTemps = calHours.map((pt) => pt.temp).filter((v) => Number.isFinite(v));
+    let reconciledMin = calTemps.length ? Math.min(rawDayMin, ...calTemps) : rawDayMin;
+    let reconciledMax = calTemps.length ? Math.max(rawDayMax, ...calTemps) : rawDayMax;
+    if (i === 0 && Number.isFinite(currentTemp)) {
+      reconciledMin = Math.min(reconciledMin, currentTemp);
+      reconciledMax = Math.max(reconciledMax, currentTemp);
+    }
+
     daily.push({
       date: new Date(`${dayKey}T12:00:00`),
       dateKey: dayKey,
       wmoCode: dayWmo,
       condition: dayCondition,
-      tempMin: Number(zd?.minTemperature ?? d.temperature_2m_min?.[i] ?? 0),
-      tempMax: Number(zd?.maxTemperature ?? d.temperature_2m_max?.[i] ?? 0),
+      tempMin: reconciledMin,
+      tempMax: reconciledMax,
       precipProb: dayPop,
       precipSumMm: dayPsum,
       precipType,
@@ -4083,14 +4108,12 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
         : raw?.utc_offset_seconds !== undefined && raw?.utc_offset_seconds !== null
         ? Number(raw.utc_offset_seconds)
         : null,
-    tempMax: Math.max(
-      Number(zCur?.tempMax ?? daily[0]?.tempMax ?? currentTemp),
-      currentTemp
-    ),
-    tempMin: Math.min(
-      Number(zCur?.tempMin ?? daily[0]?.tempMin ?? currentTemp),
-      currentTemp
-    ),
+    tempMax: daily[0]
+      ? daily[0].tempMax
+      : Math.max(Number(zCur?.tempMax ?? currentTemp), currentTemp),
+    tempMin: daily[0]
+      ? daily[0].tempMin
+      : Math.min(Number(zCur?.tempMin ?? currentTemp), currentTemp),
     uvIndex: currentUv,
     uvMaxToday: Math.max(Number(daily[0]?.uvMax ?? currentUv), currentUv),
     sunrise: daily[0]?.sunrise ?? null,
@@ -5525,32 +5548,60 @@ function renderDailyForecast(daily) {
   const globalMax = Math.max(...allMaxs);
   const totalSpan = Math.max(1, globalMax - globalMin);
 
-  // Build natural-language Dark Sky weekly summary
-  const peakDay = daily.reduce(
-    (best, cur) => (cur.tempMax > best.tempMax ? cur : best),
-    daily[0]
+  // Build natural-language 10-day summary aligned with displayed integers & disambiguated weekdays
+  const displayedHighs = daily.map((d) =>
+    state.unit === "F" ? Math.round((d.tempMax * 9) / 5 + 32) : Math.round(d.tempMax)
   );
-  const rainyDays = daily.filter((d) => d.precipProb >= 45);
-  const peakDayName = peakDay.date.toLocaleDateString([], { weekday: "long" });
-  if (rainyDays.length === 0) {
-    summaryBanner.textContent = `Mostly dry conditions across the next 10 days, with temperatures peaking at ${formatTemp(
-      peakDay.tempMax,
-      true
-    )} on ${peakDayName}.`;
+  let peakIdx = 0;
+  for (let i = 1; i < daily.length; i++) {
+    if (displayedHighs[i] > displayedHighs[peakIdx]) {
+      peakIdx = i;
+    }
+  }
+  const formatDailyWhen = (dObj, idx, includePrep) => {
+    const wk = dObj.date.toLocaleDateString([], { weekday: "long" });
+    if (idx === 0) return "today";
+    if (idx === 1) return `tomorrow (${wk})`;
+    if (idx >= 7) {
+      const md = dObj.date.toLocaleDateString([], { month: "short", day: "numeric" });
+      return `next ${wk} (${md})`;
+    }
+    return includePrep ? `on ${wk}` : wk;
+  };
+  const peakWhen = formatDailyWhen(daily[peakIdx], peakIdx, true);
+  const peakScope = peakIdx < 7 ? "weekly highs" : "10-day highs";
+  const peakTempStr = `${displayedHighs[peakIdx]}°${state.unit}`;
+  const firstWetIdx = daily.findIndex((d) => {
+    const pop = Math.round(d.precipProb ?? 0);
+    const wmo = Number(d.wmoCode ?? 0);
+    return pop >= 35 || (wmo >= 51 && pop >= 25);
+  });
+  if (firstWetIdx === -1) {
+    summaryBanner.textContent = `Mostly dry conditions across the next 10 days, with temperatures peaking at ${peakTempStr} ${peakWhen}.`;
   } else {
-    const firstRainDay = rainyDays[0].date.toLocaleDateString([], { weekday: "long" });
-    summaryBanner.textContent = `Precipitation likely starting ${firstRainDay}, with weekly highs reaching ${formatTemp(
-      peakDay.tempMax,
-      true
-    )} on ${peakDayName}.`;
+    const firstWet = daily[firstWetIdx];
+    const pNoun =
+      firstWet.precipType === "snow"
+        ? "Snow"
+        : firstWet.precipType === "sleet"
+        ? "Wintry mix"
+        : "Precipitation";
+    const wetClause =
+      firstWetIdx === 0
+        ? `${pNoun} likely today`
+        : `${pNoun} likely starting ${formatDailyWhen(firstWet, firstWetIdx, false)}`;
+    summaryBanner.textContent = `${wetClause}, with ${peakScope} reaching ${peakTempStr} ${peakWhen}.`;
   }
 
   daily.forEach((dItem, idx) => {
     const cond = dItem.condition || conditionFromWMO(dItem.wmoCode);
+    const shortWk = dItem.date.toLocaleDateString([], { weekday: "short" }).toUpperCase();
     const dayName =
       idx === 0
         ? "TODAY"
-        : dItem.date.toLocaleDateString([], { weekday: "short" }).toUpperCase();
+        : idx >= 7
+        ? `${shortWk} ${dItem.date.getDate()}`
+        : shortWk;
     const rawLeftPct = ((dItem.tempMin - globalMin) / totalSpan) * 100;
     const rawWidthPct = ((dItem.tempMax - dItem.tempMin) / totalSpan) * 100;
     const widthPct = Math.min(100, Math.max(10, rawWidthPct));

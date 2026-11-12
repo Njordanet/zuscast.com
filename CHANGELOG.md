@@ -2,6 +2,14 @@
 
 All notable changes to `zuscast.com` will be documented in this file.
 
+## [v1.6.2] - 2026-11-11
+
+### 10-Day Forecast Summary Disambiguation & Calendar-Day Alignment (`app.js`)
+- **Unambiguous 10-Day Summary & Weekday Labels (`app.js`)**:
+  - Updated the 10-day forecast summary to compare displayed rounded highs, distinguish 7-day (`weekly highs`) vs. Days 8–10 (`10-day highs`) peaks, and disambiguate repeated weekdays (`today`, `tomorrow (Thursday)`, `next Thursday (Nov 19)`), alongside date-stamped row labels (`THU 19`) beyond Day 7.
+- **Calendar-Day High/Low Reconciliation (`app.js`)**:
+  - Matched daily forecast entries by local calendar date (`YYYY-MM-DD`) and reconciled daily highs, lows, and precipitation chances with each day's local hourly timeline and header extremes.
+
 ## [v1.6.1] - 2026-11-11
 
 ### Liquid Glass `2h | 10h` Full-Pill Switch (`index.html`, `styles.css`, `app.js`)
