@@ -6,6 +6,7 @@
 
 const ZUS_SUPABASE_URL = (typeof window !== "undefined" && window.ZUS_SUPABASE_URL) || "https://bkwltrykwdqbgnactcaz.supabase.co";
 const ZUS_SUPABASE_ANON_KEY = (typeof window !== "undefined" && window.ZUS_SUPABASE_ANON_KEY) || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrd2x0cnlrd2RxYmduYWN0Y2F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ2Nzg1NjMsImV4cCI6MjExMDI1NDU2M30.Os_Z5Hi5-4BbBDB3qBw27E7FBtl2qGwS4aCY_foLeuk";
+const ZUS_GOOGLE_WEB_CLIENT_ID = "1057324488484-bdafd0ii3it3sgnlln5iajq8k9tdg7qh.apps.googleusercontent.com";
 
 const DEFAULT_FALLBACK_LOCATION = {
   name: "New York",
@@ -7778,6 +7779,26 @@ async function generatePkceChallenge(verifier) {
     .replace(/=+$/, "");
 }
 
+async function sha256Hex(input) {
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(input);
+    const digest = await crypto.subtle.digest("SHA-256", data);
+    const bytes = new Uint8Array(digest);
+    let hex = "";
+    for (let i = 0; i < bytes.length; i++) {
+      hex += bytes[i].toString(16).padStart(2, "0");
+    }
+    return hex;
+  }
+  // Fallback (simple hex)
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  return hash.toString(16).padStart(64, "0");
+}
+
 async function initiateOAuth(provider) {
   if (!ZUS_SUPABASE_URL || !ZUS_SUPABASE_ANON_KEY) {
     const notice = document.getElementById("account-config-notice");
@@ -7785,6 +7806,22 @@ async function initiateOAuth(provider) {
     return;
   }
   try {
+    if (provider === "google") {
+      const rawNonce = generatePkceVerifier(32);
+      const hashedNonce = await sha256Hex(rawNonce);
+      const oauthState = generatePkceVerifier(24);
+      sessionStorage.setItem("zus_google_raw_nonce", rawNonce);
+      sessionStorage.setItem("zus_google_oauth_state", oauthState);
+      const redirectUri =
+        window.location.origin === "https://zuscast.com" &&
+        (window.location.pathname === "/" || window.location.pathname === "/index.html")
+          ? "https://zuscast.com/"
+          : window.location.origin + window.location.pathname;
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(ZUS_GOOGLE_WEB_CLIENT_ID)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=id_token%20token&scope=openid%20email%20profile&nonce=${encodeURIComponent(hashedNonce)}&state=${encodeURIComponent(oauthState)}&prompt=select_account`;
+      window.location.href = authUrl;
+      return;
+    }
+
     const verifier = generatePkceVerifier();
     sessionStorage.setItem("zus_pkce_verifier", verifier);
     const challenge = await generatePkceChallenge(verifier);
@@ -7798,7 +7835,72 @@ async function initiateOAuth(provider) {
 }
 
 async function handleOAuthCallback() {
-  if (typeof window === "undefined" || !window.location.search) return;
+  if (typeof window === "undefined") return;
+
+  // 1. Check window.location.hash for direct Google implicit OIDC tokens or error
+  if (window.location.hash) {
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const cleanUrl = window.location.origin + window.location.pathname;
+
+    const oauthError = hashParams.get("error");
+    if (oauthError) {
+      window.history.replaceState({}, document.title, cleanUrl);
+      console.warn("[Account] Google OAuth error:", oauthError);
+      return;
+    }
+
+    const idToken = hashParams.get("id_token");
+    if (idToken) {
+      const savedState = sessionStorage.getItem("zus_google_oauth_state");
+      const rawNonce = sessionStorage.getItem("zus_google_raw_nonce");
+      sessionStorage.removeItem("zus_google_oauth_state");
+      sessionStorage.removeItem("zus_google_raw_nonce");
+
+      // Clean URL immediately so tokens don't sit in the address bar or history
+      window.history.replaceState({}, document.title, cleanUrl);
+
+      if (savedState && hashParams.get("state") !== savedState) {
+        console.warn("[Account] Google OAuth state mismatch — aborting exchange");
+        return;
+      }
+
+      if (!ZUS_SUPABASE_URL || !ZUS_SUPABASE_ANON_KEY) return;
+
+      try {
+        const base = ZUS_SUPABASE_URL.replace(/\/+$/, "");
+        const resp = await fetch(`${base}/auth/v1/token?grant_type=id_token`, {
+          method: "POST",
+          headers: {
+            "apikey": ZUS_SUPABASE_ANON_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            provider: "google",
+            id_token: idToken,
+            access_token: hashParams.get("access_token") || undefined,
+            nonce: rawNonce || undefined,
+          }),
+        });
+
+        if (resp.ok) {
+          const session = await resp.json();
+          saveAuthSession(session);
+          await syncAccountState();
+          updateAccountUI();
+          return;
+        } else {
+          console.warn("[Account] Supabase id_token exchange failed:", resp.status);
+          return;
+        }
+      } catch (err) {
+        console.warn("[Account] Google id_token exchange error:", err);
+        return;
+      }
+    }
+  }
+
+  // 2. Check window.location.search for PKCE auth code (Apple flow)
+  if (!window.location.search) return;
   const params = new URLSearchParams(window.location.search);
   const code = params.get("code");
   if (!code) return;
@@ -8160,18 +8262,6 @@ function closeAccountModal() {
 }
 
 function initAccountSync() {
-  handleOAuthCallback();
-  updateAccountUI();
-
-  // If already logged in, check entitlements and sync
-  const session = getAuthSession();
-  if (session?.access_token) {
-    fetchEntitlements(session).then(() => {
-      updateAccountUI();
-    });
-    syncAccountState();
-  }
-
   // Account modal openers
   const accountBtn = document.getElementById("account-btn");
   if (accountBtn) {
@@ -8238,6 +8328,20 @@ function initAccountSync() {
       }
     });
   }
+
+  // Process any incoming OAuth callback before checking already-logged-in session
+  (async function () {
+    await handleOAuthCallback();
+    updateAccountUI();
+
+    const session = getAuthSession();
+    if (session?.access_token) {
+      fetchEntitlements(session).then(() => {
+        updateAccountUI();
+      });
+      syncAccountState();
+    }
+  })();
 
   // Global ESC key listener for account modal
   document.addEventListener("keydown", (e) => {

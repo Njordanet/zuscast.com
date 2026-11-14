@@ -2,6 +2,16 @@
 
 All notable changes to `zuscast.com` will be documented in this file.
 
+## [v1.8.0] - 2026-11-14
+
+### Direct Google Account Sign-In & Verified Privacy Links (`index.html`, `app.js`, `auth/google-callback.html`)
+- **Direct Google Account Sign-In**:
+  - Integrated seamless direct Google account sign-in on web with immediate identity verification, automatic state validation, and clean address bar restoration.
+- **Mobile OAuth Fallback Bridge**:
+  - Added a dedicated lightweight bridge page to streamline mobile browser authentication handoffs back to the native app.
+- **Privacy Policy & Terms Alignment**:
+  - Standardized all homepage and modal privacy links to canonical web locations for clear terms disclosure and platform verification compliance.
+
 ## [v1.7.0] - 2026-11-14
 
 ### Optional Privacy-First Cloud Sync, Founder Code Redemption & Privacy Policy (`index.html`, `styles.css`, `app.js`, `privacy.html`)
