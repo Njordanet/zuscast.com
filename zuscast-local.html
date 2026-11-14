@@ -18,7 +18,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <meta name="zus-build-version" content="v1.6.2" />
+  <meta name="zus-build-version" content="v1.7.0" />
   <title>ZüsCast — Hyperlocal Weather &amp; Down-to-the-Minute Nowcast</title>
   <meta name="description" content="ZüsCast (zuscast.com) — Hyperlocal, down-to-the-minute weather intelligence with Liquid Glass aesthetics." />
   <meta name="theme-color" content="#1d63b8" id="theme-color-meta" />
@@ -4349,6 +4349,395 @@ html:not(.sky-phase-twilight):not(.sky-phase-night) .detail-card-top .section-ki
   font-size: 0.78rem;
 }
 
+#account-btn {
+  cursor: pointer;
+}
+
+.footer-legal-link {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.footer-legal-link:hover {
+  color: var(--text-primary);
+}
+
+/* Account Sign-In & Settings Sync Modal */
+#account-modal {
+  z-index: 970;
+}
+
+.account-modal-sheet {
+  max-width: 480px;
+  gap: 16px;
+  padding: 24px;
+}
+
+.account-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.account-hero-card {
+  background: var(--modal-inset-fill, rgba(255, 255, 255, 0.05));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-lg, 18px);
+  padding: 20px 18px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.account-hero-icon {
+  font-size: 2rem;
+  line-height: 1;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 2px 8px rgba(255, 215, 0, 0.4));
+}
+
+.account-hero-title {
+  font-size: 1.22rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.account-hero-desc {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.account-privacy-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.account-feature-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--cond-clear, #34d399);
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.28);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+
+.account-oauth-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.account-oauth-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 18px;
+  border-radius: var(--radius-md, 14px);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-family: inherit;
+}
+
+.account-apple-btn {
+  background: #000000;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.account-apple-btn:hover {
+  background: #111111;
+  border-color: rgba(255, 255, 255, 0.45);
+  transform: translateY(-1px);
+}
+
+.account-apple-btn:active {
+  transform: scale(0.98);
+}
+
+.account-google-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.account-google-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.account-google-btn:active {
+  transform: scale(0.98);
+}
+
+.account-config-notice {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 10px 14px;
+  text-align: center;
+  line-height: 1.45;
+}
+
+.account-legal-footnote {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.account-legal-footnote a,
+.account-text-link {
+  color: #38bdf8;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.account-legal-footnote a:hover,
+.account-text-link:hover {
+  color: #7dd3fc;
+  text-decoration: underline;
+}
+
+.account-profile-card {
+  background: var(--modal-inset-fill, rgba(255, 255, 255, 0.05));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-lg, 18px);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.account-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.account-avatar-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.28), rgba(56, 189, 248, 0.24));
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+
+.account-profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.account-profile-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.account-label {
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-tier-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 215, 0, 0.16);
+  color: #ffd700;
+  border: 1px solid rgba(255, 215, 0, 0.35);
+}
+
+.account-tier-pill.tier-free {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.account-tier-pill.tier-pro {
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.38);
+}
+
+.account-tier-pill.tier-lifetime,
+.account-tier-pill.tier-founder {
+  background: rgba(255, 215, 0, 0.18);
+  color: #ffd700;
+  border-color: rgba(255, 215, 0, 0.45);
+}
+
+.account-profile-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.account-actions-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.account-sync-btn,
+.account-signout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.account-sync-btn {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.36);
+  color: #e0f2fe;
+}
+
+.account-sync-btn:hover {
+  background: rgba(56, 189, 248, 0.28);
+  border-color: rgba(56, 189, 248, 0.6);
+  color: #ffffff;
+}
+
+.account-signout-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--text-secondary);
+}
+
+.account-signout-btn:hover {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.38);
+  color: #fca5a5;
+}
+
+.account-code-card {
+  background: var(--modal-inset-fill, rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-lg, 16px);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.account-code-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.account-code-subtitle {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.account-code-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.account-code-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  padding: 9px 14px;
+  color: var(--text-primary);
+  font-size: 0.86rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.account-code-input:focus {
+  border-color: rgba(56, 189, 248, 0.6);
+}
+
+.account-code-submit-btn {
+  padding: 9px 16px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.account-code-feedback {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.account-code-feedback.success {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.28);
+}
+
+.account-code-feedback.error {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+}
+
+.account-footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.account-link-divider {
+  opacity: 0.4;
+}
+
 /* Responsive Breakpoints across Ultrawide, Desktop, Tablet & Mobile */
 @media (max-width: 960px) {
   .hero-nowcast-grid,
@@ -5604,7 +5993,7 @@ html:not(.sky-phase-twilight):not(.sky-phase-night) .detail-card-top .section-ki
 
     <!-- Centerpiece: Current Conditions + Next-Hour Minute-by-Minute Nowcast -->
     <section class="hero-nowcast-grid is-dry">
-      <!-- Current Weather Floating Hero Header (Apple Weather Open-Sky Style) -->
+      <!-- Current Weather Floating Hero Header (Open-Sky Style) -->
       <article class="hero-card hero-floating">
         <div class="hero-top-row">
           <div>
@@ -5627,7 +6016,7 @@ html:not(.sky-phase-twilight):not(.sky-phase-night) .detail-card-top .section-ki
           </div>
         </div>
 
-        <!-- Dark Sky 4-Column Micro Telemetry Strip -->
+        <!-- Atmospheric 4-Column Micro Telemetry Strip -->
         <div class="hero-micro-strip">
           <div class="micro-item liquid-glass interactive-tile" data-tile="wind" role="button" tabindex="0">
             <span class="micro-label" id="micro-wind-label">Wind <span class="micro-header-unit">&middot; MPH</span></span>
@@ -5660,7 +6049,7 @@ html:not(.sky-phase-twilight):not(.sky-phase-night) .detail-card-top .section-ki
         </div>
       </article>
 
-      <!-- Dark Sky Signature: Next-Hour Minute-by-Minute Precipitation -->
+      <!-- Signature: Next-Hour Minute-by-Minute Precipitation -->
       <article class="nowcast-card liquid-glass interactive-tile is-dry" data-tile="precip" role="button" tabindex="0">
         <div class="section-header">
           <span class="section-kicker">
@@ -5735,7 +6124,7 @@ html:not(.sky-phase-twilight):not(.sky-phase-night) .detail-card-top .section-ki
 
     <!-- Main Split Grid: Expandable 10-Day Forecast + Live Radar & Telemetry -->
     <section class="main-split-grid">
-      <!-- Left: Dark Sky Expandable 10-Day Forecast -->
+      <!-- Left: Expandable 10-Day Forecast -->
       <article class="daily-card liquid-glass" aria-label="10-Day Forecast">
         <div class="section-header">
           <span class="section-kicker">
@@ -6003,10 +6392,14 @@ html:not(.sky-phase-twilight):not(.sky-phase-night) .detail-card-top .section-ki
         <span><strong>ZüsCast</strong> &bull; Down-to-the-minute hyperlocal weather intelligence.</span>
       </div>
       <div class="footer-right-controls">
-        <span class="footer-version-badge" id="footer-version-badge">v1.6.2</span>
+        <a href="/privacy" class="footer-legal-link">Privacy &amp; Terms</a>
+        <span class="footer-version-badge" id="footer-version-badge">v1.7.0</span>
         <div id="last-updated">Live Telemetry</div>
         <button type="button" id="unit-toggle-btn" class="liquid-glass-pill footer-unit-pill" aria-label="Toggle Imperial / Metric units">
           °F, mph
+        </button>
+        <button type="button" id="account-btn" class="liquid-glass-pill footer-unit-pill" aria-label="Account and cloud sync">
+          ⚡ Account
         </button>
       </div>
     </footer>
@@ -6163,6 +6556,122 @@ html:not(.sky-phase-twilight):not(.sky-phase-night) .detail-card-top .section-ki
         </div>
       </div>
     </div>
+
+    <!-- Account Sign-In & Settings/Saved-Cities Sync Modal -->
+    <div class="tile-modal-backdrop" id="account-modal" hidden aria-modal="true" role="dialog" aria-labelledby="account-modal-title">
+      <div class="tile-modal-sheet account-modal-sheet liquid-glass" id="account-modal-sheet" role="document">
+        <div class="sheet-grabber-bar" id="account-sheet-grabber-bar" aria-hidden="true">
+          <span class="sheet-grabber-pill"></span>
+        </div>
+
+        <div class="tile-modal-header account-modal-header">
+          <div>
+            <div class="section-kicker" id="account-modal-kicker">⚡ PRIVACY-FIRST CLOUD SYNC</div>
+            <h2 class="tile-modal-title" id="account-modal-title">Account &amp; Sync</h2>
+          </div>
+          <button type="button" class="tile-modal-close" id="account-modal-close" aria-label="Close account sheet">&times;</button>
+        </div>
+
+        <!-- Signed Out View -->
+        <div class="account-view" id="account-signed-out-view">
+          <div class="account-hero-card">
+            <div class="account-hero-icon">⚡</div>
+            <h3 class="account-hero-title">Sync Across Devices</h3>
+            <p class="account-hero-desc">
+              Optionally sync your measurement units, display preferences, and saved city pins across iPhone, Android, and Web with zero advertising tracking.
+            </p>
+            <div class="account-privacy-badge-row">
+              <span class="account-feature-badge">✓ Zero live GPS in cloud</span>
+              <span class="account-feature-badge">✓ Pins rounded to ~1 km</span>
+              <span class="account-feature-badge">✓ 1-tap delete</span>
+            </div>
+          </div>
+
+          <div class="account-oauth-buttons" id="account-oauth-buttons">
+            <button type="button" class="account-oauth-btn account-apple-btn" id="account-apple-login-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.61-.75 1.04-1.8 0.92-2.87-.9.04-2 .6-2.63 1.34-.56.64-1.05 1.71-.92 2.74 1.01.08 2.03-.5 2.63-1.21z"/>
+              </svg>
+              <span>Continue with Apple</span>
+            </button>
+            <button type="button" class="account-oauth-btn account-google-btn" id="account-google-login-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              <span>Continue with Google</span>
+            </button>
+          </div>
+
+          <div class="account-config-notice" id="account-config-notice" hidden>
+            <span>Cloud sync backend configuration is pending for this domain. Preferences continue saving locally on this device.</span>
+          </div>
+
+          <p class="account-legal-footnote">
+            By signing in, you agree to our <a href="/privacy" target="_blank" rel="noopener">Privacy Policy &amp; Terms</a>. No account is ever required to use ZüsCast.
+          </p>
+        </div>
+
+        <!-- Signed In View -->
+        <div class="account-view" id="account-signed-in-view" hidden>
+          <div class="account-profile-card">
+            <div class="account-profile-header">
+              <div class="account-avatar-circle" id="account-avatar-circle">⚡</div>
+              <div class="account-profile-info">
+                <div class="account-profile-name-row">
+                  <span class="account-label" id="account-user-label">user@example.com</span>
+                  <span class="account-tier-pill" id="account-tier-pill">Standard</span>
+                </div>
+                <div class="account-profile-meta" id="account-profile-meta">Sync active &bull; Last synced just now</div>
+              </div>
+            </div>
+
+            <div class="account-actions-row">
+              <button type="button" class="liquid-glass-pill account-sync-btn" id="account-sync-now-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                </svg>
+                <span>Sync Now</span>
+              </button>
+              <button type="button" class="liquid-glass-pill account-signout-btn" id="account-signout-btn">
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Founder / Promo Code Section -->
+          <div class="account-code-card">
+            <div class="account-code-header">
+              <span class="section-kicker">FOUNDER ACCESS</span>
+              <span class="account-code-subtitle">Redeem a lifetime or early founder access code</span>
+            </div>
+            <form class="account-code-row" id="account-redeem-form" onsubmit="return false;">
+              <input
+                type="text"
+                id="account-code-input"
+                class="account-code-input"
+                placeholder="Enter founder code (e.g. FOUNDER-XXXX)"
+                autocomplete="off"
+                autocapitalize="characters"
+                spellcheck="false"
+              />
+              <button type="submit" class="liquid-glass-pill account-code-submit-btn" id="account-code-submit-btn">
+                Redeem
+              </button>
+            </form>
+            <div class="account-code-feedback" id="account-code-feedback" hidden></div>
+          </div>
+
+          <div class="account-footer-links">
+            <a href="/privacy" class="account-text-link" target="_blank" rel="noopener">Privacy Policy &amp; Terms</a>
+            <span class="account-link-divider">&bull;</span>
+            <a href="/support" class="account-text-link" target="_blank" rel="noopener">Support</a>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script
@@ -6177,6 +6686,9 @@ html:not(.sky-phase-twilight):not(.sky-phase-night) .detail-card-top .section-ki
  * Liquid Glass interface with Dark Sky's minute-by-minute precipitation curve,
  * 24-hour sky condition ribbon, expandable 10-day forecast, and multi-model ensemble.
  */
+
+const ZUS_SUPABASE_URL = (typeof window !== "undefined" && window.ZUS_SUPABASE_URL) || "https://bkwltrykwdqbgnactcaz.supabase.co";
+const ZUS_SUPABASE_ANON_KEY = (typeof window !== "undefined" && window.ZUS_SUPABASE_ANON_KEY) || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrd2x0cnlrd2RxYmduYWN0Y2F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ2Nzg1NjMsImV4cCI6MjExMDI1NDU2M30.Os_Z5Hi5-4BbBDB3qBw27E7FBtl2qGwS4aCY_foLeuk";
 
 const DEFAULT_FALLBACK_LOCATION = {
   name: "New York",
@@ -6511,6 +7023,7 @@ function saveRecentSearch(loc) {
   ].slice(0, 6);
   localStorage.setItem("zus_recent_searches", JSON.stringify(state.recentSearches));
   renderLocationsStrip();
+  scheduleCloudSync();
 }
 
 function removeRecentSearch(lat, lon) {
@@ -6521,6 +7034,7 @@ function removeRecentSearch(lat, lon) {
   );
   localStorage.setItem("zus_recent_searches", JSON.stringify(state.recentSearches));
   renderLocationsStrip();
+  scheduleCloudSync();
 }
 
 /* Formatters */
@@ -13680,6 +14194,7 @@ function setupControls() {
       renderHourDetailModalContent();
     }
     dopplerRadarMap.renderTelemetryStrip(dopplerRadarMap.telemetry);
+    scheduleCloudSync();
   });
 
   // 24-Hour Timeline Metric Dropdown (Top Chart)
@@ -13872,12 +14387,559 @@ function initVersionUpdateWatcher() {
   setInterval(checkForUpdate, 60000);
 }
 
+/* Supabase Configuration & Zero-Dependency Cloud Account Sync */
+let accountModalCloseTimer = null;
+let cloudSyncDebounceTimer = null;
+
+function getAuthSession() {
+  try {
+    const raw = localStorage.getItem("zus_auth_session");
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    if (!session || !session.access_token) return null;
+    return session;
+  } catch (_) {
+    return null;
+  }
+}
+
+function saveAuthSession(session) {
+  try {
+    if (!session) {
+      localStorage.removeItem("zus_auth_session");
+      localStorage.removeItem("zus_last_synced_at");
+      localStorage.removeItem("zus_user_tier");
+    } else {
+      localStorage.setItem("zus_auth_session", JSON.stringify(session));
+    }
+  } catch (_) {}
+}
+
+function maskEmailOrId(str) {
+  if (!str) return "Account";
+  if (str.includes("@")) {
+    const [user, domain] = str.split("@");
+    if (user.length <= 2) return `${user[0]}*@${domain}`;
+    return `${user.slice(0, 2)}${"*".repeat(Math.max(1, user.length - 3))}${user.slice(-1)}@${domain}`;
+  }
+  if (str.length > 8) {
+    return `${str.slice(0, 4)}...${str.slice(-4)}`;
+  }
+  return str;
+}
+
+function generatePkceVerifier(length = 64) {
+  const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+  const array = new Uint8Array(length);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(array);
+  } else {
+    for (let i = 0; i < length; i++) array[i] = Math.floor(Math.random() * 256);
+  }
+  let res = "";
+  for (let i = 0; i < length; i++) {
+    res += charset[array[i] % charset.length];
+  }
+  return res;
+}
+
+async function generatePkceChallenge(verifier) {
+  if (typeof crypto === "undefined" || !crypto.subtle) {
+    return btoa(verifier).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const bytes = new Uint8Array(digest);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+async function initiateOAuth(provider) {
+  if (!ZUS_SUPABASE_URL || !ZUS_SUPABASE_ANON_KEY) {
+    const notice = document.getElementById("account-config-notice");
+    if (notice) notice.removeAttribute("hidden");
+    return;
+  }
+  try {
+    const verifier = generatePkceVerifier();
+    sessionStorage.setItem("zus_pkce_verifier", verifier);
+    const challenge = await generatePkceChallenge(verifier);
+    const redirectUrl = window.location.origin + window.location.pathname;
+    const base = ZUS_SUPABASE_URL.replace(/\/+$/, "");
+    const authUrl = `${base}/auth/v1/authorize?provider=${encodeURIComponent(provider)}&code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=s256&redirect_to=${encodeURIComponent(redirectUrl)}`;
+    window.location.href = authUrl;
+  } catch (err) {
+    console.warn("[Account] OAuth initiation failed:", err);
+  }
+}
+
+async function handleOAuthCallback() {
+  if (typeof window === "undefined" || !window.location.search) return;
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  if (!code) return;
+
+  const verifier = sessionStorage.getItem("zus_pkce_verifier");
+  sessionStorage.removeItem("zus_pkce_verifier");
+  if (!verifier || !ZUS_SUPABASE_URL || !ZUS_SUPABASE_ANON_KEY) return;
+
+  try {
+    const base = ZUS_SUPABASE_URL.replace(/\/+$/, "");
+    const resp = await fetch(`${base}/auth/v1/token?grant_type=pkce`, {
+      method: "POST",
+      headers: {
+        "apikey": ZUS_SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        auth_code: code,
+        code_verifier: verifier,
+      }),
+    });
+    if (resp.ok) {
+      const session = await resp.json();
+      saveAuthSession(session);
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+      await syncAccountState();
+      updateAccountUI();
+    }
+  } catch (err) {
+    console.warn("[Account] PKCE callback exchange error:", err);
+  }
+}
+
+async function fetchEntitlements(session) {
+  if (!session?.access_token) return null;
+  // 1. Try API HTTPS host entitlements endpoint
+  try {
+    const res = await fetch(`${ZUS_API_HTTPS_HOST}/api/v1/accounts/entitlements`, {
+      headers: {
+        "Authorization": `Bearer ${session.access_token}`,
+        "Accept": "application/json",
+      },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.tier) {
+        localStorage.setItem("zus_user_tier", data.tier);
+        return data;
+      }
+    }
+  } catch (_) {}
+
+  // 2. Fallback to Supabase user_entitlements table
+  if (ZUS_SUPABASE_URL && ZUS_SUPABASE_ANON_KEY) {
+    try {
+      const base = ZUS_SUPABASE_URL.replace(/\/+$/, "");
+      const res = await fetch(`${base}/rest/v1/user_entitlements?select=*`, {
+        headers: {
+          "apikey": ZUS_SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${session.access_token}`,
+          "Accept": "application/json",
+        },
+      });
+      if (res.ok) {
+        const rows = await res.json();
+        if (Array.isArray(rows) && rows[0]?.tier) {
+          localStorage.setItem("zus_user_tier", rows[0].tier);
+          return rows[0];
+        }
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+function buildCloudSyncEnvelope() {
+  const cities = (state.recentSearches || []).slice(0, 6).map((c) => ({
+    name: c.name,
+    region: c.region || "",
+    latitude: Number(Number(c.latitude).toFixed(2)),
+    longitude: Number(Number(c.longitude).toFixed(2)),
+  }));
+  return {
+    schemaVersion: 2,
+    exportedAt: new Date().toISOString(),
+    settings: {
+      tempUnit: state.useImperial ? "F" : "C",
+      unitPreset: state.useImperial ? "us" : "metric",
+      pinnedCities: cities,
+    },
+    pinnedCities: cities,
+  };
+}
+
+function applyRemoteSyncEnvelope(envelope) {
+  if (!envelope) return false;
+  let changed = false;
+
+  // Sync temp units
+  const incomingTemp = envelope.settings?.tempUnit || (envelope.settings?.unitPreset === "metric" ? "C" : null);
+  if (incomingTemp === "C" && state.useImperial) {
+    state.useImperial = false;
+    localStorage.setItem("zus_unit_imp", "false");
+    changed = true;
+  } else if (incomingTemp === "F" && !state.useImperial) {
+    state.useImperial = true;
+    localStorage.setItem("zus_unit_imp", "true");
+    changed = true;
+  }
+
+  // Sync saved cities
+  const incomingCities = envelope.pinnedCities || envelope.settings?.pinnedCities;
+  if (Array.isArray(incomingCities) && incomingCities.length > 0) {
+    const valid = incomingCities.slice(0, 6).map((item) => ({
+      name: item.name,
+      region: sanitizeRegionString(item.region || ""),
+      latitude: Number(item.latitude),
+      longitude: Number(item.longitude),
+    }));
+    state.recentSearches = valid;
+    localStorage.setItem("zus_recent_searches", JSON.stringify(valid));
+    renderLocationsStrip();
+    changed = true;
+  }
+
+  if (changed) {
+    const unitBtn = document.getElementById("unit-toggle-btn");
+    if (unitBtn) {
+      unitBtn.textContent = state.useImperial ? "°F, mph" : "°C, km/h";
+    }
+    if (state.weather) {
+      renderDashboard();
+    }
+  }
+  return changed;
+}
+
+async function syncAccountState(manualTrigger = false) {
+  const session = getAuthSession();
+  if (!session?.access_token || !ZUS_SUPABASE_URL || !ZUS_SUPABASE_ANON_KEY) return;
+  const userId = session.user?.id;
+  if (!userId) return;
+
+  const syncBtn = document.getElementById("account-sync-now-btn");
+  if (syncBtn && manualTrigger) {
+    syncBtn.disabled = true;
+    syncBtn.innerHTML = `<span>Syncing...</span>`;
+  }
+
+  try {
+    const base = ZUS_SUPABASE_URL.replace(/\/+$/, "");
+    // 1. Pull remote state
+    const pullUrl = `${base}/rest/v1/user_sync_state?user_id=eq.${encodeURIComponent(userId)}&select=*`;
+    const pullResp = await fetch(pullUrl, {
+      headers: {
+        "apikey": ZUS_SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${session.access_token}`,
+        "Accept": "application/json",
+      },
+    });
+
+    let remoteEnvelope = null;
+    let remoteUpdatedAt = null;
+    if (pullResp.ok) {
+      const rows = await pullResp.json();
+      if (Array.isArray(rows) && rows.length > 0) {
+        remoteEnvelope = rows[0].envelope;
+        remoteUpdatedAt = rows[0].updated_at || rows[0].settings_updated_at;
+      }
+    }
+
+    const localLastSynced = localStorage.getItem("zus_last_synced_at");
+    if (remoteEnvelope && (!localLastSynced || (remoteUpdatedAt && new Date(remoteUpdatedAt) > new Date(localLastSynced)))) {
+      applyRemoteSyncEnvelope(remoteEnvelope);
+    }
+
+    // 2. Push merged local state
+    const envelope = buildCloudSyncEnvelope();
+    const nowIso = new Date().toISOString();
+    await fetch(`${base}/rest/v1/user_sync_state`, {
+      method: "POST",
+      headers: {
+        "apikey": ZUS_SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates,return=representation",
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        schema_version: 2,
+        envelope,
+        settings_updated_at: nowIso,
+        locations_updated_at: nowIso,
+        updated_at: nowIso,
+      }),
+    });
+    localStorage.setItem("zus_last_synced_at", nowIso);
+    await fetchEntitlements(session);
+    updateAccountUI();
+  } catch (err) {
+    console.warn("[Account] Cloud sync failed:", err);
+  } finally {
+    if (syncBtn && manualTrigger) {
+      syncBtn.disabled = false;
+      syncBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+        </svg>
+        <span>Sync Now</span>`;
+    }
+  }
+}
+
+function scheduleCloudSync() {
+  const session = getAuthSession();
+  if (!session?.access_token || !ZUS_SUPABASE_URL || !ZUS_SUPABASE_ANON_KEY) return;
+  clearTimeout(cloudSyncDebounceTimer);
+  cloudSyncDebounceTimer = setTimeout(() => {
+    syncAccountState();
+  }, 1200);
+}
+
+async function redeemFounderCode(code) {
+  const session = getAuthSession();
+  if (!session?.access_token) {
+    return { ok: false, error: "Please sign in to redeem a founder code." };
+  }
+  const cleanCode = (code || "").trim();
+  if (!cleanCode) {
+    return { ok: false, error: "Please enter a founder code." };
+  }
+  try {
+    const resp = await fetch(`${ZUS_API_HTTPS_HOST}/api/v1/accounts/redeem-code`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ code: cleanCode }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok) {
+      await fetchEntitlements(session);
+      await syncAccountState();
+      return { ok: true, tier: data.tier || "founder" };
+    } else {
+      return { ok: false, error: data.detail || data.message || "Invalid or already-redeemed code." };
+    }
+  } catch (err) {
+    return { ok: false, error: "Unable to reach redemption service. Please try again." };
+  }
+}
+
+function updateAccountUI() {
+  const session = getAuthSession();
+  const signedOutView = document.getElementById("account-signed-out-view");
+  const signedInView = document.getElementById("account-signed-in-view");
+  const configNotice = document.getElementById("account-config-notice");
+  const accountBtn = document.getElementById("account-btn");
+
+  if (!ZUS_SUPABASE_URL || !ZUS_SUPABASE_ANON_KEY) {
+    if (configNotice) configNotice.removeAttribute("hidden");
+  } else {
+    if (configNotice) configNotice.setAttribute("hidden", "");
+  }
+
+  if (session && session.user) {
+    if (signedOutView) signedOutView.setAttribute("hidden", "");
+    if (signedInView) signedInView.removeAttribute("hidden");
+
+    const userLabel = document.getElementById("account-user-label");
+    if (userLabel) {
+      userLabel.textContent = maskEmailOrId(session.user.email || session.user.id);
+    }
+
+    const tierPill = document.getElementById("account-tier-pill");
+    const cachedTier = (localStorage.getItem("zus_user_tier") || "free").toLowerCase();
+    if (tierPill) {
+      tierPill.className = "account-tier-pill";
+      if (cachedTier === "founder") {
+        tierPill.textContent = "Founder";
+        tierPill.classList.add("tier-founder");
+      } else if (cachedTier === "lifetime") {
+        tierPill.textContent = "Lifetime";
+        tierPill.classList.add("tier-lifetime");
+      } else if (cachedTier === "pro") {
+        tierPill.textContent = "Pro";
+        tierPill.classList.add("tier-pro");
+      } else {
+        tierPill.textContent = "Standard";
+        tierPill.classList.add("tier-free");
+      }
+    }
+
+    const meta = document.getElementById("account-profile-meta");
+    const lastSync = localStorage.getItem("zus_last_synced_at");
+    if (meta) {
+      if (lastSync) {
+        const d = new Date(lastSync);
+        meta.textContent = `Sync active • Last synced ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+      } else {
+        meta.textContent = "Sync active • Connected";
+      }
+    }
+
+    if (accountBtn) {
+      accountBtn.innerHTML = `⚡ ${cachedTier === "founder" ? "Founder" : cachedTier === "pro" || cachedTier === "lifetime" ? "Pro" : "Account"}`;
+    }
+  } else {
+    if (signedOutView) signedOutView.removeAttribute("hidden");
+    if (signedInView) signedInView.setAttribute("hidden", "");
+    if (accountBtn) {
+      accountBtn.innerHTML = `⚡ Account`;
+    }
+  }
+}
+
+function openAccountModal() {
+  const modal = document.getElementById("account-modal");
+  const sheet = document.getElementById("account-modal-sheet");
+  if (!modal) return;
+  clearTimeout(accountModalCloseTimer);
+  modal.classList.remove("closing");
+  if (sheet) {
+    sheet.style.transform = "";
+    sheet.style.transition = "";
+  }
+  document.body.classList.add("modal-open");
+  modal.removeAttribute("hidden");
+  updateAccountUI();
+}
+
+function closeAccountModal() {
+  const modal = document.getElementById("account-modal");
+  const sheet = document.getElementById("account-modal-sheet");
+  if (!modal || modal.hasAttribute("hidden")) return;
+
+  const tileModal = document.getElementById("tile-detail-modal");
+  const hourModal = document.getElementById("hour-detail-modal");
+  const radarModal = document.getElementById("radar-detail-modal");
+  if (
+    (!tileModal || tileModal.hasAttribute("hidden")) &&
+    (!hourModal || hourModal.hasAttribute("hidden")) &&
+    (!radarModal || radarModal.hasAttribute("hidden"))
+  ) {
+    document.body.classList.remove("modal-open");
+  }
+  if (sheet) {
+    sheet.style.transform = "";
+    sheet.style.transition = "";
+  }
+  modal.classList.add("closing");
+  clearTimeout(accountModalCloseTimer);
+  accountModalCloseTimer = setTimeout(() => {
+    modal.classList.remove("closing");
+    modal.setAttribute("hidden", "");
+  }, 230);
+}
+
+function initAccountSync() {
+  handleOAuthCallback();
+  updateAccountUI();
+
+  // If already logged in, check entitlements and sync
+  const session = getAuthSession();
+  if (session?.access_token) {
+    fetchEntitlements(session).then(() => {
+      updateAccountUI();
+    });
+    syncAccountState();
+  }
+
+  // Account modal openers
+  const accountBtn = document.getElementById("account-btn");
+  if (accountBtn) {
+    accountBtn.addEventListener("click", openAccountModal);
+  }
+
+  // Close triggers
+  const closeBtn = document.getElementById("account-modal-close");
+  if (closeBtn) closeBtn.addEventListener("click", closeAccountModal);
+
+  const modalBackdrop = document.getElementById("account-modal");
+  if (modalBackdrop) {
+    modalBackdrop.addEventListener("click", (e) => {
+      if (e.target === modalBackdrop) closeAccountModal();
+    });
+  }
+
+  // OAuth buttons
+  const appleBtn = document.getElementById("account-apple-login-btn");
+  if (appleBtn) {
+    appleBtn.addEventListener("click", () => initiateOAuth("apple"));
+  }
+  const googleBtn = document.getElementById("account-google-login-btn");
+  if (googleBtn) {
+    googleBtn.addEventListener("click", () => initiateOAuth("google"));
+  }
+
+  // Sync now button
+  const syncNowBtn = document.getElementById("account-sync-now-btn");
+  if (syncNowBtn) {
+    syncNowBtn.addEventListener("click", () => syncAccountState(true));
+  }
+
+  // Sign out button
+  const signoutBtn = document.getElementById("account-signout-btn");
+  if (signoutBtn) {
+    signoutBtn.addEventListener("click", () => {
+      saveAuthSession(null);
+      updateAccountUI();
+    });
+  }
+
+  // Redeem founder code form
+  const redeemForm = document.getElementById("account-redeem-form");
+  const codeInput = document.getElementById("account-code-input");
+  const codeFeedback = document.getElementById("account-code-feedback");
+  if (redeemForm && codeInput && codeFeedback) {
+    redeemForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const code = codeInput.value.trim();
+      if (!code) return;
+      codeFeedback.removeAttribute("hidden");
+      codeFeedback.className = "account-code-feedback";
+      codeFeedback.textContent = "Verifying code...";
+
+      const result = await redeemFounderCode(code);
+      if (result.ok) {
+        codeFeedback.className = "account-code-feedback success";
+        codeFeedback.textContent = `Success! ${result.tier ? result.tier.toUpperCase() : "FOUNDER"} access unlocked.`;
+        codeInput.value = "";
+      } else {
+        codeFeedback.className = "account-code-feedback error";
+        codeFeedback.textContent = result.error || "Failed to redeem code.";
+      }
+    });
+  }
+
+  // Global ESC key listener for account modal
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const modal = document.getElementById("account-modal");
+      if (modal && !modal.hasAttribute("hidden")) {
+        closeAccountModal();
+      }
+    }
+  });
+}
+
 /* Boot ZüsCast */
 document.addEventListener("DOMContentLoaded", () => {
   initVersionUpdateWatcher();
   renderLocationsStrip();
   setupCitySearch();
   setupControls();
+  initAccountSync();
   atmosphereCanvas.init();
   dopplerRadarMap.init();
 

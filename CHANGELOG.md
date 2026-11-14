@@ -2,6 +2,17 @@
 
 All notable changes to `zuscast.com` will be documented in this file.
 
+## [v1.7.0] - 2026-11-14
+
+### Optional Privacy-First Cloud Sync, Founder Code Redemption & Privacy Policy (`index.html`, `styles.css`, `app.js`, `privacy.html`)
+- **Optional Privacy-First Account & Cloud Sync**:
+  - Added an optional account sync modal supporting unified sign-in to securely synchronize pinned locations, unit choices, and dashboard preferences across web and mobile devices.
+  - Retained strict anonymous-by-default behavior: no account registration is ever required to view live forecasts, radars, or alerts.
+- **Founder Access Code Redemption**:
+  - Integrated direct Founder license redemption in the account dialog, providing lifetime access across devices.
+- **Updated Privacy Policy & Terms of Use (`/privacy`, `/privacy.html`)**:
+  - Documented on-device defaults, transparent optional cloud sync protections (coarse location pins, zero tracker or advertising SDKs), direct platform billing disclosures, and single-tap cloud data deletion.
+
 ## [v1.6.2] - 2026-11-11
 
 ### 10-Day Forecast Summary Disambiguation & Calendar-Day Alignment (`app.js`)

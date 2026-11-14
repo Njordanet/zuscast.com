@@ -4,6 +4,9 @@
  * 24-hour sky condition ribbon, expandable 10-day forecast, and multi-model ensemble.
  */
 
+const ZUS_SUPABASE_URL = (typeof window !== "undefined" && window.ZUS_SUPABASE_URL) || "https://bkwltrykwdqbgnactcaz.supabase.co";
+const ZUS_SUPABASE_ANON_KEY = (typeof window !== "undefined" && window.ZUS_SUPABASE_ANON_KEY) || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrd2x0cnlrd2RxYmduYWN0Y2F6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ2Nzg1NjMsImV4cCI6MjExMDI1NDU2M30.Os_Z5Hi5-4BbBDB3qBw27E7FBtl2qGwS4aCY_foLeuk";
+
 const DEFAULT_FALLBACK_LOCATION = {
   name: "New York",
   region: "NY • 10007",
@@ -337,6 +340,7 @@ function saveRecentSearch(loc) {
   ].slice(0, 6);
   localStorage.setItem("zus_recent_searches", JSON.stringify(state.recentSearches));
   renderLocationsStrip();
+  scheduleCloudSync();
 }
 
 function removeRecentSearch(lat, lon) {
@@ -347,6 +351,7 @@ function removeRecentSearch(lat, lon) {
   );
   localStorage.setItem("zus_recent_searches", JSON.stringify(state.recentSearches));
   renderLocationsStrip();
+  scheduleCloudSync();
 }
 
 /* Formatters */
@@ -7506,6 +7511,7 @@ function setupControls() {
       renderHourDetailModalContent();
     }
     dopplerRadarMap.renderTelemetryStrip(dopplerRadarMap.telemetry);
+    scheduleCloudSync();
   });
 
   // 24-Hour Timeline Metric Dropdown (Top Chart)
@@ -7698,12 +7704,559 @@ function initVersionUpdateWatcher() {
   setInterval(checkForUpdate, 60000);
 }
 
+/* Supabase Configuration & Zero-Dependency Cloud Account Sync */
+let accountModalCloseTimer = null;
+let cloudSyncDebounceTimer = null;
+
+function getAuthSession() {
+  try {
+    const raw = localStorage.getItem("zus_auth_session");
+    if (!raw) return null;
+    const session = JSON.parse(raw);
+    if (!session || !session.access_token) return null;
+    return session;
+  } catch (_) {
+    return null;
+  }
+}
+
+function saveAuthSession(session) {
+  try {
+    if (!session) {
+      localStorage.removeItem("zus_auth_session");
+      localStorage.removeItem("zus_last_synced_at");
+      localStorage.removeItem("zus_user_tier");
+    } else {
+      localStorage.setItem("zus_auth_session", JSON.stringify(session));
+    }
+  } catch (_) {}
+}
+
+function maskEmailOrId(str) {
+  if (!str) return "Account";
+  if (str.includes("@")) {
+    const [user, domain] = str.split("@");
+    if (user.length <= 2) return `${user[0]}*@${domain}`;
+    return `${user.slice(0, 2)}${"*".repeat(Math.max(1, user.length - 3))}${user.slice(-1)}@${domain}`;
+  }
+  if (str.length > 8) {
+    return `${str.slice(0, 4)}...${str.slice(-4)}`;
+  }
+  return str;
+}
+
+function generatePkceVerifier(length = 64) {
+  const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+  const array = new Uint8Array(length);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(array);
+  } else {
+    for (let i = 0; i < length; i++) array[i] = Math.floor(Math.random() * 256);
+  }
+  let res = "";
+  for (let i = 0; i < length; i++) {
+    res += charset[array[i] % charset.length];
+  }
+  return res;
+}
+
+async function generatePkceChallenge(verifier) {
+  if (typeof crypto === "undefined" || !crypto.subtle) {
+    return btoa(verifier).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const bytes = new Uint8Array(digest);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+async function initiateOAuth(provider) {
+  if (!ZUS_SUPABASE_URL || !ZUS_SUPABASE_ANON_KEY) {
+    const notice = document.getElementById("account-config-notice");
+    if (notice) notice.removeAttribute("hidden");
+    return;
+  }
+  try {
+    const verifier = generatePkceVerifier();
+    sessionStorage.setItem("zus_pkce_verifier", verifier);
+    const challenge = await generatePkceChallenge(verifier);
+    const redirectUrl = window.location.origin + window.location.pathname;
+    const base = ZUS_SUPABASE_URL.replace(/\/+$/, "");
+    const authUrl = `${base}/auth/v1/authorize?provider=${encodeURIComponent(provider)}&code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=s256&redirect_to=${encodeURIComponent(redirectUrl)}`;
+    window.location.href = authUrl;
+  } catch (err) {
+    console.warn("[Account] OAuth initiation failed:", err);
+  }
+}
+
+async function handleOAuthCallback() {
+  if (typeof window === "undefined" || !window.location.search) return;
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  if (!code) return;
+
+  const verifier = sessionStorage.getItem("zus_pkce_verifier");
+  sessionStorage.removeItem("zus_pkce_verifier");
+  if (!verifier || !ZUS_SUPABASE_URL || !ZUS_SUPABASE_ANON_KEY) return;
+
+  try {
+    const base = ZUS_SUPABASE_URL.replace(/\/+$/, "");
+    const resp = await fetch(`${base}/auth/v1/token?grant_type=pkce`, {
+      method: "POST",
+      headers: {
+        "apikey": ZUS_SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        auth_code: code,
+        code_verifier: verifier,
+      }),
+    });
+    if (resp.ok) {
+      const session = await resp.json();
+      saveAuthSession(session);
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+      await syncAccountState();
+      updateAccountUI();
+    }
+  } catch (err) {
+    console.warn("[Account] PKCE callback exchange error:", err);
+  }
+}
+
+async function fetchEntitlements(session) {
+  if (!session?.access_token) return null;
+  // 1. Try API HTTPS host entitlements endpoint
+  try {
+    const res = await fetch(`${ZUS_API_HTTPS_HOST}/api/v1/accounts/entitlements`, {
+      headers: {
+        "Authorization": `Bearer ${session.access_token}`,
+        "Accept": "application/json",
+      },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.tier) {
+        localStorage.setItem("zus_user_tier", data.tier);
+        return data;
+      }
+    }
+  } catch (_) {}
+
+  // 2. Fallback to Supabase user_entitlements table
+  if (ZUS_SUPABASE_URL && ZUS_SUPABASE_ANON_KEY) {
+    try {
+      const base = ZUS_SUPABASE_URL.replace(/\/+$/, "");
+      const res = await fetch(`${base}/rest/v1/user_entitlements?select=*`, {
+        headers: {
+          "apikey": ZUS_SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${session.access_token}`,
+          "Accept": "application/json",
+        },
+      });
+      if (res.ok) {
+        const rows = await res.json();
+        if (Array.isArray(rows) && rows[0]?.tier) {
+          localStorage.setItem("zus_user_tier", rows[0].tier);
+          return rows[0];
+        }
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+function buildCloudSyncEnvelope() {
+  const cities = (state.recentSearches || []).slice(0, 6).map((c) => ({
+    name: c.name,
+    region: c.region || "",
+    latitude: Number(Number(c.latitude).toFixed(2)),
+    longitude: Number(Number(c.longitude).toFixed(2)),
+  }));
+  return {
+    schemaVersion: 2,
+    exportedAt: new Date().toISOString(),
+    settings: {
+      tempUnit: state.useImperial ? "F" : "C",
+      unitPreset: state.useImperial ? "us" : "metric",
+      pinnedCities: cities,
+    },
+    pinnedCities: cities,
+  };
+}
+
+function applyRemoteSyncEnvelope(envelope) {
+  if (!envelope) return false;
+  let changed = false;
+
+  // Sync temp units
+  const incomingTemp = envelope.settings?.tempUnit || (envelope.settings?.unitPreset === "metric" ? "C" : null);
+  if (incomingTemp === "C" && state.useImperial) {
+    state.useImperial = false;
+    localStorage.setItem("zus_unit_imp", "false");
+    changed = true;
+  } else if (incomingTemp === "F" && !state.useImperial) {
+    state.useImperial = true;
+    localStorage.setItem("zus_unit_imp", "true");
+    changed = true;
+  }
+
+  // Sync saved cities
+  const incomingCities = envelope.pinnedCities || envelope.settings?.pinnedCities;
+  if (Array.isArray(incomingCities) && incomingCities.length > 0) {
+    const valid = incomingCities.slice(0, 6).map((item) => ({
+      name: item.name,
+      region: sanitizeRegionString(item.region || ""),
+      latitude: Number(item.latitude),
+      longitude: Number(item.longitude),
+    }));
+    state.recentSearches = valid;
+    localStorage.setItem("zus_recent_searches", JSON.stringify(valid));
+    renderLocationsStrip();
+    changed = true;
+  }
+
+  if (changed) {
+    const unitBtn = document.getElementById("unit-toggle-btn");
+    if (unitBtn) {
+      unitBtn.textContent = state.useImperial ? "°F, mph" : "°C, km/h";
+    }
+    if (state.weather) {
+      renderDashboard();
+    }
+  }
+  return changed;
+}
+
+async function syncAccountState(manualTrigger = false) {
+  const session = getAuthSession();
+  if (!session?.access_token || !ZUS_SUPABASE_URL || !ZUS_SUPABASE_ANON_KEY) return;
+  const userId = session.user?.id;
+  if (!userId) return;
+
+  const syncBtn = document.getElementById("account-sync-now-btn");
+  if (syncBtn && manualTrigger) {
+    syncBtn.disabled = true;
+    syncBtn.innerHTML = `<span>Syncing...</span>`;
+  }
+
+  try {
+    const base = ZUS_SUPABASE_URL.replace(/\/+$/, "");
+    // 1. Pull remote state
+    const pullUrl = `${base}/rest/v1/user_sync_state?user_id=eq.${encodeURIComponent(userId)}&select=*`;
+    const pullResp = await fetch(pullUrl, {
+      headers: {
+        "apikey": ZUS_SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${session.access_token}`,
+        "Accept": "application/json",
+      },
+    });
+
+    let remoteEnvelope = null;
+    let remoteUpdatedAt = null;
+    if (pullResp.ok) {
+      const rows = await pullResp.json();
+      if (Array.isArray(rows) && rows.length > 0) {
+        remoteEnvelope = rows[0].envelope;
+        remoteUpdatedAt = rows[0].updated_at || rows[0].settings_updated_at;
+      }
+    }
+
+    const localLastSynced = localStorage.getItem("zus_last_synced_at");
+    if (remoteEnvelope && (!localLastSynced || (remoteUpdatedAt && new Date(remoteUpdatedAt) > new Date(localLastSynced)))) {
+      applyRemoteSyncEnvelope(remoteEnvelope);
+    }
+
+    // 2. Push merged local state
+    const envelope = buildCloudSyncEnvelope();
+    const nowIso = new Date().toISOString();
+    await fetch(`${base}/rest/v1/user_sync_state`, {
+      method: "POST",
+      headers: {
+        "apikey": ZUS_SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates,return=representation",
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        schema_version: 2,
+        envelope,
+        settings_updated_at: nowIso,
+        locations_updated_at: nowIso,
+        updated_at: nowIso,
+      }),
+    });
+    localStorage.setItem("zus_last_synced_at", nowIso);
+    await fetchEntitlements(session);
+    updateAccountUI();
+  } catch (err) {
+    console.warn("[Account] Cloud sync failed:", err);
+  } finally {
+    if (syncBtn && manualTrigger) {
+      syncBtn.disabled = false;
+      syncBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+        </svg>
+        <span>Sync Now</span>`;
+    }
+  }
+}
+
+function scheduleCloudSync() {
+  const session = getAuthSession();
+  if (!session?.access_token || !ZUS_SUPABASE_URL || !ZUS_SUPABASE_ANON_KEY) return;
+  clearTimeout(cloudSyncDebounceTimer);
+  cloudSyncDebounceTimer = setTimeout(() => {
+    syncAccountState();
+  }, 1200);
+}
+
+async function redeemFounderCode(code) {
+  const session = getAuthSession();
+  if (!session?.access_token) {
+    return { ok: false, error: "Please sign in to redeem a founder code." };
+  }
+  const cleanCode = (code || "").trim();
+  if (!cleanCode) {
+    return { ok: false, error: "Please enter a founder code." };
+  }
+  try {
+    const resp = await fetch(`${ZUS_API_HTTPS_HOST}/api/v1/accounts/redeem-code`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ code: cleanCode }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok) {
+      await fetchEntitlements(session);
+      await syncAccountState();
+      return { ok: true, tier: data.tier || "founder" };
+    } else {
+      return { ok: false, error: data.detail || data.message || "Invalid or already-redeemed code." };
+    }
+  } catch (err) {
+    return { ok: false, error: "Unable to reach redemption service. Please try again." };
+  }
+}
+
+function updateAccountUI() {
+  const session = getAuthSession();
+  const signedOutView = document.getElementById("account-signed-out-view");
+  const signedInView = document.getElementById("account-signed-in-view");
+  const configNotice = document.getElementById("account-config-notice");
+  const accountBtn = document.getElementById("account-btn");
+
+  if (!ZUS_SUPABASE_URL || !ZUS_SUPABASE_ANON_KEY) {
+    if (configNotice) configNotice.removeAttribute("hidden");
+  } else {
+    if (configNotice) configNotice.setAttribute("hidden", "");
+  }
+
+  if (session && session.user) {
+    if (signedOutView) signedOutView.setAttribute("hidden", "");
+    if (signedInView) signedInView.removeAttribute("hidden");
+
+    const userLabel = document.getElementById("account-user-label");
+    if (userLabel) {
+      userLabel.textContent = maskEmailOrId(session.user.email || session.user.id);
+    }
+
+    const tierPill = document.getElementById("account-tier-pill");
+    const cachedTier = (localStorage.getItem("zus_user_tier") || "free").toLowerCase();
+    if (tierPill) {
+      tierPill.className = "account-tier-pill";
+      if (cachedTier === "founder") {
+        tierPill.textContent = "Founder";
+        tierPill.classList.add("tier-founder");
+      } else if (cachedTier === "lifetime") {
+        tierPill.textContent = "Lifetime";
+        tierPill.classList.add("tier-lifetime");
+      } else if (cachedTier === "pro") {
+        tierPill.textContent = "Pro";
+        tierPill.classList.add("tier-pro");
+      } else {
+        tierPill.textContent = "Standard";
+        tierPill.classList.add("tier-free");
+      }
+    }
+
+    const meta = document.getElementById("account-profile-meta");
+    const lastSync = localStorage.getItem("zus_last_synced_at");
+    if (meta) {
+      if (lastSync) {
+        const d = new Date(lastSync);
+        meta.textContent = `Sync active • Last synced ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+      } else {
+        meta.textContent = "Sync active • Connected";
+      }
+    }
+
+    if (accountBtn) {
+      accountBtn.innerHTML = `⚡ ${cachedTier === "founder" ? "Founder" : cachedTier === "pro" || cachedTier === "lifetime" ? "Pro" : "Account"}`;
+    }
+  } else {
+    if (signedOutView) signedOutView.removeAttribute("hidden");
+    if (signedInView) signedInView.setAttribute("hidden", "");
+    if (accountBtn) {
+      accountBtn.innerHTML = `⚡ Account`;
+    }
+  }
+}
+
+function openAccountModal() {
+  const modal = document.getElementById("account-modal");
+  const sheet = document.getElementById("account-modal-sheet");
+  if (!modal) return;
+  clearTimeout(accountModalCloseTimer);
+  modal.classList.remove("closing");
+  if (sheet) {
+    sheet.style.transform = "";
+    sheet.style.transition = "";
+  }
+  document.body.classList.add("modal-open");
+  modal.removeAttribute("hidden");
+  updateAccountUI();
+}
+
+function closeAccountModal() {
+  const modal = document.getElementById("account-modal");
+  const sheet = document.getElementById("account-modal-sheet");
+  if (!modal || modal.hasAttribute("hidden")) return;
+
+  const tileModal = document.getElementById("tile-detail-modal");
+  const hourModal = document.getElementById("hour-detail-modal");
+  const radarModal = document.getElementById("radar-detail-modal");
+  if (
+    (!tileModal || tileModal.hasAttribute("hidden")) &&
+    (!hourModal || hourModal.hasAttribute("hidden")) &&
+    (!radarModal || radarModal.hasAttribute("hidden"))
+  ) {
+    document.body.classList.remove("modal-open");
+  }
+  if (sheet) {
+    sheet.style.transform = "";
+    sheet.style.transition = "";
+  }
+  modal.classList.add("closing");
+  clearTimeout(accountModalCloseTimer);
+  accountModalCloseTimer = setTimeout(() => {
+    modal.classList.remove("closing");
+    modal.setAttribute("hidden", "");
+  }, 230);
+}
+
+function initAccountSync() {
+  handleOAuthCallback();
+  updateAccountUI();
+
+  // If already logged in, check entitlements and sync
+  const session = getAuthSession();
+  if (session?.access_token) {
+    fetchEntitlements(session).then(() => {
+      updateAccountUI();
+    });
+    syncAccountState();
+  }
+
+  // Account modal openers
+  const accountBtn = document.getElementById("account-btn");
+  if (accountBtn) {
+    accountBtn.addEventListener("click", openAccountModal);
+  }
+
+  // Close triggers
+  const closeBtn = document.getElementById("account-modal-close");
+  if (closeBtn) closeBtn.addEventListener("click", closeAccountModal);
+
+  const modalBackdrop = document.getElementById("account-modal");
+  if (modalBackdrop) {
+    modalBackdrop.addEventListener("click", (e) => {
+      if (e.target === modalBackdrop) closeAccountModal();
+    });
+  }
+
+  // OAuth buttons
+  const appleBtn = document.getElementById("account-apple-login-btn");
+  if (appleBtn) {
+    appleBtn.addEventListener("click", () => initiateOAuth("apple"));
+  }
+  const googleBtn = document.getElementById("account-google-login-btn");
+  if (googleBtn) {
+    googleBtn.addEventListener("click", () => initiateOAuth("google"));
+  }
+
+  // Sync now button
+  const syncNowBtn = document.getElementById("account-sync-now-btn");
+  if (syncNowBtn) {
+    syncNowBtn.addEventListener("click", () => syncAccountState(true));
+  }
+
+  // Sign out button
+  const signoutBtn = document.getElementById("account-signout-btn");
+  if (signoutBtn) {
+    signoutBtn.addEventListener("click", () => {
+      saveAuthSession(null);
+      updateAccountUI();
+    });
+  }
+
+  // Redeem founder code form
+  const redeemForm = document.getElementById("account-redeem-form");
+  const codeInput = document.getElementById("account-code-input");
+  const codeFeedback = document.getElementById("account-code-feedback");
+  if (redeemForm && codeInput && codeFeedback) {
+    redeemForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const code = codeInput.value.trim();
+      if (!code) return;
+      codeFeedback.removeAttribute("hidden");
+      codeFeedback.className = "account-code-feedback";
+      codeFeedback.textContent = "Verifying code...";
+
+      const result = await redeemFounderCode(code);
+      if (result.ok) {
+        codeFeedback.className = "account-code-feedback success";
+        codeFeedback.textContent = `Success! ${result.tier ? result.tier.toUpperCase() : "FOUNDER"} access unlocked.`;
+        codeInput.value = "";
+      } else {
+        codeFeedback.className = "account-code-feedback error";
+        codeFeedback.textContent = result.error || "Failed to redeem code.";
+      }
+    });
+  }
+
+  // Global ESC key listener for account modal
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const modal = document.getElementById("account-modal");
+      if (modal && !modal.hasAttribute("hidden")) {
+        closeAccountModal();
+      }
+    }
+  });
+}
+
 /* Boot ZüsCast */
 document.addEventListener("DOMContentLoaded", () => {
   initVersionUpdateWatcher();
   renderLocationsStrip();
   setupCitySearch();
   setupControls();
+  initAccountSync();
   atmosphereCanvas.init();
   dopplerRadarMap.init();
 
