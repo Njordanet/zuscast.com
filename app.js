@@ -3732,17 +3732,31 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       }
     }
 
-    const dayWmo = Number(zd?.wmoCode ?? d.weather_code?.[i] ?? 0);
+    let dayWmo = Number(zd?.wmoCode ?? d.weather_code?.[i] ?? 0);
     const rawDayPop = Number(zd?.precipitationChance ?? d.precipitation_probability_max?.[i] ?? 0);
     const sliceMaxPop = calHours.length
       ? Math.max(...calHours.map((pt) => Number(pt.precipProb ?? 0)))
       : 0;
     const dayPop = Math.max(rawDayPop, sliceMaxPop);
     const dayPsum = Number(zd?.precipSumMm ?? d.precipitation_sum?.[i] ?? 0);
+
+    if ((i >= 1 && dayPop < 25) || (i === 0 && dayPop < 20 && snowAccumulationCm < 0.25)) {
+      snowAccumulationCm = 0;
+    }
+    if (i >= 1 && dayPop < 30 && dayWmo >= 51) {
+      dayWmo = 2;
+    }
+
     let dayCondition = conditionFromWMO(dayWmo);
     if (
       precipType === "sleet" &&
       (dayPop >= 25 || dayPsum > 0.1 || [56, 57, 66, 67, 77].includes(dayWmo))
+    ) {
+      dayCondition = SKY_CONDITIONS.sleet;
+    } else if (
+      precipType === "snow" &&
+      [51, 53, 55, 61, 63, 65, 80, 81, 82].includes(dayWmo) &&
+      snowAccumulationCm >= 0.25
     ) {
       dayCondition = SKY_CONDITIONS.sleet;
     }
@@ -5586,16 +5600,23 @@ function renderDailyForecast(daily) {
     summaryBanner.textContent = `Mostly dry conditions across the next 10 days, with temperatures peaking at ${peakTempStr} ${peakWhen}.`;
   } else {
     const firstWet = daily[firstWetIdx];
+    const firstWetPop = Math.round(firstWet.precipProb ?? 0);
     const pNoun =
       firstWet.precipType === "snow"
         ? "Snow"
         : firstWet.precipType === "sleet"
         ? "Wintry mix"
         : "Precipitation";
+    const pNounLower = pNoun.toLowerCase();
+    const wetWhen = formatDailyWhen(firstWet, firstWetIdx, true);
     const wetClause =
-      firstWetIdx === 0
-        ? `${pNoun} likely today`
-        : `${pNoun} likely starting ${formatDailyWhen(firstWet, firstWetIdx, false)}`;
+      firstWetPop >= 55
+        ? firstWetIdx === 0
+          ? `${pNoun} likely today`
+          : `${pNoun} likely starting ${wetWhen}`
+        : firstWetIdx === 0
+        ? `Chance of ${pNounLower} today`
+        : `Chance of ${pNounLower} starting ${wetWhen}`;
     summaryBanner.textContent = `${wetClause}, with ${peakScope} reaching ${peakTempStr} ${peakWhen}.`;
   }
 
@@ -5618,7 +5639,8 @@ function renderDailyForecast(daily) {
 
     let snowBadgeHtml = "";
     const accumFormatted = formatSnowAccum(dItem.snowAccumulationCm);
-    if (accumFormatted) {
+    const showSnowBadge = accumFormatted && (idx === 0 ? precipPct >= 20 : precipPct >= 25);
+    if (showSnowBadge) {
       const badgeCls = dItem.precipType === "sleet" ? "daily-sleet-badge" : "daily-snow-badge";
       snowBadgeHtml = `<span class="${badgeCls}">${accumFormatted}</span>`;
     }
