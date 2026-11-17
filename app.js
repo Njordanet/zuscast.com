@@ -3682,6 +3682,10 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
   }
 
   const hourly = allHourly.slice(startHourIdx);
+  const currentHourPt = hourly[0] || null;
+  const currentTemp = Number(
+    zCur?.temperature ?? currentHourPt?.temperature ?? c.temperature_2m ?? 0
+  );
 
   // 10-Day Forecast (consumed from ZüsAPI RLS + Diurnal Harmonic MOS blend, with Open-Meteo fallback)
   const zDaily = Array.isArray(zusWeather?.daily) ? zusWeather.daily : [];
@@ -3763,7 +3767,7 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
 
     const rawDayMin = Number(zd?.minTemperature ?? d.temperature_2m_min?.[i] ?? 0);
     const rawDayMax = Number(zd?.maxTemperature ?? d.temperature_2m_max?.[i] ?? 0);
-    const calTemps = calHours.map((pt) => pt.temp).filter((v) => Number.isFinite(v));
+    const calTemps = calHours.map((pt) => pt.temperature).filter((v) => Number.isFinite(v));
     let reconciledMin = calTemps.length ? Math.min(rawDayMin, ...calTemps) : rawDayMin;
     let reconciledMax = calTemps.length ? Math.max(rawDayMax, ...calTemps) : rawDayMax;
     if (i === 0 && Number.isFinite(currentTemp)) {
@@ -3974,7 +3978,6 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
     effectiveWmo = minuteRates[0] >= 4.0 ? 65 : minuteRates[0] >= 0.8 ? 61 : 51;
   }
 
-  const currentHourPt = hourly[0] || null;
   const curTimeStr = String(c.time || h.time?.[startHourIdx] || zCur?.timestamp || "");
   const curDateKey = curTimeStr.slice(0, 10) || daily[0]?.dateKey || "";
   const curHourFrac = parseIsoHourFrac(curTimeStr, currentHourPt?.hourNum ?? 12);
@@ -4000,9 +4003,6 @@ function parseWeatherData(raw, rawAqi, rawEnsemble, dopplerTel = null, zusWeathe
       (h.visibility?.[startHourIdx] ?? 10000) / 1000
   );
 
-  const currentTemp = Number(
-    zCur?.temperature ?? currentHourPt?.temperature ?? c.temperature_2m ?? 0
-  );
   const currentFeelsLike = Number(
     zCur?.feelsLike ?? currentHourPt?.feelsLike ?? c.apparent_temperature ?? currentTemp
   );

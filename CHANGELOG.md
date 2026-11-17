@@ -2,6 +2,14 @@
 
 All notable changes to `zuscast.com` will be documented in this file.
 
+## [v1.8.2] - 2026-11-17
+
+### Weather Data Parsing & Daily Temperature Reconciliation Fix (`app.js`)
+- **Weather Rendering & Forecast Stability (`app.js`)**:
+  - Fixed a data parsing issue that prevented current weather metrics, the hourly forecast, and the 10-day forecast from rendering.
+- **Daily Temperature High/Low Alignment (`app.js`)**:
+  - Corrected daily temperature range reconciliation so daily highs and lows match hourly temperature projections accurately.
+
 ## [v1.8.0] - 2026-11-14
 
 ### Direct Google Account Sign-In & Verified Privacy Links (`index.html`, `app.js`, `auth/google-callback.html`)
